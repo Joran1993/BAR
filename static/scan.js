@@ -1094,6 +1094,24 @@ async function saveUserPanel() {
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────────
+
+// Bedrijf-rol: verberg "Aanbieden" tab, zet standaard op "Ontvangen"
+if (_role === "bedrijf") {
+  const aanbiedenTab = document.querySelector('.list-maintab[data-main="aanbieden"]');
+  if (aanbiedenTab) aanbiedenTab.style.display = "none";
+  const ontvangenTab = document.querySelector('.list-maintab[data-main="ontvangen"]');
+  if (ontvangenTab) {
+    ontvangenTab.classList.add("active");
+    document.querySelectorAll(".list-maintab").forEach(b => { if (b !== ontvangenTab) b.classList.remove("active"); });
+  }
+  document.getElementById("subtabs-aanbieden").style.display = "none";
+  document.getElementById("subtabs-ontvangen").style.display = "";
+  document.querySelector('[data-subtab="ontvangen-alles"]')?.classList.add("active");
+  activeMain = "ontvangen";
+  activeSubtab = "ontvangen-alles";
+  document.getElementById("tab-list").dataset.main = "ontvangen";
+}
+
 laadGemeenten().then(() => syncAll());
 setInterval(syncItems, 5000);
 setInterval(syncStats, 60000);
