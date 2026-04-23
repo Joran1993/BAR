@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Inloggen — CIRQO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/base.css?v=3">
+  <style>
+    body {
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: calc(env(safe-area-inset-top) + 32px) 16px
+               calc(env(safe-area-inset-bottom) + 32px);
+    }
+    .wrap { width: 100%; max-width: 400px; margin: 0 auto; }
+    .brand { margin-bottom: 32px; }
+    .brand-sub {
+      font-size: 0.65rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.12em;
+      color: var(--orange); margin-top: 4px;
+    }
+    .panel {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 20px;
+    }
+    .panel h1 {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.6rem; font-weight: 900;
+      margin-bottom: 20px;
+    }
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 20px 0;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .btn-firebase {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 13px 15px;
+      border: 1.5px solid var(--border);
+      border-radius: 100px;
+      background: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--ink);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .btn-firebase:hover { border-color: var(--orange); background: #f9fdf9; }
+    .btn-firebase:disabled { opacity: 0.45; cursor: not-allowed; }
+    .firebase-section { margin-top: 4px; }
+    .firebase-section .field { margin-bottom: 12px; }
+  </style>
+  <link rel="stylesheet" href="/brand.css">
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <img src="/static/cirqo-logo.webp" alt="CIRQO" style="height:48px;margin-bottom:8px;display:block;">
+      <div class="brand-sub">Registratiesysteem</div>
+    </div>
+    <div class="panel">
+      <h1>Inloggen</h1>
+
+      <!-- CIRQO account (gebruikersnaam + wachtwoord) -->
+      <form id="form">
+        <div class="field">
+          <label>Gebruikersnaam</label>
+          <input type="text" id="username" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label>Wachtwoord</label>
+          <input type="password" id="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" id="btn" class="btn btn-primary">Inloggen</button>
+        <div class="error-bar" id="err"></div>
+      </form>
+
+      <!-- Firebase account (e-mail + wachtwoord) -->
+      <div class="divider">of bestaand account</div>
+      <div class="firebase-section">
+        <div class="field">
+          <label>E-mailadres</label>
+          <input type="email" id="fb-email" autocomplete="email">
+        </div>
+        <div class="field">
+          <label>Wachtwoord</label>
+          <input type="password" id="fb-password" autocomplete="current-password">
+        </div>
+        <button type="button" id="fb-btn" class="btn-firebase">Inloggen met bestaand account</button>
+        <div class="error-bar" id="fb-err"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+  <script>
+    if (localStorage.getItem('token')) {
+      location.href = new URLSearchParams(location.search).get('redirect') || '/';
+    }
+
+    // ── CIRQO login ────────────────────────────────────────────────────────────
+    document.getElementById('form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = document.getElementById('btn');
+      const err = document.getElementById('err');
+      btn.disabled = true; btn.textContent = 'Bezig…'; err.style.display = 'none';
+      const fd = new FormData();
+      fd.append('username', document.getElementById('username').value);
+      fd.append('password', document.getElementById('password').value);
+      try {
+        const res = await fetch('/api/auth/login', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Fout');
+        _saveSession(data);
+        location.href = new URLSearchParams(location.search).get('redirect') || '/';
+      } catch (e) {
+        err.textContent = e.message; err.style.display = 'block';
+        btn.disabled = false; btn.textContent = 'Inloggen';
+      }
+    });
+
+    // ── Firebase login ─────────────────────────────────────────────────────────
+    firebase.initializeApp({
+      apiKey: "AIzaSyDZOfYXQHCu3Bs7xjuukneAShqCEwvICTY",
+      authDomain: "database-e5575.firebaseapp.com",
+      projectId: "database-e5575",
+      storageBucket: "database-e5575.firebasestorage.app",
+      messagingSenderId: "317817675164",
+      appId: "1:317817675164:web:d3aaf57a2bd1e3c6537c59",
+    });
+    const fbAuth = firebase.auth();
+
+    document.getElementById('fb-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('fb-btn');
+      const err = document.getElementById('fb-err');
+      const email = document.getElementById('fb-email').value.trim();
+      const pass  = document.getElementById('fb-password').value;
+      if (!email || !pass) {
+        err.textContent = 'Vul e-mail en wachtwoord in'; err.style.display = 'block'; return;
+      }
+      btn.disabled = true; btn.textContent = 'Bezig…'; err.style.display = 'none';
+      try {
+        const cred = await fbAuth.signInWithEmailAndPassword(email, pass);
+        const idToken = await cred.user.getIdToken();
+        const res = await fetch('/api/auth/firebase-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id_token: idToken }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Fout');
+        _saveSession(data);
+        location.href = new URLSearchParams(location.search).get('redirect') || '/';
+      } catch (e) {
+        let msg = e.message || 'Fout';
+        if (msg.includes('wrong-password') || msg.includes('user-not-found')) msg = 'E-mail of wachtwoord onjuist';
+        if (msg.includes('invalid-email')) msg = 'Ongeldig e-mailadres';
+        err.textContent = msg; err.style.display = 'block';
+        btn.disabled = false; btn.textContent = 'Inloggen met bestaand account';
+      }
+    });
+
+    function _saveSession(data) {
+      localStorage.setItem('token',       data.token);
+      localStorage.setItem('user_id',     data.user_id || '');
+      localStorage.setItem('username',    data.username);
+      localStorage.setItem('role',        data.role);
+      localStorage.setItem('gemeente',    data.gemeente || '');
+      localStorage.setItem('organisatie', data.organisatie || '');
+    }
+  </script>
+</body>
+</html>

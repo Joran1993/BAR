@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — CIRQO Almere</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/brand.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Space Grotesk', sans-serif; background: #f2f1ee; color: #1a1a1a; min-height: 100vh; }
+
+    .hdr { display: flex; flex-direction: column; align-items: center; padding: 20px 16px 14px; background: #fff; border-bottom: 1px solid #e0ddd8; }
+    .hdr img { height: 30px; }
+    .hdr-sub { font-size: 0.7rem; color: #888; margin-top: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+
+    .dash { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; }
+
+    .dash-titel { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 900; margin-bottom: 20px; }
+
+    .stat-rij { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }
+    @media (min-width: 600px) { .stat-rij { grid-template-columns: repeat(4, 1fr); } }
+
+    .stat-kaart { background: #fff; border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .stat-waarde { font-family: 'Barlow Condensed', sans-serif; font-size: 2.2rem; font-weight: 900; color: var(--orange, #5B8C6C); line-height: 1; }
+    .stat-label { font-size: 0.72rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
+
+    .sectie-titel { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin-bottom: 12px; }
+
+    .cat-lijst { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.07); margin-bottom: 24px; }
+    .cat-rij { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid #f0efeb; gap: 12px; }
+    .cat-rij:last-child { border-bottom: none; }
+    .cat-naam { font-size: 0.88rem; font-weight: 700; flex: 1; }
+    .cat-balk-wrap { flex: 2; height: 6px; background: #f0efeb; border-radius: 3px; overflow: hidden; }
+    .cat-balk { height: 100%; background: var(--orange, #5B8C6C); border-radius: 3px; transition: width 0.6s ease; }
+    .cat-n { font-size: 0.78rem; font-weight: 700; color: var(--orange, #5B8C6C); min-width: 32px; text-align: right; }
+    .cat-kg { font-size: 0.72rem; color: #aaa; min-width: 56px; text-align: right; }
+
+    .recent-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    @media (min-width: 600px) { .recent-grid { grid-template-columns: repeat(6, 1fr); } }
+    @media (min-width: 900px) { .recent-grid { grid-template-columns: repeat(12, 1fr); } }
+    .recent-tegel { aspect-ratio: 1; border-radius: 8px; overflow: hidden; cursor: pointer; background: #ddd; }
+    .recent-tegel img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .dash-link { display: inline-block; margin-top: 16px; padding: 10px 24px; border-radius: 100px; background: var(--orange, #5B8C6C); color: #fff; font-weight: 700; font-size: 0.85rem; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <header class="hdr">
+    <img src="/static/cirqo-logo.webp" alt="CIRQO">
+    <p class="hdr-sub">Dashboard · Milieustraat Almere-Buiten</p>
+  </header>
+
+  <div class="dash">
+    <div class="dash-titel">Overzicht ingezameld materiaal</div>
+
+    <div class="stat-rij">
+      <div class="stat-kaart"><div class="stat-waarde" id="s-items">—</div><div class="stat-label">Items ingezameld</div></div>
+      <div class="stat-kaart"><div class="stat-waarde" id="s-kg">—</div><div class="stat-label">Totaal gewicht (kg)</div></div>
+      <div class="stat-kaart"><div class="stat-waarde" id="s-cats">—</div><div class="stat-label">Categorieën</div></div>
+      <div class="stat-kaart"><div class="stat-waarde" id="s-gem">—</div><div class="stat-label">Gem. gewicht (kg)</div></div>
+    </div>
+
+    <div class="sectie-titel">Per categorie</div>
+    <div class="cat-lijst" id="cat-lijst"></div>
+
+    <div class="sectie-titel" style="margin-top:24px">Meest recent ingezameld</div>
+    <div class="recent-grid" id="recent-grid"></div>
+
+    <a href="/catalogus" class="dash-link">Bekijk alle items →</a>
+  </div>
+
+  <script>
+    async function laad() {
+      const res = await fetch('/api/dashboard?gemeente=Almere');
+      const d = await res.json();
+
+      const t = d.totaal;
+      document.getElementById('s-items').textContent = t.cnt;
+      document.getElementById('s-kg').textContent = t.totaal_kg ? Math.round(t.totaal_kg) : '—';
+      document.getElementById('s-cats').textContent = d.categorieen.filter(c => c.cat !== 'Onbekend').length;
+      document.getElementById('s-gem').textContent = t.cnt ? Math.round(t.totaal_kg / t.cnt * 10) / 10 : '—';
+
+      const max = Math.max(...d.categorieen.map(c => c.n));
+      document.getElementById('cat-lijst').innerHTML = d.categorieen.map(c => `
+        <div class="cat-rij">
+          <div class="cat-naam">${c.cat}</div>
+          <div class="cat-balk-wrap"><div class="cat-balk" style="width:${Math.round(c.n/max*100)}%"></div></div>
+          <div class="cat-n">${c.n}</div>
+          <div class="cat-kg">${c.kg ? c.kg + ' kg' : ''}</div>
+        </div>`).join('');
+
+      document.getElementById('recent-grid').innerHTML = d.recent.map(item => `
+        <div class="recent-tegel" title="${item.ai_label || ''}">
+          <img src="${item.photo_url_thumb || item.photo_url}" loading="lazy" onerror="this.style.opacity=0.2">
+        </div>`).join('');
+    }
+    laad();
+  </script>
+</body>
+</html>
