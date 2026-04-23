@@ -659,7 +659,9 @@ async def create_aanbieding(
     aanbieding_id = db.create_aanbieding(item_id, bedrijf_id, user_id=user["id"])
     fs.sync_aanbieding({"id": aanbieding_id, "item_id": item_id, "bedrijf_id": bedrijf_id, "status": "open"})
     gemeente = _gemeente_filter(user)
-    cache_module.delete(f"items:{gemeente}:0:{user['id']}", f"items:None:0:{user['id']}")
+    gemeenten = _gemeenten_expand(gemeente)
+    cache_key = f"items:{gemeenten or gemeente}:0:{user['id']}"
+    cache_module.delete(cache_key, f"items:None:0:{user['id']}")
 
     # Push op de achtergrond — vertraagt het response niet
     async def _stuur_bedrijf_push():
@@ -703,7 +705,9 @@ async def create_aanbiedingen_bulk(
             pass
 
     gemeente = _gemeente_filter(user)
-    cache_module.delete(f"items:{gemeente}:0:{user['id']}", f"items:None:0:{user['id']}")
+    gemeenten = _gemeenten_expand(gemeente)
+    cache_key = f"items:{gemeenten or gemeente}:0:{user['id']}"
+    cache_module.delete(cache_key, f"items:None:0:{user['id']}")
 
     async def _stuur_bulk_push():
         item = db.get_item(item_id)
