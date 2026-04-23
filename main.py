@@ -440,6 +440,8 @@ async def me(user=Depends(get_current_user)):
 
 @app.get("/api/gemeenten")
 async def list_gemeenten(user=Depends(get_current_user)):
+    if DEFAULT_BRAND == "bar":
+        return BAR_GEMEENTEN
     return db.get_gemeenten()
 
 

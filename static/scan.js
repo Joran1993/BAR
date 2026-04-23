@@ -123,7 +123,7 @@ async function laadGemeenten() {
   _allGemeenten = await res.json();
   const sel = document.getElementById("gemeente-kiezer");
   sel.innerHTML = '<option value="">Selecteer gemeente…</option>' +
-    _allGemeenten.map(g => `<option value="${g.naam}">${g.naam}</option>`).join("");
+    _allGemeenten.map(g => `<option value="${g}">${g}</option>`).join("");
 }
 
 let _scanBedrijven = []; // huidige lijst in scan-flow, herordeerbaar
