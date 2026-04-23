@@ -1205,20 +1205,29 @@ async def service_worker():
                         headers={"Cache-Control": "no-store"})
 
 
+DEFAULT_BRAND = os.getenv("BRAND", "cirqo")
+
+
 @app.get("/", response_class=HTMLResponse)
 async def scan_app():
+    if DEFAULT_BRAND != "cirqo":
+        return _render_html("static/index.html", DEFAULT_BRAND)
     with open("static/index.html", "r", encoding="utf-8") as f:
         return f.read()
 
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page():
+    if DEFAULT_BRAND != "cirqo":
+        return _render_html("static/login.html", DEFAULT_BRAND)
     with open("static/login.html", "r", encoding="utf-8") as f:
         return f.read()
 
 
 @app.get("/beheer", response_class=HTMLResponse)
 async def beheer_page():
+    if DEFAULT_BRAND != "cirqo":
+        return _render_html("static/beheer.html", DEFAULT_BRAND)
     with open("static/beheer.html", "r", encoding="utf-8") as f:
         return f.read()
 
@@ -1329,6 +1338,8 @@ async def tuya_test(kleur: str):
 
 @app.get("/kiosk", response_class=HTMLResponse)
 async def kiosk_page():
+    if DEFAULT_BRAND != "cirqo":
+        return _render_html("static/kiosk.html", DEFAULT_BRAND)
     with open("static/kiosk.html", "r", encoding="utf-8") as f:
         return f.read()
 
@@ -1473,6 +1484,8 @@ async def get_dashboard(gemeente: str = "Almere"):
 
 @app.get("/catalogus", response_class=HTMLResponse)
 async def catalogus_page():
+    if DEFAULT_BRAND != "cirqo":
+        return _render_html("static/catalogus.html", DEFAULT_BRAND)
     with open("static/catalogus.html", "r", encoding="utf-8") as f:
         return f.read()
 
