@@ -452,17 +452,19 @@ function renderItems() {
       : allItems;
   } else if (activeMain === "aanbieden") {
     if (activeSubtab === "reacties") {
-      // Reacties: items die door de scanner aangeboden zijn én waarop gereageerd is
-      source = _role === "bedrijf"
-        ? []
-        : allItems.filter(i => i.aanbieding_status && i.aanbieding_status !== "open");
+      // Reacties: aangeboden door mij, bedrijf reageerde al
+      source = allItems.filter(i =>
+        !i.aangeboden_door_naam && i.aanbieding_status && i.aanbieding_status !== "open"
+      );
     } else {
-      // "Door mij aangeboden": scanner-rol → eigen items met aanbieding; bedrijf → leeg
-      source = _role === "bedrijf" ? [] : allItems.filter(i => i.aanbieding_id);
+      // "Door mij aangeboden": items zonder aangeboden_door_naam (eigen items)
+      source = allItems.filter(i => !i.aangeboden_door_naam);
     }
   } else {
-    // Ontvangen: bedrijf-rol → allItems (komt van get_items_voor_bedrijf); user → leeg
-    const ontvangenItems = _role === "bedrijf" ? allItems : [];
+    // Ontvangen: items aangeboden ÁÁN mij (heeft aangeboden_door_naam) of voor user-rol leeg
+    const ontvangenItems = _role === "bedrijf"
+      ? allItems.filter(i => !!i.aangeboden_door_naam)
+      : [];
     source = activeSubtab === "mijn-reacties"
       ? ontvangenItems.filter(i => i.aanbieding_status && i.aanbieding_status !== "open")
       : ontvangenItems;
@@ -479,7 +481,7 @@ function renderItems() {
     list.innerHTML = `<p style="padding:24px 16px;color:var(--muted);">Geen items gevonden.</p>`;
     return;
   }
-  const kanVerwijderen = !_isAdmin && activeMain === "aanbieden";
+  const kanVerwijderen = !_isAdmin && activeMain === "aanbieden" && !_isAdmin;
   list.innerHTML = filtered.map(item => {
     const rij = `
       <div class="item-row" onclick="openModal(${item.id})">
@@ -642,8 +644,10 @@ async function openModal(id, scrollToChat = false) {
   document.getElementById("modal-note").value  = item.manual_note || "";
   document.getElementById("modal-cat").value   = item.category || "";
 
-  const isOntvanger = !!item.aanbieding_id && _role === "bedrijf";
-  const isAanbieder = !!item.aanbieding_id && _role !== "bedrijf";
+  // Ontvanger: het item is aangeboden ÁÁN dit bedrijf door iemand anders
+  const isOntvanger = !!item.aanbieding_id && !!item.aangeboden_door_naam;
+  // Aanbieder: de ingelogde gebruiker heeft dit item zelf aangeboden
+  const isAanbieder = !!item.aanbieding_id && !item.aangeboden_door_naam;
   document.getElementById("modal-bedrijf-acties").style.display    = isOntvanger ? "block" : "none";
   document.getElementById("modal-aanbieder-reactie").style.display = "none";
   document.getElementById("modal-edit-acties").style.display       = isOntvanger ? "none" : "block";

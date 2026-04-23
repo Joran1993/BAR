@@ -1049,8 +1049,16 @@ async def upload(
 async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] = None, user=Depends(get_current_user)):
     bedrijf_id = user.get("bedrijf_id")
     if bedrijf_id:
-        # Bedrijf-gebruiker ziet alleen items die aan hen aangeboden zijn
-        return db.get_items_voor_bedrijf(bedrijf_id)
+        # Items aangeboden ÁÁN dit bedrijf
+        ontvangen = db.get_items_voor_bedrijf(bedrijf_id)
+        # Items die het bedrijf zelf gescand/aangeboden heeft (als scanner)
+        user_id = user["id"]
+        g = user.get("gemeente") or None
+        gm = _gemeenten_expand(g)
+        eigen = db.get_items(200, 0, None if gm else g, user_id=user_id, gemeenten=gm, own_user_id=user_id)
+        ontvangen_ids = {i["id"] for i in ontvangen}
+        extra = [i for i in eigen if i["id"] not in ontvangen_ids]
+        return ontvangen + extra
     gemeente = _gemeente_filter(user, gemeente)
     gemeenten = _gemeenten_expand(gemeente)
     user_id = user["id"]
