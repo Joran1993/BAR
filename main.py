@@ -1257,12 +1257,16 @@ async def beheer_page():
 
 @app.get("/bedrijf", response_class=HTMLResponse)
 async def bedrijf_page():
+    if DEFAULT_BRAND != "cirqo":
+        return _render_html("static/bedrijf.html", DEFAULT_BRAND)
     with open("static/bedrijf.html", "r", encoding="utf-8") as f:
         return f.read()
 
 
 @app.get("/bedrijf/{token}", response_class=HTMLResponse)
 async def bedrijf_page_token(token: str):
+    if DEFAULT_BRAND != "cirqo":
+        return _render_html("static/bedrijf.html", DEFAULT_BRAND)
     with open("static/bedrijf.html", "r", encoding="utf-8") as f:
         return f.read()
 
@@ -1476,6 +1480,8 @@ async def bar_catalogus():
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page():
+    if DEFAULT_BRAND != "cirqo":
+        return _render_html("static/dashboard.html", DEFAULT_BRAND)
     with open("static/dashboard.html", "r", encoding="utf-8") as f:
         return f.read()
 
