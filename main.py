@@ -1001,11 +1001,20 @@ async def upload(
             db.update_item(item_id, manual_note, final_category)
         item = db.get_item(item_id)
         fs.sync_item(item)
-        cache_module.delete(f"items:{gemeente}:0:{user['id']}", f"items:None:0:{user['id']}", f"stats:{gemeente}", "stats:None")
-        # Alle bedrijven ophalen; categorie-matches bovenaan
-        alle_bedrijven = db.get_bedrijven(gemeente) if gemeente else db.get_bedrijven()
+        # Cache invalideren met BAR-expanded gemeenten zodat key matcht
+        gemeenten_exp = _gemeenten_expand(user.get("gemeente"))
+        user_gem = user.get("gemeente") or gemeente
+        cache_module.delete(
+            f"items:{gemeenten_exp or user_gem}:0:{user['id']}",
+            f"items:None:0:{user['id']}",
+            f"stats:{gemeente}", "stats:None"
+        )
+        # Bedrijven ophalen op basis van account-gemeente (niet GPS), BAR-expanded
+        acct_gemeente = user.get("gemeente") or None
+        acct_gemeenten = _gemeenten_expand(acct_gemeente)
+        alle_bedrijven = db.get_bedrijven(None if acct_gemeenten else acct_gemeente, gemeenten=acct_gemeenten)
         if final_category:
-            match_ids = {b["id"] for b in db.get_bedrijven_for_item(gemeente, final_category)}
+            match_ids = {b["id"] for b in db.get_bedrijven_for_item(acct_gemeente, final_category, gemeenten=acct_gemeenten)}
             if not match_ids:
                 match_ids = {b["id"] for b in db.get_bedrijven_for_item(None, final_category)}
         else:

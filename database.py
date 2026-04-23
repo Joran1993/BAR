@@ -474,6 +474,15 @@ def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, 
                     ph = ",".join(["%s"] * len(bedrijf_ids))
                     cur.execute(f"SELECT id, naam FROM bedrijven WHERE id IN ({ph})", bedrijf_ids)
                     bedrijven_map = {r["id"]: r["naam"] for r in cur.fetchall()}
+                aanbieding_ids = [r["aanbieding_id"] for r in aanbiedingen_map.values()]
+                bericht_map = {}
+                if aanbieding_ids:
+                    ph = ",".join(["%s"] * len(aanbieding_ids))
+                    cur.execute(
+                        f"SELECT aanbieding_id, COUNT(*) as bericht_count, MAX(created_at) as last_bericht_at FROM berichten WHERE aanbieding_id IN ({ph}) GROUP BY aanbieding_id",
+                        aanbieding_ids,
+                    )
+                    bericht_map = {r["aanbieding_id"]: dict(r) for r in cur.fetchall()}
                 for item in items:
                     a = aanbiedingen_map.get(item["id"])
                     if a:
@@ -481,6 +490,10 @@ def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, 
                         item["aanbieding_status"] = a["aanbieding_status"]
                         item["aanbieding_created_at"] = a["aanbieding_created_at"]
                         item["bedrijf_naam"] = bedrijven_map.get(a["bedrijf_id"])
+                        b = bericht_map.get(a["aanbieding_id"])
+                        if b:
+                            item["bericht_count"] = b["bericht_count"]
+                            item["last_bericht_at"] = b["last_bericht_at"]
 
         return items
 
@@ -870,7 +883,9 @@ def get_items_voor_bedrijf(bedrijf_id: int) -> list:
             SELECT i.id, i.timestamp, i.photo_url, i.ai_label, i.ai_detail,
                    i.gewicht_kg, i.manual_note, i.category, i.gemeente, i.geaccepteerd,
                    a.id as aanbieding_id, a.status as aanbieding_status,
-                   COALESCE(u.organisatie, u.username) as aangeboden_door_naam, a.aangeboden_door as aangeboden_door_id
+                   COALESCE(u.organisatie, u.username) as aangeboden_door_naam, a.aangeboden_door as aangeboden_door_id,
+                   (SELECT COUNT(*) FROM berichten b WHERE b.aanbieding_id = a.id) as bericht_count,
+                   (SELECT MAX(created_at) FROM berichten b WHERE b.aanbieding_id = a.id) as last_bericht_at
             FROM items i
             JOIN aanbiedingen a ON a.item_id = i.id AND a.bedrijf_id = %s
             LEFT JOIN users u ON u.id = a.aangeboden_door

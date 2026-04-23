@@ -350,7 +350,8 @@ body {
   letter-spacing: 0.04em; text-transform: uppercase;
 }
 .item-chevron { color: var(--muted); font-size: 1.1rem; flex-shrink: 0; }
-.item-chat-icon { font-size: 1.15rem; flex-shrink: 0; padding: 4px 2px; opacity: .75; }
+.item-chat-icon { font-size: 1.15rem; flex-shrink: 0; padding: 4px 2px; opacity: .75; position: relative; }
+.item-chat-icon.has-unread::after { content: ""; position: absolute; top: 2px; right: 0px; width: 8px; height: 8px; border-radius: 50%; background: #e53935; border: 1.5px solid #fff; }
 .item-status-badge { padding: 1px 7px; border-radius: 100px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .item-status-open { background: #fff3e0; color: #e67e00; }
 .item-status-ophalen { background: #e8f5e9; color: #2e7d32; }

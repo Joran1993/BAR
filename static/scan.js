@@ -1,6 +1,13 @@
 /* De Bouwkringloop — Scan app */
 const CO2_PER_KG = 3.5;
-function co2Label(kg) { return `🌱 ${(kg * CO2_PER_KG).toFixed(1)} kg CO₂ bespaard`; }
+function co2Label(kg) { return `${SVG.leaf} ${(kg * CO2_PER_KG).toFixed(1)} kg CO₂ bespaard`; }
+
+const SVG = {
+  chat: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;display:inline-block"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  trash: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;display:inline-block"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>`,
+  bell: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;display:inline-block"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
+  leaf: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;display:inline-block"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>`,
+};
 
 const token = localStorage.getItem("token");
 if (!token) location.href = "/login?redirect=/";
@@ -427,6 +434,13 @@ document.querySelectorAll(".list-subtab").forEach(btn => {
   });
 });
 
+function _hasUnread(item) {
+  if (!item.bericht_count || !item.last_bericht_at || !item.aanbieding_id) return false;
+  const lastRead = localStorage.getItem(`chat_read_${item.aanbieding_id}`);
+  if (!lastRead) return true;
+  return item.last_bericht_at > lastRead;
+}
+
 function renderItems() {
   const list = document.getElementById("items-list");
   const q = searchQuery.toLowerCase();
@@ -479,13 +493,13 @@ function renderItems() {
             <span>${formatTime(item.timestamp)}</span>
           </div>
         </div>
-        ${item.aanbieding_id ? `<span class="item-chat-icon" onclick="event.stopPropagation();openModal(${item.id},true)">💬</span>` : ""}
+        ${item.aanbieding_id ? `<span class="item-chat-icon${_hasUnread(item) ? ' has-unread' : ''}" onclick="event.stopPropagation();openModal(${item.id},true)">${SVG.chat}</span>` : ""}
         <span class="item-chevron">›</span>
       </div>`;
     if (!kanVerwijderen) return rij;
     return `
     <div class="swipe-wrap" data-id="${item.id}">
-      <button class="swipe-del-btn" onclick="deleteItemById(${item.id})">🗑</button>
+      <button class="swipe-del-btn" onclick="deleteItemById(${item.id})">${SVG.trash}</button>
       ${rij}
     </div>`;
   }).join("");
@@ -676,8 +690,8 @@ async function openModal(id, scrollToChat = false) {
           </div>
           <button onclick="openChatVoorAanbieding(${a.id})"
             title="Chat openen"
-            style="padding:7px 10px;border-radius:100px;border:1.5px solid var(--border);background:none;font-size:0.75rem;cursor:pointer;flex-shrink:0;">
-            💬
+            style="padding:7px 10px;border-radius:100px;border:1.5px solid var(--border);background:none;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:5px;font-size:0.75rem;">
+            ${SVG.chat} Chat
           </button>
         </div>`).join("");
       aSection.style.display = "block";
@@ -724,6 +738,11 @@ async function laadBerichten(aanbiedingId) {
     wrap.innerHTML = `<p style="font-size:0.8rem;color:var(--muted);text-align:center;padding:8px 0;">Nog geen berichten.</p>`;
     return;
   }
+  // Markeer als gelezen
+  const lastAt = berichten[berichten.length - 1].created_at;
+  localStorage.setItem(`chat_read_${aanbiedingId}`, lastAt);
+  renderItems();
+
   wrap.innerHTML = berichten.map((b, i) => {
     const mine = String(b.user_id) === String(mijnId);
     const showNaam = !mine && (i === 0 || berichten[i-1].user_id !== b.user_id);
@@ -755,7 +774,9 @@ async function verstuurBericht() {
 
   const fd = new FormData(); fd.append("tekst", tekst);
   const res = await apiFetch(`/api/aanbiedingen/${aanbiedingId}/berichten`, { method: "POST", body: fd });
-  if (!res || !res.ok) { alert("Bericht niet verzonden"); laadBerichten(aanbiedingId); }
+  if (!res || !res.ok) { alert("Bericht niet verzonden"); laadBerichten(aanbiedingId); return; }
+  const data = await res.json();
+  if (data?.created_at) localStorage.setItem(`chat_read_${aanbiedingId}`, data.created_at);
 }
 
 // Enter-toets in chat-input
@@ -918,7 +939,7 @@ async function meldingInschakelen() {
   btn.disabled = true; btn.textContent = "Bezig…";
   const Notif = window.Notification;
   if (!Notif) {
-    btn.textContent = "🔔 Pushmeldingen inschakelen";
+    btn.innerHTML = `${SVG.bell} Meldingen inschakelen`;
     status.textContent = "Push wordt niet ondersteund in deze browser.";
     status.style.display = "block";
     return;
@@ -931,12 +952,12 @@ async function meldingInschakelen() {
       status.textContent = "✓ Pushmeldingen ingeschakeld!";
       status.style.display = "block";
     } else {
-      btn.textContent = "🔕 Toestemming geweigerd";
+      btn.textContent = "Toestemming geweigerd";
       status.textContent = "Sta meldingen toe via de browserinstellingen.";
       status.style.display = "block";
     }
   } catch (e) {
-    btn.textContent = "🔔 Pushmeldingen inschakelen";
+    btn.innerHTML = `${SVG.bell} Meldingen inschakelen`;
     btn.disabled = false;
     alert("Push fout: " + (e.message || e.name || JSON.stringify(e)));
   }
