@@ -427,21 +427,34 @@ def update_item(item_id: int, manual_note: Optional[str], category: Optional[str
         )
 
 
-def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None):
+def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None, own_user_id: Optional[int] = None):
     with get_cursor() as cur:
+        base = "SELECT id, timestamp, photo_url, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items"
         if gemeenten:
-            cur.execute(
-                "SELECT id, timestamp, photo_url, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items WHERE gemeente = ANY(%s) ORDER BY timestamp DESC LIMIT %s OFFSET %s",
-                (gemeenten, limit, offset),
-            )
+            if own_user_id:
+                cur.execute(
+                    f"{base} WHERE (gemeente = ANY(%s) OR uploaded_by = %s) ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                    (gemeenten, own_user_id, limit, offset),
+                )
+            else:
+                cur.execute(
+                    f"{base} WHERE gemeente = ANY(%s) ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                    (gemeenten, limit, offset),
+                )
         elif gemeente:
-            cur.execute(
-                "SELECT id, timestamp, photo_url, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items WHERE gemeente = %s ORDER BY timestamp DESC LIMIT %s OFFSET %s",
-                (gemeente, limit, offset),
-            )
+            if own_user_id:
+                cur.execute(
+                    f"{base} WHERE (gemeente = %s OR uploaded_by = %s) ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                    (gemeente, own_user_id, limit, offset),
+                )
+            else:
+                cur.execute(
+                    f"{base} WHERE gemeente = %s ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                    (gemeente, limit, offset),
+                )
         else:
             cur.execute(
-                "SELECT id, timestamp, photo_url, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                f"{base} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
                 (limit, offset),
             )
         items = [dict(r) for r in cur.fetchall()]

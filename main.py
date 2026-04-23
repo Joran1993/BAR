@@ -1036,11 +1036,13 @@ async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] 
     gemeente = _gemeente_filter(user, gemeente)
     gemeenten = _gemeenten_expand(gemeente)
     user_id = user["id"]
+    # Scanner always sees their own items regardless of GPS gemeente
+    own_user_id = user_id if user["role"] == "user" else None
     cache_key = f"items:{gemeenten or gemeente}:{offset}:{user_id}"
     cached = cache_module.get(cache_key)
     if cached is not None:
         return cached
-    items = db.get_items(limit, offset, None if gemeenten else gemeente, user_id=user_id, gemeenten=gemeenten)
+    items = db.get_items(limit, offset, None if gemeenten else gemeente, user_id=user_id, gemeenten=gemeenten, own_user_id=own_user_id)
     cache_module.set(cache_key, items, ttl=30)
     return items
 
