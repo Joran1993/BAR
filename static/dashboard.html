@@ -42,6 +42,15 @@
     .recent-tegel { aspect-ratio: 1; border-radius: 8px; overflow: hidden; cursor: pointer; background: #ddd; }
     .recent-tegel img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
+    .bedrijven-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 24px; }
+    @media (min-width: 600px) { .bedrijven-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (min-width: 900px) { .bedrijven-grid { grid-template-columns: repeat(4, 1fr); } }
+    .bedrijf-kaart { background: #fff; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .bedrijf-naam { font-size: 0.88rem; font-weight: 700; margin-bottom: 4px; }
+    .bedrijf-gem { font-size: 0.72rem; color: #aaa; margin-bottom: 6px; }
+    .bedrijf-cats { display: flex; flex-wrap: wrap; gap: 4px; }
+    .bedrijf-cat { font-size: 0.68rem; font-weight: 600; background: #f0efeb; color: #555; padding: 2px 8px; border-radius: 100px; }
+
     .dash-link { display: inline-block; margin-top: 16px; padding: 10px 24px; border-radius: 100px; background: var(--orange, #5B8C6C); color: #fff; font-weight: 700; font-size: 0.85rem; text-decoration: none; }
   </style>
 </head>
@@ -68,11 +77,14 @@
     <div class="recent-grid" id="recent-grid"></div>
 
     <a href="/catalogus" class="dash-link">Bekijk alle items →</a>
+
+    <div class="sectie-titel" style="margin-top:32px">Deelnemende bedrijven</div>
+    <div class="bedrijven-grid" id="bedrijven-grid"></div>
   </div>
 
   <script>
     async function laad() {
-      const res = await fetch('/api/dashboard?gemeente=Almere');
+      const res = await fetch('/api/dashboard?gemeente=Barendrecht');
       const d = await res.json();
 
       const t = d.totaal;
@@ -94,6 +106,21 @@
         <div class="recent-tegel" title="${item.ai_label || ''}">
           <img src="${item.photo_url_thumb || item.photo_url}" loading="lazy" onerror="this.style.opacity=0.2">
         </div>`).join('');
+
+      try {
+        const token = localStorage.getItem('token');
+        const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+        const br = await fetch('/api/deelnemers', { headers });
+        if (br.ok) {
+          const bd = await br.json();
+          document.getElementById('bedrijven-grid').innerHTML = bd.bedrijven.map(b => `
+            <div class="bedrijf-kaart">
+              <div class="bedrijf-naam">${b.naam}</div>
+              <div class="bedrijf-gem">${b.gemeente}</div>
+              <div class="bedrijf-cats">${(b.categorieen || []).map(c => `<span class="bedrijf-cat">${c}</span>`).join('')}</div>
+            </div>`).join('');
+        }
+      } catch(e) {}
     }
     laad();
   </script>
