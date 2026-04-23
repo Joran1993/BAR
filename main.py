@@ -72,8 +72,11 @@ def _gemeente_filter(user: dict, gemeente: Optional[str] = None) -> Optional[str
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
-    # Bestaande admin-accounts migreren naar superadmin
     _migrate_admin_to_superadmin()
+    try:
+        fs.init_firebase()
+    except Exception as e:
+        print(f"[main] Firebase init mislukt (niet fataal): {e}")
     print("[main] De Bouwkringloop gestart v2")
     yield
 
@@ -1509,19 +1512,8 @@ async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int =
 @app.post("/api/admin/bouw-thumb-urls")
 async def bouw_thumb_urls(gemeente: str = "Almere", credentials: HTTPAuthorizationCredentials = Depends(security)):
     verify_superadmin(credentials)
-    import re, urllib.parse as _up, json as _json
-    import firebase_admin as _fb_admin
-    from firebase_admin import credentials as _fb_creds, storage as _storage
-
-    try:
-        _fb_admin.get_app()
-    except ValueError:
-        gc = os.getenv("GOOGLE_CREDENTIALS")
-        if gc:
-            _fb_cred = _fb_creds.Certificate(_json.loads(gc))
-        else:
-            _fb_cred = _fb_creds.Certificate("serviceaccount.json")
-        _fb_admin.initialize_app(_fb_cred, {"storageBucket": "database-e5575.appspot.com"})
+    import re, urllib.parse as _up
+    from firebase_admin import storage as _storage
 
     bucket = _storage.bucket()
 

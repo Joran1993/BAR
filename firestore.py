@@ -13,6 +13,34 @@ _db = None
 _init_lock = threading.Lock()
 
 
+def init_firebase():
+    """Initialiseer Firebase Admin SDK bij startup. Gooit een exception als het mislukt."""
+    import json as _json
+    import firebase_admin
+    from firebase_admin import credentials
+
+    try:
+        firebase_admin.get_app()
+        print("[firebase] App al geïnitialiseerd")
+        return
+    except ValueError:
+        pass
+
+    gc = os.getenv("GOOGLE_CREDENTIALS")
+    if gc:
+        try:
+            cred = credentials.Certificate(_json.loads(gc))
+        except Exception as e:
+            print(f"[firebase] Fout bij parsen GOOGLE_CREDENTIALS: {e}")
+            raise
+    else:
+        cred_path = os.path.join(os.path.dirname(__file__), "serviceaccount.json")
+        cred = credentials.Certificate(cred_path)
+
+    firebase_admin.initialize_app(cred, {"storageBucket": "database-e5575.appspot.com"})
+    print("[firebase] App geïnitialiseerd")
+
+
 def _get_db():
     global _db
     if _db is not None:
@@ -21,20 +49,7 @@ def _get_db():
         if _db is not None:
             return _db
         try:
-            import json as _json
-            import firebase_admin
-            from firebase_admin import credentials, firestore
-
-            gc = os.getenv("GOOGLE_CREDENTIALS")
-            if gc:
-                cred = credentials.Certificate(_json.loads(gc))
-            else:
-                cred_path = os.path.join(os.path.dirname(__file__), "serviceaccount.json")
-                cred = credentials.Certificate(cred_path)
-            try:
-                firebase_admin.get_app()
-            except ValueError:
-                firebase_admin.initialize_app(cred)
+            from firebase_admin import firestore
             _db = firestore.client()
             print("[firestore] Verbonden met Firebase project")
         except Exception as e:
