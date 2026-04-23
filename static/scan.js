@@ -669,6 +669,7 @@ async function openModal(id, scrollToChat = false) {
     laadBerichten(item.aanbieding_id).then(() => {
       if (scrollToChat) setTimeout(() => chatWrap.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     });
+    _startChatPoll(item.aanbieding_id);
   }
 
   // Laad aanbiedingen voor dit item
@@ -725,24 +726,46 @@ function openChatVoorAanbieding(aanbiedingId) {
   document.getElementById("chat-berichten").innerHTML = "";
   document.getElementById("chat-input").value = "";
   laadBerichten(aanbiedingId);
+  _startChatPoll(aanbiedingId);
   chatWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-async function laadBerichten(aanbiedingId) {
+let _chatPollInterval = null;
+let _chatRenderedCount = 0;
+
+function _startChatPoll(aanbiedingId) {
+  _stopChatPoll();
+  _chatPollInterval = setInterval(() => {
+    if (window._chatAanbiedingId === aanbiedingId) laadBerichten(aanbiedingId, true);
+  }, 3000);
+}
+
+function _stopChatPoll() {
+  if (_chatPollInterval) { clearInterval(_chatPollInterval); _chatPollInterval = null; }
+  _chatRenderedCount = 0;
+}
+
+async function laadBerichten(aanbiedingId, silent = false) {
   const res = await apiFetch(`/api/aanbiedingen/${aanbiedingId}/berichten`);
   if (!res || !res.ok) return;
   const berichten = await res.json();
   const mijnId = JSON.parse(atob(token.split(".")[1])).sub;
   const wrap = document.getElementById("chat-berichten");
   if (!berichten.length) {
-    wrap.innerHTML = `<p style="font-size:0.8rem;color:var(--muted);text-align:center;padding:8px 0;">Nog geen berichten.</p>`;
+    if (!silent) wrap.innerHTML = `<p style="font-size:0.8rem;color:var(--muted);text-align:center;padding:8px 0;">Nog geen berichten.</p>`;
     return;
   }
+  // Alleen herschrijven als er nieuwe berichten zijn
+  if (berichten.length === _chatRenderedCount && silent) return;
+  const nieuweNaLoad = berichten.length > _chatRenderedCount;
+  _chatRenderedCount = berichten.length;
+
   // Markeer als gelezen
   const lastAt = berichten[berichten.length - 1].created_at;
   localStorage.setItem(`chat_read_${aanbiedingId}`, lastAt);
-  renderItems();
+  if (nieuweNaLoad) renderItems();
 
+  const wasAtBottom = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < 60;
   wrap.innerHTML = berichten.map((b, i) => {
     const mine = String(b.user_id) === String(mijnId);
     const showNaam = !mine && (i === 0 || berichten[i-1].user_id !== b.user_id);
@@ -754,7 +777,7 @@ async function laadBerichten(aanbiedingId) {
         <div class="chat-msg-tijd">${tijd}</div>
       </div>`;
   }).join("");
-  wrap.scrollTop = wrap.scrollHeight;
+  if (!silent || wasAtBottom || nieuweNaLoad) wrap.scrollTop = wrap.scrollHeight;
 }
 
 async function verstuurBericht() {
@@ -793,10 +816,15 @@ async function updateAanbieding(aanbiedingId, status) {
 
 document.getElementById("modal-close").addEventListener("click", () => {
   document.getElementById("modal").classList.add("hidden");
+  _stopChatPoll();
+  window._chatAanbiedingId = null;
 });
 document.getElementById("modal").addEventListener("click", e => {
-  if (e.target === document.getElementById("modal"))
+  if (e.target === document.getElementById("modal")) {
     document.getElementById("modal").classList.add("hidden");
+    _stopChatPoll();
+    window._chatAanbiedingId = null;
+  }
 });
 
 document.getElementById("modal-save").addEventListener("click", async () => {

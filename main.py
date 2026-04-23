@@ -879,24 +879,33 @@ async def stuur_bericht(
     # Push naar de andere partij op de achtergrond
     async def _push_bericht():
         label = info.get("ai_label") or "materiaal"
+        print(f"[push-chat] is_bedrijf={is_bedrijf}, aanbieding={aanbieding_id}, label={label!r}")
         if is_bedrijf:
-            # Bedrijf stuurt → push naar aanbieder
             offerer_id = info.get("aangeboden_door")
+            print(f"[push-chat] bedrijf→aanbieder offerer_id={offerer_id}")
             if offerer_id:
                 subs = db.get_push_subscriptions_voor_user(offerer_id)
+                print(f"[push-chat] {len(subs)} sub(s) voor user {offerer_id}")
                 for sub in subs:
-                    push_module.send_push(sub["subscription"],
+                    ok = push_module.send_push(sub["subscription"],
                         title=f"Nieuw bericht over {label}",
                         body=f"{naam}: {tekst[:80]}", url="/")
+                    print(f"[push-chat] verzonden: {'OK' if ok else 'MISLUKT'}")
+                    if not ok:
+                        db.delete_push_subscription(sub["subscription"])
         else:
-            # Aanbieder of admin stuurt → push naar bedrijf
             bedrijf_id_push = info.get("bedrijf_id")
+            print(f"[push-chat] aanbieder→bedrijf bedrijf_id={bedrijf_id_push}")
             if bedrijf_id_push:
                 subs = db.get_push_subscriptions_for_bedrijf(bedrijf_id_push)
+                print(f"[push-chat] {len(subs)} sub(s) voor bedrijf {bedrijf_id_push}")
                 for sub in subs:
-                    push_module.send_push(sub["subscription"],
+                    ok = push_module.send_push(sub["subscription"],
                         title=f"Nieuw bericht over {label}",
                         body=f"{naam}: {tekst[:80]}", url="/")
+                    print(f"[push-chat] verzonden: {'OK' if ok else 'MISLUKT'}")
+                    if not ok:
+                        db.delete_push_subscription(sub["subscription"])
 
     asyncio.create_task(_push_bericht())
     return {**bericht, "user_id": user["id"],
