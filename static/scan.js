@@ -892,11 +892,13 @@ async function initPush() {
     _swReg = await navigator.serviceWorker.register("/sw.js");
   } catch (e) { return; }
 
-  if (Notification.permission === "granted") {
+  const Notif = window.Notification;
+  if (!Notif) return;
+  if (Notif.permission === "granted") {
     await _abonneerPush();
     status.textContent = "✓ Pushmeldingen zijn ingeschakeld";
     status.style.display = "block";
-  } else if (Notification.permission === "default") {
+  } else if (Notif.permission === "default") {
     btn.style.display = "block";
   }
 }
@@ -905,8 +907,15 @@ async function meldingInschakelen() {
   const btn    = document.getElementById("push-btn");
   const status = document.getElementById("push-status");
   btn.disabled = true; btn.textContent = "Bezig…";
+  const Notif = window.Notification;
+  if (!Notif) {
+    btn.textContent = "🔔 Pushmeldingen inschakelen";
+    status.textContent = "Push wordt niet ondersteund in deze browser.";
+    status.style.display = "block";
+    return;
+  }
   try {
-    const perm = await Notification.requestPermission();
+    const perm = await Notif.requestPermission();
     if (perm === "granted") {
       await _abonneerPush();
       btn.style.display = "none";
