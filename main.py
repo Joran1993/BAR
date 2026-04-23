@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
         fs.init_firebase()
     except Exception as e:
         print(f"[main] Firebase init mislukt (niet fataal): {e}")
-    print("[main] De Bouwkringloop gestart v2")
+    print(f"[main] gestart — DEFAULT_BRAND={DEFAULT_BRAND!r}, BRAND_ENV={os.getenv('BRAND')!r}")
     yield
 
 
