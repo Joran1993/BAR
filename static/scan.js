@@ -335,10 +335,13 @@ analyseBtn.addEventListener("click", async () => {
     _huidigItemId   = item.id;
     _huidigCategory = item.category || "";
     const sel = document.getElementById("gemeente-kiezer");
-    const detectedGem = item.gemeente || _gemeente || "";
+    // Als _allGemeenten geladen is en item.gemeente er niet in zit, gebruik gebruikers-gemeente
+    const rawGem = item.gemeente || _gemeente || "";
+    const detectedGem = (_allGemeenten.length && rawGem && !_allGemeenten.includes(rawGem))
+      ? (_gemeente || _allGemeenten[0] || rawGem)
+      : rawGem;
     if (detectedGem) {
       sel.value = detectedGem;
-      // Zet optie als die er nog niet in zit
       if (!sel.querySelector(`option[value="${detectedGem}"]`)) {
         const opt = document.createElement("option");
         opt.value = detectedGem; opt.textContent = detectedGem;
@@ -1073,6 +1076,5 @@ async function saveUserPanel() {
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────────
-syncAll();
-laadGemeenten();
+laadGemeenten().then(() => syncAll());
 setInterval(syncAll, 60000);
