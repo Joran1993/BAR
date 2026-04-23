@@ -437,10 +437,17 @@ function renderItems() {
       ? allItems.filter(i => i.gemeente === adminGemeente)
       : allItems;
   } else if (activeMain === "aanbieden") {
-    source = activeSubtab === "reacties"
-      ? allItems.filter(i => i.aanbieding_status && i.aanbieding_status !== "open")
-      : allItems;
+    if (activeSubtab === "reacties") {
+      // Reacties: items die door de scanner aangeboden zijn én waarop gereageerd is
+      source = _role === "bedrijf"
+        ? []
+        : allItems.filter(i => i.aanbieding_status && i.aanbieding_status !== "open");
+    } else {
+      // "Door mij aangeboden": scanner-rol → eigen items met aanbieding; bedrijf → leeg
+      source = _role === "bedrijf" ? [] : allItems.filter(i => i.aanbieding_id);
+    }
   } else {
+    // Ontvangen: bedrijf-rol → allItems (komt van get_items_voor_bedrijf); user → leeg
     const ontvangenItems = _role === "bedrijf" ? allItems : [];
     source = activeSubtab === "mijn-reacties"
       ? ontvangenItems.filter(i => i.aanbieding_status && i.aanbieding_status !== "open")
