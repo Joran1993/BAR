@@ -98,6 +98,59 @@
     }
     .btn-niet-nodig:hover { border-color: var(--danger); color: var(--danger); }
     .empty { text-align: center; padding: 40px 0; color: var(--muted); font-size: 0.9rem; }
+
+    /* ── Tab navigatie ── */
+    .tab-bar {
+      display: flex; border-bottom: 1px solid var(--border);
+      background: #fff; flex-shrink: 0;
+    }
+    .tab-btn {
+      flex: 1; padding: 12px 8px; border: none; background: none;
+      font-family: 'Space Grotesk', sans-serif; font-size: 0.72rem;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent;
+      transition: all 0.15s; margin-bottom: -1px;
+    }
+    .tab-btn.active { color: var(--orange); border-bottom-color: var(--orange); }
+
+    /* ── Netwerk pagina ── */
+    .netwerk-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .netwerk-kaart {
+      background: #fff; border: 1px solid var(--border);
+      border-radius: 14px; padding: 16px 14px;
+    }
+    .netwerk-kaart.eigen { border-color: var(--orange); background: rgba(91,140,108,0.04); }
+    .netwerk-naam {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.15rem; font-weight: 900; line-height: 1.2;
+      margin-bottom: 6px;
+    }
+    .netwerk-eigen-badge {
+      display: inline-block; font-size: 0.6rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      background: var(--orange); color: #fff;
+      border-radius: 100px; padding: 2px 8px; margin-bottom: 6px;
+    }
+    .netwerk-cat {
+      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;
+    }
+    .netwerk-cat-tag {
+      font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.05em; background: var(--surface);
+      color: var(--muted); border-radius: 100px; padding: 2px 8px;
+    }
+    .netwerk-contact {
+      font-size: 0.72rem; color: var(--muted); margin-top: 8px;
+      word-break: break-all;
+    }
+    .netwerk-teller {
+      font-size: 0.68rem; font-weight: 700; color: var(--orange);
+      margin-top: 6px;
+    }
   </style>
   <link rel="stylesheet" href="/brand.css">
 </head>
@@ -138,7 +191,13 @@
       </div>
     </header>
 
-    <div class="page-content">
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tab-aanbiedingen" onclick="setTab('aanbiedingen')">Aanbiedingen</button>
+      <button class="tab-btn" id="tab-netwerk" onclick="setTab('netwerk')">Netwerk</button>
+    </div>
+
+    <!-- Aanbiedingen tab -->
+    <div id="panel-aanbiedingen" class="page-content">
       <div class="filter-row">
         <button class="filter-btn active" data-status="open" onclick="setFilter('open')">Open</button>
         <button class="filter-btn" data-status="ophalen" onclick="setFilter('ophalen')">Ophalen</button>
@@ -146,6 +205,14 @@
         <button class="filter-btn" data-status="alle" onclick="setFilter('alle')">Alle</button>
       </div>
       <div id="aanbiedingen-list"></div>
+    </div>
+
+    <!-- Netwerk tab -->
+    <div id="panel-netwerk" class="page-content" style="display:none;">
+      <p style="font-size:0.78rem;color:var(--muted);margin-bottom:16px;line-height:1.5;">
+        Alle deelnemers in jouw lokale netwerk. Zie je iets wat jij kunt gebruiken? Stuur een bericht of wacht op aanbiedingen.
+      </p>
+      <div class="netwerk-grid" id="netwerk-grid"></div>
     </div>
   </div>
 
@@ -202,6 +269,18 @@
       token = null;
       document.getElementById("app-scherm").style.display = "none";
       document.getElementById("login-scherm").style.display = "flex";
+    }
+
+    let huidigTab = "aanbiedingen";
+    let netwerkGeladen = false;
+
+    function setTab(tab) {
+      huidigTab = tab;
+      document.getElementById("tab-aanbiedingen").classList.toggle("active", tab === "aanbiedingen");
+      document.getElementById("tab-netwerk").classList.toggle("active", tab === "netwerk");
+      document.getElementById("panel-aanbiedingen").style.display = tab === "aanbiedingen" ? "" : "none";
+      document.getElementById("panel-netwerk").style.display = tab === "netwerk" ? "" : "none";
+      if (tab === "netwerk" && !netwerkGeladen) laadNetwerk();
     }
 
     function toonApp() {
@@ -352,6 +431,34 @@
       const a = alleAanbiedingen.find(x => x.id === id);
       if (a) a.status = status;
       renderAanbiedingen();
+    }
+
+    async function laadNetwerk() {
+      netwerkGeladen = true;
+      const grid = document.getElementById("netwerk-grid");
+      grid.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;">Laden…</p>';
+      const res = await apiFetch("/api/deelnemers");
+      if (!res || !res.ok) { grid.innerHTML = '<p style="color:var(--muted)">Kon netwerk niet laden.</p>'; return; }
+      const data = await res.json();
+      const eigenNaam = localStorage.getItem("bedrijf_naam") || "";
+
+      if (!data.bedrijven.length) {
+        grid.innerHTML = '<p style="color:var(--muted)">Nog geen andere deelnemers.</p>';
+        return;
+      }
+
+      grid.innerHTML = data.bedrijven.map(b => {
+        const eigen = b.naam === eigenNaam;
+        const cats = (b.categorieen || []).slice(0, 4);
+        return `
+          <div class="netwerk-kaart${eigen ? " eigen" : ""}">
+            ${eigen ? '<span class="netwerk-eigen-badge">Jouw organisatie</span>' : ""}
+            <div class="netwerk-naam">${b.naam}</div>
+            <div class="netwerk-contact">${b.email || ""}</div>
+            ${cats.length ? `<div class="netwerk-cat">${cats.map(c => `<span class="netwerk-cat-tag">${c}</span>`).join("")}</div>` : ""}
+            ${b.aanbieding_count > 0 ? `<div class="netwerk-teller">${b.aanbieding_count} aanbieding${b.aanbieding_count !== 1 ? "en" : ""}</div>` : ""}
+          </div>`;
+      }).join("");
     }
 
     // Ververst elke 30s als ingelogd

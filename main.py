@@ -1117,6 +1117,26 @@ async def get_netwerk(gemeente: Optional[str] = None, user=Depends(require_admin
     return db.get_netwerk_data(g)
 
 
+@app.get("/api/deelnemers")
+async def get_deelnemers(user=Depends(get_current_user)):
+    """Alle deelnemende bedrijven in het netwerk — zichtbaar voor ingelogde bedrijfsaccounts."""
+    gemeente = user.get("gemeente", "")
+    with db.get_cursor() as cur:
+        cur.execute("""
+            SELECT b.id, b.naam, b.gemeente, b.email, b.telefoon,
+                   COALESCE(array_agg(bc.category ORDER BY bc.category)
+                     FILTER (WHERE bc.category IS NOT NULL), '{}') AS categorieen,
+                   COUNT(DISTINCT a.id) FILTER (WHERE a.status != 'niet_nodig') AS aanbieding_count
+            FROM bedrijven b
+            LEFT JOIN bedrijf_categorieen bc ON bc.bedrijf_id = b.id
+            LEFT JOIN aanbiedingen a ON a.bedrijf_id = b.id
+            WHERE b.gemeente = %s
+            GROUP BY b.id
+            ORDER BY b.naam
+        """, (gemeente,))
+        return {"gemeente": gemeente, "bedrijven": [dict(r) for r in cur.fetchall()]}
+
+
 @app.get("/api/stats")
 async def get_stats(gemeente: Optional[str] = None, user=Depends(get_current_user)):
     bedrijf_id = user.get("bedrijf_id")
