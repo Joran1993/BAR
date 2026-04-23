@@ -166,7 +166,8 @@ async function aanbiedenAanAlle(itemId) {
   });
   if (res && res.ok) {
     if (btn) { btn.textContent = "✓ Aangeboden aan iedereen"; btn.style.background = "#4caf50"; }
-    _markeerAangeboden(itemId, "iedereen");
+    const data = await res.json();
+    _markeerAangeboden(itemId, "iedereen", data?.ids?.[0]);
     syncItems();
     setTimeout(resetScan, 1800);
   } else {
@@ -379,12 +380,14 @@ analyseBtn.addEventListener("click", async () => {
 });
 
 // ── Aanbieden ─────────────────────────────────────────────────────────────────
-function _markeerAangeboden(itemId, bedrijfNaam) {
+function _markeerAangeboden(itemId, bedrijfNaam, aanbiedingId) {
   const item = allItems.find(i => i.id === itemId);
   if (item) {
     item.aanbieding_status = "open";
     item.bedrijf_naam      = bedrijfNaam || null;
+    if (aanbiedingId) item.aanbieding_id = aanbiedingId;
   }
+  renderItems();
 }
 
 async function aanbieden(itemId, bedrijfId) {
@@ -396,8 +399,9 @@ async function aanbieden(itemId, bedrijfId) {
   const res = await apiFetch("/api/aanbiedingen", { method: "POST", body: fd });
   if (res && res.ok) {
     if (btn) { btn.textContent = "✓ Aangeboden"; btn.style.background = "#4caf50"; }
+    const data = await res.json();
     const bedrijf = _scanBedrijven.find(b => b.id === bedrijfId);
-    _markeerAangeboden(itemId, bedrijf ? bedrijf.naam : null);
+    _markeerAangeboden(itemId, bedrijf ? bedrijf.naam : null, data?.id);
     syncItems();
     setTimeout(resetScan, 1500);
   } else {
@@ -452,13 +456,12 @@ function renderItems() {
       : allItems;
   } else if (activeMain === "aanbieden") {
     if (activeSubtab === "reacties") {
-      // Reacties: aangeboden door mij, bedrijf reageerde al
       source = allItems.filter(i =>
-        !i.aangeboden_door_naam && i.aanbieding_status && i.aanbieding_status !== "open"
+        !i.aangeboden_door_naam && i.aanbieding_id && i.aanbieding_status && i.aanbieding_status !== "open"
       );
     } else {
-      // "Door mij aangeboden": items zonder aangeboden_door_naam (eigen items)
-      source = allItems.filter(i => !i.aangeboden_door_naam);
+      // "Door mij aangeboden": eigen items die aangeboden zijn (hebben aanbieding_id, niet ontvangen van iemand anders)
+      source = allItems.filter(i => i.aanbieding_id && !i.aangeboden_door_naam);
     }
   } else {
     // Ontvangen: items aangeboden ÁÁN mij (heeft aangeboden_door_naam) of voor user-rol leeg
