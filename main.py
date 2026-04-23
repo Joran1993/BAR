@@ -57,6 +57,9 @@ def require_admin(user=Depends(get_current_user)):
     return user
 
 
+BAR_GEMEENTEN = ["Barendrecht", "Ridderkerk", "Albrandswaard"]
+
+
 def _gemeente_filter(user: dict, gemeente: Optional[str] = None) -> Optional[str]:
     """
     superadmin/admin: mag filteren op elke gemeente (None = alles)
@@ -65,6 +68,15 @@ def _gemeente_filter(user: dict, gemeente: Optional[str] = None) -> Optional[str
     if user["role"] in ("superadmin", "admin"):
         return gemeente or None
     return user.get("gemeente") or None
+
+
+def _gemeenten_expand(gemeente: Optional[str]) -> Optional[list]:
+    """Voor BAR-brand: geef alle 3 BAR-gemeenten terug als lijst."""
+    if DEFAULT_BRAND != "bar":
+        return None
+    if gemeente is None or gemeente in BAR_GEMEENTEN:
+        return BAR_GEMEENTEN
+    return None
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
@@ -1015,12 +1027,13 @@ async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] 
         # Bedrijf-gebruiker ziet alleen items die aan hen aangeboden zijn
         return db.get_items_voor_bedrijf(bedrijf_id)
     gemeente = _gemeente_filter(user, gemeente)
+    gemeenten = _gemeenten_expand(gemeente)
     user_id = user["id"]
-    cache_key = f"items:{gemeente}:{offset}:{user_id}"
+    cache_key = f"items:{gemeenten or gemeente}:{offset}:{user_id}"
     cached = cache_module.get(cache_key)
     if cached is not None:
         return cached
-    items = db.get_items(limit, offset, gemeente, user_id=user_id)
+    items = db.get_items(limit, offset, None if gemeenten else gemeente, user_id=user_id, gemeenten=gemeenten)
     cache_module.set(cache_key, items, ttl=30)
     return items
 
@@ -1080,15 +1093,17 @@ async def delete_item(item_id: int, user=Depends(get_current_user)):
 @app.get("/api/dashboard")
 async def get_dashboard(days: int = 7, gemeente: Optional[str] = None, user=Depends(get_current_user)):
     gemeente = _gemeente_filter(user, gemeente)
-    cache_key = f"dashboard:{gemeente}:{days}"
+    gemeenten = _gemeenten_expand(gemeente)
+    cache_key = f"dashboard:{gemeenten or gemeente}:{days}"
     cached = cache_module.get(cache_key)
     if cached is not None:
         return cached
 
+    g = None if gemeenten else gemeente
     stats, charts, recent = await asyncio.gather(
-        asyncio.get_event_loop().run_in_executor(None, db.get_stats, gemeente),
-        asyncio.get_event_loop().run_in_executor(None, db.get_chart_data, days, gemeente),
-        asyncio.get_event_loop().run_in_executor(None, lambda: db.get_items(6, 0, gemeente)),
+        asyncio.get_event_loop().run_in_executor(None, lambda: db.get_stats(g, gemeenten=gemeenten)),
+        asyncio.get_event_loop().run_in_executor(None, lambda: db.get_chart_data(days, g, gemeenten=gemeenten)),
+        asyncio.get_event_loop().run_in_executor(None, lambda: db.get_items(6, 0, g, gemeenten=gemeenten)),
     )
     result = {"stats": stats, "charts": charts, "recent": recent}
     cache_module.set(cache_key, result, ttl=30)
@@ -1473,24 +1488,27 @@ async def dashboard_page():
 
 @app.get("/api/dashboard")
 async def get_dashboard(gemeente: str = "Almere"):
+    gemeenten = _gemeenten_expand(gemeente)
+    gem_filter = "gemeente = ANY(%s)" if gemeenten else "gemeente = %s"
+    gem_param = gemeenten if gemeenten else gemeente
     with db.get_cursor() as cur:
-        cur.execute("SELECT COUNT(*) AS cnt, ROUND(SUM(gewicht_kg)::numeric,1) AS totaal_kg FROM items WHERE gemeente=%s AND photo_url IS NOT NULL", (gemeente,))
+        cur.execute(f"SELECT COUNT(*) AS cnt, ROUND(SUM(gewicht_kg)::numeric,1) AS totaal_kg FROM items WHERE {gem_filter} AND photo_url IS NOT NULL", (gem_param,))
         totaal = dict(cur.fetchone())
 
-        cur.execute("""
+        cur.execute(f"""
             SELECT COALESCE(category,'Onbekend') AS cat,
                    COUNT(*) AS n,
                    ROUND(SUM(gewicht_kg)::numeric,1) AS kg
-            FROM items WHERE gemeente=%s AND photo_url IS NOT NULL
+            FROM items WHERE {gem_filter} AND photo_url IS NOT NULL
             GROUP BY cat ORDER BY n DESC
-        """, (gemeente,))
+        """, (gem_param,))
         cats = [dict(r) for r in cur.fetchall()]
 
-        cur.execute("""
+        cur.execute(f"""
             SELECT id, ai_label, photo_url_thumb, photo_url, category, gewicht_kg
-            FROM items WHERE gemeente=%s AND photo_url IS NOT NULL
+            FROM items WHERE {gem_filter} AND photo_url IS NOT NULL
             ORDER BY timestamp DESC LIMIT 12
-        """, (gemeente,))
+        """, (gem_param,))
         recent = [dict(r) for r in cur.fetchall()]
 
     return {"gemeente": gemeente, "totaal": totaal, "categorieen": cats, "recent": recent}
@@ -1503,16 +1521,19 @@ async def catalogus_page():
 
 @app.get("/api/catalogus")
 async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int = 0):
+    gemeenten = _gemeenten_expand(gemeente)
+    gem_filter = "gemeente = ANY(%s)" if gemeenten else "gemeente = %s"
+    gem_param = gemeenten if gemeenten else gemeente
     with db.get_cursor() as cur:
-        cur.execute("""
+        cur.execute(f"""
             SELECT id, ai_label, ai_detail, photo_url, photo_url_thumb, gewicht_kg, category
             FROM items
-            WHERE gemeente = %s AND photo_url IS NOT NULL AND photo_url != ''
+            WHERE {gem_filter} AND photo_url IS NOT NULL AND photo_url != ''
             ORDER BY timestamp DESC
             LIMIT %s OFFSET %s
-        """, (gemeente, limit, offset))
+        """, (gem_param, limit, offset))
         rows = [dict(r) for r in cur.fetchall()]
-        cur.execute("SELECT COUNT(*) AS cnt FROM items WHERE gemeente = %s AND photo_url IS NOT NULL AND photo_url != ''", (gemeente,))
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM items WHERE {gem_filter} AND photo_url IS NOT NULL AND photo_url != ''", (gem_param,))
         total = cur.fetchone()["cnt"]
         return {"items": rows, "total": total, "offset": offset, "limit": limit}
 

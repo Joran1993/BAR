@@ -427,9 +427,14 @@ def update_item(item_id: int, manual_note: Optional[str], category: Optional[str
         )
 
 
-def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None):
+def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None):
     with get_cursor() as cur:
-        if gemeente:
+        if gemeenten:
+            cur.execute(
+                "SELECT id, timestamp, photo_url, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items WHERE gemeente = ANY(%s) ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                (gemeenten, limit, offset),
+            )
+        elif gemeente:
             cur.execute(
                 "SELECT id, timestamp, photo_url, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items WHERE gemeente = %s ORDER BY timestamp DESC LIMIT %s OFFSET %s",
                 (gemeente, limit, offset),
@@ -482,11 +487,13 @@ def delete_item(item_id: int):
         cur.execute("DELETE FROM items WHERE id = %s", (item_id,))
 
 
-def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None):
+def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None):
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d") + "%"
     filters = []
     params  = []
-    if gemeente:
+    if gemeenten:
+        filters.append("gemeente = ANY(%s)"); params.append(gemeenten)
+    elif gemeente:
         filters.append("gemeente = %s"); params.append(gemeente)
     if user_id:
         filters.append("uploaded_by = %s"); params.append(user_id)
@@ -508,10 +515,19 @@ def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None):
         }
 
 
-def get_chart_data(days: int = 30, gemeente: Optional[str] = None):
+def get_chart_data(days: int = 30, gemeente: Optional[str] = None, gemeenten: Optional[list] = None):
     with get_cursor() as cur:
         interval = f"{days} days"
-        if gemeente:
+        if gemeenten:
+            cur.execute("""
+                SELECT LEFT(timestamp, 10) as dag,
+                       COUNT(*) as aantal,
+                       COALESCE(SUM(gewicht_kg), 0) as kg
+                FROM items
+                WHERE gemeente = ANY(%s) AND timestamp >= (CURRENT_DATE - INTERVAL %s)::text
+                GROUP BY dag ORDER BY dag
+            """, (gemeenten, interval))
+        elif gemeente:
             cur.execute("""
                 SELECT LEFT(timestamp, 10) as dag,
                        COUNT(*) as aantal,
