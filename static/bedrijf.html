@@ -220,7 +220,11 @@
   </div>
 
   <script>
-    let token = localStorage.getItem("bedrijf_token");
+    // Accepteer zowel bedrijf_token (oud) als standaard token (nieuw via /login)
+    let token = localStorage.getItem("bedrijf_token") || localStorage.getItem("token");
+    if (token && localStorage.getItem("role") === "bedrijf" && !localStorage.getItem("bedrijf_naam")) {
+      localStorage.setItem("bedrijf_naam", localStorage.getItem("organisatie") || localStorage.getItem("username") || "");
+    }
     let alleAanbiedingen = [];
     let huidigFilter = "open";
 
@@ -238,6 +242,9 @@
         .catch(() => { /* Ongeldige token, toon loginscherm */ });
     } else if (token) {
       toonApp();
+    } else {
+      // Geen token → doorsturen naar centrale login
+      location.href = "/login?redirect=/bedrijf";
     }
 
     // ── Login ──────────────────────────────────────────────────────────────────
@@ -267,11 +274,9 @@
     });
 
     function uitloggen() {
-      localStorage.removeItem("bedrijf_token");
-      localStorage.removeItem("bedrijf_naam");
+      localStorage.clear();
       token = null;
-      document.getElementById("app-scherm").style.display = "none";
-      document.getElementById("login-scherm").style.display = "flex";
+      location.href = "/login";
     }
 
     let huidigTab = "aanbiedingen";
@@ -291,7 +296,10 @@
       const app = document.getElementById("app-scherm");
       app.style.display = "flex";
       app.style.flexDirection = "column";
-      const naam = localStorage.getItem("bedrijf_naam") || "Bedrijfsportaal";
+      const naam = localStorage.getItem("bedrijf_naam")
+        || localStorage.getItem("organisatie")
+        || localStorage.getItem("username")
+        || "Bedrijfsportaal";
       document.getElementById("hdr-naam").textContent = naam;
       laadAanbiedingen();
       registreerPush();

@@ -122,7 +122,13 @@
 
   <script>
     if (localStorage.getItem('token')) {
-      location.href = new URLSearchParams(location.search).get('redirect') || '/';
+      const role = localStorage.getItem('role');
+      location.href = new URLSearchParams(location.search).get('redirect') || (role === 'bedrijf' ? '/bedrijf' : '/');
+    }
+
+    function _redirectNaLogin(data) {
+      const redirect = new URLSearchParams(location.search).get('redirect');
+      location.href = redirect || (data.role === 'bedrijf' ? '/bedrijf' : '/');
     }
 
     // ── CIRQO login ────────────────────────────────────────────────────────────
@@ -139,7 +145,7 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Fout');
         _saveSession(data);
-        location.href = new URLSearchParams(location.search).get('redirect') || '/';
+        _redirectNaLogin(data);
       } catch (e) {
         err.textContent = e.message; err.style.display = 'block';
         btn.disabled = false; btn.textContent = 'Inloggen';
@@ -177,7 +183,7 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Fout');
         _saveSession(data);
-        location.href = new URLSearchParams(location.search).get('redirect') || '/';
+        _redirectNaLogin(data);
       } catch (e) {
         let msg = e.message || 'Fout';
         if (msg.includes('wrong-password') || msg.includes('user-not-found')) msg = 'E-mail of wachtwoord onjuist';
@@ -194,6 +200,12 @@
       localStorage.setItem('role',        data.role);
       localStorage.setItem('gemeente',    data.gemeente || '');
       localStorage.setItem('organisatie', data.organisatie || '');
+      if (data.bedrijf_id) localStorage.setItem('bedrijf_id', data.bedrijf_id);
+      // Compatibiliteit met bedrijf.html dat bedrijf_token en bedrijf_naam gebruikt
+      if (data.role === 'bedrijf') {
+        localStorage.setItem('bedrijf_token', data.token);
+        localStorage.setItem('bedrijf_naam', data.organisatie || data.username);
+      }
     }
   </script>
 </body>
