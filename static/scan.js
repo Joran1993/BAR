@@ -69,13 +69,19 @@ document.querySelectorAll(".tabbar-btn").forEach(btn => {
 });
 
 // ── Sync ───────────────────────────────────────────────────────────────────────
+let _lastItemsJson = "";
+
 async function syncItems() {
   const url = _isAdmin
     ? "/api/items?limit=500&offset=0"
     : "/api/items?limit=200&offset=0";
   const res = await apiFetch(url);
   if (!res || !res.ok) return;
-  allItems = await res.json();
+  const nieuw = await res.json();
+  const nieuwJson = JSON.stringify(nieuw);
+  if (nieuwJson === _lastItemsJson) return; // niets veranderd, geen flicker
+  _lastItemsJson = nieuwJson;
+  allItems = nieuw;
   if (_isAdmin) _vulGemeenteDropdown();
   renderItems();
 }
@@ -165,11 +171,11 @@ async function aanbiedenAanAlle(itemId) {
     body: JSON.stringify({ item_id: itemId, bedrijf_ids: ids }),
   });
   if (res && res.ok) {
-    if (btn) { btn.textContent = "✓ Aangeboden aan iedereen"; btn.style.background = "#4caf50"; }
     const data = await res.json();
     _markeerAangeboden(itemId, "iedereen", data?.ids?.[0]);
     syncItems();
-    setTimeout(resetScan, 1800);
+    const namen = _scanBedrijven.map(b => b.naam).join(", ");
+    _toonSucces("Aangeboden aan iedereen!", `Het item is aangeboden aan: ${namen}.`);
   } else {
     if (btn) { btn.disabled = false; btn.textContent = "Opnieuw proberen"; }
   }
@@ -390,6 +396,18 @@ function _markeerAangeboden(itemId, bedrijfNaam, aanbiedingId) {
   renderItems();
 }
 
+function _toonSucces(titel, tekst) {
+  document.getElementById("succes-titel").textContent = titel;
+  document.getElementById("succes-tekst").textContent = tekst;
+  const el = document.getElementById("succes-overlay");
+  el.style.display = "flex";
+}
+
+function sluitSucces() {
+  document.getElementById("succes-overlay").style.display = "none";
+  resetScan();
+}
+
 async function aanbieden(itemId, bedrijfId) {
   const btn = document.getElementById(`btn-aanbied-${bedrijfId}`);
   if (btn) { btn.disabled = true; btn.textContent = "Bezig…"; }
@@ -398,12 +416,12 @@ async function aanbieden(itemId, bedrijfId) {
   fd.append("bedrijf_id", bedrijfId);
   const res = await apiFetch("/api/aanbiedingen", { method: "POST", body: fd });
   if (res && res.ok) {
-    if (btn) { btn.textContent = "✓ Aangeboden"; btn.style.background = "#4caf50"; }
     const data = await res.json();
     const bedrijf = _scanBedrijven.find(b => b.id === bedrijfId);
-    _markeerAangeboden(itemId, bedrijf ? bedrijf.naam : null, data?.id);
+    const bedrijfNaam = bedrijf ? bedrijf.naam : "het bedrijf";
+    _markeerAangeboden(itemId, bedrijfNaam, data?.id);
     syncItems();
-    setTimeout(resetScan, 1500);
+    _toonSucces("Aangeboden!", `Het item is aangeboden aan ${bedrijfNaam}.`);
   } else {
     if (btn) { btn.disabled = false; btn.textContent = "Opnieuw proberen"; }
   }

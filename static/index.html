@@ -208,6 +208,16 @@
     </div>
   </div>
 
+  <!-- Succes-overlay na aanbieden -->
+  <div id="succes-overlay" style="display:none;position:fixed;inset:0;z-index:999;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;">
+    <div style="width:80px;height:80px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;margin-bottom:24px;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <h2 id="succes-titel" style="font-family:'Barlow Condensed',sans-serif;font-size:1.9rem;font-weight:900;margin-bottom:8px;">Aangeboden!</h2>
+    <p id="succes-tekst" style="font-size:1rem;color:var(--muted);margin-bottom:32px;"></p>
+    <button onclick="sluitSucces()" class="btn btn-primary" style="width:100%;max-width:320px;">Doorgaan</button>
+  </div>
+
   <!-- Gebruikerspaneel -->
   <div id="user-panel" class="modal hidden">
     <div class="modal-sheet">
@@ -263,6 +273,6 @@
     </div>
   </div>
 
-  <script src="/static/scan.js?v=73"></script>
+  <script src="/static/scan.js?v=74"></script>
 </body>
 </html>
