@@ -1246,6 +1246,12 @@ async def beheer_page():
     return _render_html("static/beheer.html", DEFAULT_BRAND)
 
 
+@app.get("/debug-brand")
+async def debug_brand():
+    import os as _os2
+    return {"DEFAULT_BRAND": DEFAULT_BRAND, "BRAND_ENV": _os2.getenv("BRAND"), "bedrijf_logo_check": "cirqo" if "cirqo-logo.webp" in _render_html("static/bedrijf.html", DEFAULT_BRAND) else "bar"}
+
+
 @app.get("/bedrijf", response_class=HTMLResponse)
 async def bedrijf_page():
     return _render_html("static/bedrijf.html", DEFAULT_BRAND)
