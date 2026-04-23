@@ -643,6 +643,7 @@ async function openModal(id, scrollToChat = false) {
   document.getElementById("modal-cat").value   = item.category || "";
 
   const isOntvanger = !!item.aanbieding_id && _role === "bedrijf";
+  const isAanbieder = !!item.aanbieding_id && _role !== "bedrijf";
   document.getElementById("modal-bedrijf-acties").style.display    = isOntvanger ? "block" : "none";
   document.getElementById("modal-aanbieder-reactie").style.display = "none";
   document.getElementById("modal-edit-acties").style.display       = isOntvanger ? "none" : "block";
