@@ -1233,42 +1233,27 @@ DEFAULT_BRAND = os.getenv("BRAND", "cirqo")
 
 @app.get("/", response_class=HTMLResponse)
 async def scan_app():
-    if DEFAULT_BRAND != "cirqo":
-        return _render_html("static/index.html", DEFAULT_BRAND)
-    with open("static/index.html", "r", encoding="utf-8") as f:
-        return f.read()
+    return _render_html("static/index.html", DEFAULT_BRAND)
 
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page():
-    if DEFAULT_BRAND != "cirqo":
-        return _render_html("static/login.html", DEFAULT_BRAND)
-    with open("static/login.html", "r", encoding="utf-8") as f:
-        return f.read()
+    return _render_html("static/login.html", DEFAULT_BRAND)
 
 
 @app.get("/beheer", response_class=HTMLResponse)
 async def beheer_page():
-    if DEFAULT_BRAND != "cirqo":
-        return _render_html("static/beheer.html", DEFAULT_BRAND)
-    with open("static/beheer.html", "r", encoding="utf-8") as f:
-        return f.read()
+    return _render_html("static/beheer.html", DEFAULT_BRAND)
 
 
 @app.get("/bedrijf", response_class=HTMLResponse)
 async def bedrijf_page():
-    if DEFAULT_BRAND != "cirqo":
-        return _render_html("static/bedrijf.html", DEFAULT_BRAND)
-    with open("static/bedrijf.html", "r", encoding="utf-8") as f:
-        return f.read()
+    return _render_html("static/bedrijf.html", DEFAULT_BRAND)
 
 
 @app.get("/bedrijf/{token}", response_class=HTMLResponse)
 async def bedrijf_page_token(token: str):
-    if DEFAULT_BRAND != "cirqo":
-        return _render_html("static/bedrijf.html", DEFAULT_BRAND)
-    with open("static/bedrijf.html", "r", encoding="utf-8") as f:
-        return f.read()
+    return _render_html("static/bedrijf.html", DEFAULT_BRAND)
 
 
 
@@ -1365,10 +1350,7 @@ async def tuya_test(kleur: str):
 
 @app.get("/kiosk", response_class=HTMLResponse)
 async def kiosk_page():
-    if DEFAULT_BRAND != "cirqo":
-        return _render_html("static/kiosk.html", DEFAULT_BRAND)
-    with open("static/kiosk.html", "r", encoding="utf-8") as f:
-        return f.read()
+    return _render_html("static/kiosk.html", DEFAULT_BRAND)
 
 
 @app.post("/api/kiosk/scan")
@@ -1480,10 +1462,7 @@ async def bar_catalogus():
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page():
-    if DEFAULT_BRAND != "cirqo":
-        return _render_html("static/dashboard.html", DEFAULT_BRAND)
-    with open("static/dashboard.html", "r", encoding="utf-8") as f:
-        return f.read()
+    return _render_html("static/dashboard.html", DEFAULT_BRAND)
 
 
 @app.get("/api/dashboard")
@@ -1513,10 +1492,7 @@ async def get_dashboard(gemeente: str = "Almere"):
 
 @app.get("/catalogus", response_class=HTMLResponse)
 async def catalogus_page():
-    if DEFAULT_BRAND != "cirqo":
-        return _render_html("static/catalogus.html", DEFAULT_BRAND)
-    with open("static/catalogus.html", "r", encoding="utf-8") as f:
-        return f.read()
+    return _render_html("static/catalogus.html", DEFAULT_BRAND)
 
 
 @app.get("/api/catalogus")
