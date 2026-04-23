@@ -56,7 +56,7 @@ document.querySelectorAll(".tabbar-btn").forEach(btn => {
     btn.classList.add("active");
     document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
     if (btn.dataset.tab === "list") renderItems();
-    if (btn.dataset.tab === "stats") { _vulStatsGemeenteFilter(); syncStats(); if (_isAdmin) syncNetwerk(); }
+    if (btn.dataset.tab === "stats") { _vulStatsGemeenteFilter(); syncStats(); if (_isAdmin) syncNetwerk(); renderDeelnemers(); }
     if (btn.dataset.tab === "scan") resetScan();
   });
 });
@@ -110,7 +110,7 @@ async function _vulStatsGemeenteFilter() {
   if (huidig) sel.value = huidig;
   sel.onchange = () => { syncStats(); if (_isAdmin) syncNetwerk(); };
 }
-function syncAll() { syncItems(); syncStats(); if (_isAdmin) syncNetwerk(); }
+function syncAll() { syncItems(); syncStats(); if (_isAdmin) syncNetwerk(); renderDeelnemers(); }
 
 // ── Gemeenten voor kiezer ───────────────────────────────────────────────────────
 let _allGemeenten = [];
