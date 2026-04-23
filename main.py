@@ -1429,7 +1429,7 @@ def _render_html(path: str, brand: str) -> str:
 
 @app.get("/brand.css")
 async def brand_css():
-    css = _brand_css("cirqo")
+    css = _brand_css(DEFAULT_BRAND)
     return Response(content=css, media_type="text/css", headers={"Cache-Control": "no-cache"})
 
 @app.get("/bar/brand.css")
@@ -1509,8 +1509,19 @@ async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int =
 @app.post("/api/admin/bouw-thumb-urls")
 async def bouw_thumb_urls(gemeente: str = "Almere", credentials: HTTPAuthorizationCredentials = Depends(security)):
     verify_superadmin(credentials)
-    import re, urllib.parse as _up
-    from firebase_admin import storage as _storage
+    import re, urllib.parse as _up, json as _json
+    import firebase_admin as _fb_admin
+    from firebase_admin import credentials as _fb_creds, storage as _storage
+
+    try:
+        _fb_admin.get_app()
+    except ValueError:
+        gc = os.getenv("GOOGLE_CREDENTIALS")
+        if gc:
+            _fb_cred = _fb_creds.Certificate(_json.loads(gc))
+        else:
+            _fb_cred = _fb_creds.Certificate("serviceaccount.json")
+        _fb_admin.initialize_app(_fb_cred, {"storageBucket": "database-e5575.appspot.com"})
 
     bucket = _storage.bucket()
 

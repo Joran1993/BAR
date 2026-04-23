@@ -21,12 +21,16 @@ def _get_db():
         if _db is not None:
             return _db
         try:
+            import json as _json
             import firebase_admin
             from firebase_admin import credentials, firestore
 
-            cred_path = os.path.join(os.path.dirname(__file__), "serviceaccount.json")
-            cred = credentials.Certificate(cred_path)
-            # Gebruik bestaande app als die al geïnitialiseerd is
+            gc = os.getenv("GOOGLE_CREDENTIALS")
+            if gc:
+                cred = credentials.Certificate(_json.loads(gc))
+            else:
+                cred_path = os.path.join(os.path.dirname(__file__), "serviceaccount.json")
+                cred = credentials.Certificate(cred_path)
             try:
                 firebase_admin.get_app()
             except ValueError:
