@@ -160,6 +160,7 @@ async function aanbiedenAanAlle(itemId) {
   if (res && res.ok) {
     if (btn) { btn.textContent = "✓ Aangeboden aan iedereen"; btn.style.background = "#4caf50"; }
     _markeerAangeboden(itemId, "iedereen");
+    syncItems();
     setTimeout(resetScan, 1800);
   } else {
     if (btn) { btn.disabled = false; btn.textContent = "Opnieuw proberen"; }
@@ -390,6 +391,7 @@ async function aanbieden(itemId, bedrijfId) {
     if (btn) { btn.textContent = "✓ Aangeboden"; btn.style.background = "#4caf50"; }
     const bedrijf = _scanBedrijven.find(b => b.id === bedrijfId);
     _markeerAangeboden(itemId, bedrijf ? bedrijf.naam : null);
+    syncItems();
     setTimeout(resetScan, 1500);
   } else {
     if (btn) { btn.disabled = false; btn.textContent = "Opnieuw proberen"; }
@@ -1086,4 +1088,5 @@ async function saveUserPanel() {
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 laadGemeenten().then(() => syncAll());
-setInterval(syncAll, 60000);
+setInterval(syncItems, 5000);
+setInterval(syncStats, 60000);
