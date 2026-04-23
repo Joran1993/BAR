@@ -504,6 +504,29 @@ function renderStats() {
         </div>`).join("")
     : `<p style="color:var(--muted);font-size:0.9rem;padding:16px;">Nog geen categorieën.</p>`;
   if (_role === "superadmin") renderGemeenteStats();
+  renderDeelnemers();
+}
+
+async function renderDeelnemers() {
+  const wrap = document.getElementById("deelnemers-list");
+  if (!wrap) return;
+  try {
+    const res = await apiFetch("/api/deelnemers");
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    if (!data.bedrijven || !data.bedrijven.length) return;
+    wrap.innerHTML = `
+      <div class="deelnemers-header">Deelnemende bedrijven</div>
+      ${data.bedrijven.map(b => `
+        <div class="deelnemer-row">
+          <div>
+            <div class="deelnemer-naam">${b.naam}</div>
+            <div class="deelnemer-gem">${b.gemeente}</div>
+            <div class="deelnemer-cats">${(b.categorieen || []).map(c => `<span class="deelnemer-cat">${c}</span>`).join("")}</div>
+          </div>
+        </div>`).join("")}
+    `;
+  } catch(e) {}
 }
 
 async function renderGemeenteStats() {
