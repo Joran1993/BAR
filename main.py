@@ -585,9 +585,10 @@ async def bedrijven_voor_scan(
     item_id: Optional[int] = None,
     user=Depends(get_current_user),
 ):
-    alle = db.get_bedrijven(gemeente)
+    gemeenten = _gemeenten_expand(gemeente)
+    alle = db.get_bedrijven(None if gemeenten else gemeente, gemeenten=gemeenten)
     if category:
-        match_ids = {b["id"] for b in db.get_bedrijven_for_item(gemeente, category)}
+        match_ids = {b["id"] for b in db.get_bedrijven_for_item(None if gemeenten else gemeente, category, gemeenten=gemeenten)}
         if not match_ids:
             match_ids = {b["id"] for b in db.get_bedrijven_for_item(None, category)}
     else:

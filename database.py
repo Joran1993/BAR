@@ -550,9 +550,18 @@ def get_chart_data(days: int = 30, gemeente: Optional[str] = None, gemeenten: Op
 
 # ── Bedrijven ─────────────────────────────────────────────────────────────────
 
-def get_bedrijven(gemeente: Optional[str] = None):
+def get_bedrijven(gemeente: Optional[str] = None, gemeenten: Optional[list] = None):
     with get_cursor() as cur:
-        if gemeente:
+        if gemeenten:
+            cur.execute("""
+                SELECT b.id, b.naam, b.gemeente, b.contactpersoon, b.email, b.telefoon,
+                       COALESCE(array_agg(bc.category ORDER BY bc.category) FILTER (WHERE bc.category IS NOT NULL), '{}') as categorieen
+                FROM bedrijven b
+                LEFT JOIN bedrijf_categorieen bc ON bc.bedrijf_id = b.id
+                WHERE b.gemeente = ANY(%s)
+                GROUP BY b.id ORDER BY b.naam
+            """, (gemeenten,))
+        elif gemeente:
             cur.execute("""
                 SELECT b.id, b.naam, b.gemeente, b.contactpersoon, b.email, b.telefoon,
                        COALESCE(array_agg(bc.category ORDER BY bc.category) FILTER (WHERE bc.category IS NOT NULL), '{}') as categorieen
@@ -728,10 +737,18 @@ def update_aanbieding_status(aanbieding_id: int, status: str):
         )
 
 
-def get_bedrijven_for_item(gemeente: Optional[str], category: str):
+def get_bedrijven_for_item(gemeente: Optional[str], category: str, gemeenten: Optional[list] = None):
     """Geeft bedrijven terug die deze categorie afnemen, optioneel gefilterd op gemeente."""
     with get_cursor() as cur:
-        if gemeente:
+        if gemeenten:
+            cur.execute("""
+                SELECT b.id, b.naam, b.contactpersoon, b.email, b.telefoon
+                FROM bedrijven b
+                JOIN bedrijf_categorieen bc ON bc.bedrijf_id = b.id
+                WHERE b.gemeente = ANY(%s) AND bc.category = %s
+                ORDER BY b.naam
+            """, (gemeenten, category))
+        elif gemeente:
             cur.execute("""
                 SELECT b.id, b.naam, b.contactpersoon, b.email, b.telefoon
                 FROM bedrijven b
