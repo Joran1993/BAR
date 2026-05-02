@@ -1504,6 +1504,11 @@ BRANDS = {
         "logo": "/static/hvc-logo.jpg", "name": "HVC",
         "sub": "Digitaal productuitwisselingsnetwerk", "gemeente": "Alkmaar",
     },
+    "bouwkringloop": {
+        "primary": "#e67026", "secondary": "#c45c1a",
+        "logo": "/static/bouwkringloop-logo.jpg", "name": "De Bouwkringloop",
+        "sub": "Circulaire bouwmaterialen", "gemeente": "",
+    },
 }
 
 def _brand_css(brand: str) -> str:
