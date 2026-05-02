@@ -58,6 +58,19 @@ def require_admin(user=Depends(get_current_user)):
 
 
 BAR_GEMEENTEN = ["Barendrecht", "Ridderkerk", "Albrandswaard"]
+HVC_GEMEENTEN = [
+    "Alblasserdam", "Alkmaar", "Almere", "Bergen", "Beverwijk", "Castricum",
+    "Delft", "Den Helder", "Dordrecht", "Drechterland", "Dronten", "Dijk en Waard",
+    "Edam-Volendam", "Enkhuizen", "Gorinchem", "Haarlem", "Hardinxveld-Giessendam",
+    "Heemskerk", "Heiloo", "Hendrik-Ido-Ambacht", "Hollands Kroon", "Hoorn",
+    "Koggenland", "Leidschendam-Voorburg", "Lelystad", "Maassluis", "Medemblik",
+    "Midden-Delfland", "Molenlanden", "Nieuwegein", "Noordoostpolder", "Opmeer",
+    "Papendrecht", "Pijnacker-Nootdorp", "Purmerend", "Rijswijk", "Schagen",
+    "Sliedrecht", "Smallingerland", "Stede Broec", "Texel", "Uitgeest", "Urk",
+    "Utrecht", "Velsen", "Vijfheerenlanden", "Wassenaar", "Waterland",
+    "Westland", "Wormerland", "Zaanstad", "Zandvoort", "Zeewolde", "Zwijndrecht",
+]
+BRAND_GEMEENTEN = {"bar": BAR_GEMEENTEN, "hvc": HVC_GEMEENTEN}
 
 
 def _gemeente_filter(user: dict, gemeente: Optional[str] = None) -> Optional[str]:
@@ -71,11 +84,11 @@ def _gemeente_filter(user: dict, gemeente: Optional[str] = None) -> Optional[str
 
 
 def _gemeenten_expand(gemeente: Optional[str]) -> Optional[list]:
-    """Voor BAR-brand: geef alle 3 BAR-gemeenten terug als lijst."""
-    if DEFAULT_BRAND != "bar":
+    gemeenten = BRAND_GEMEENTEN.get(DEFAULT_BRAND)
+    if not gemeenten:
         return None
-    if gemeente is None or gemeente in BAR_GEMEENTEN:
-        return BAR_GEMEENTEN
+    if gemeente is None or gemeente in gemeenten:
+        return gemeenten
     return None
 
 
@@ -1477,7 +1490,7 @@ async def kiosk_scan(file: UploadFile = File(...), gemeente: str = Form("Almere"
 
 BRANDS = {
     "cirqo": {
-        "primary": "#5B8C6C", "secondary": "#4A7A5C",
+        "primary": "#86bc97", "secondary": "#6aaa82",
         "logo": "/static/cirqo-logo.webp", "name": "CIRQO",
         "sub": "Milieustraat Almere-Buiten", "gemeente": "Almere",
     },
@@ -1485,6 +1498,11 @@ BRANDS = {
         "primary": "#09be86", "secondary": "#07a874",
         "logo": "/static/bar-logo.jpg", "name": "BAR Afvalbeheer",
         "sub": "Breng uw afval slim in", "gemeente": "Barendrecht",
+    },
+    "hvc": {
+        "primary": "#E3000F", "secondary": "#c20000",
+        "logo": "/static/hvc-logo.jpg", "name": "HVC",
+        "sub": "Digitaal productuitwisselingsnetwerk", "gemeente": "Alkmaar",
     },
 }
 
@@ -1500,8 +1518,9 @@ def _render_html(path: str, brand: str) -> str:
     # Inject brand CSS inline
     brand_css_tag = f'<style>{_brand_css(brand)}</style>'
     html = html.replace("</head>", f"{brand_css_tag}\n</head>", 1)
-    # Swap logo src
-    html = html.replace("/static/cirqo-logo.webp", b["logo"])
+    # Swap logo src — vervang alle bekende logo-paden
+    for known_logo in ["/static/cirqo-logo.webp", "/static/bar-logo.jpg", "/static/hvc-logo.svg"]:
+        html = html.replace(known_logo, b["logo"])
     # Swap subtitle
     html = html.replace("Milieustraat Almere-Buiten", b["sub"])
     html = html.replace("CIRQO", b["name"])
@@ -1529,6 +1548,28 @@ async def bar_kiosk():
 @app.get("/bar/catalogus", response_class=HTMLResponse)
 async def bar_catalogus():
     return _render_html("static/catalogus.html", "bar")
+
+
+@app.get("/hvc/brand.css")
+async def hvc_brand_css():
+    return Response(content=_brand_css("hvc"), media_type="text/css", headers={"Cache-Control": "no-cache"})
+
+@app.get("/hvc", response_class=HTMLResponse)
+@app.get("/hvc/", response_class=HTMLResponse)
+async def hvc_home():
+    return _render_html("static/index.html", "hvc")
+
+@app.get("/hvc/login", response_class=HTMLResponse)
+async def hvc_login():
+    return _render_html("static/login.html", "hvc")
+
+@app.get("/hvc/beheer", response_class=HTMLResponse)
+async def hvc_beheer():
+    return _render_html("static/beheer.html", "hvc")
+
+@app.get("/hvc/bedrijf", response_class=HTMLResponse)
+async def hvc_bedrijf():
+    return _render_html("static/bedrijf.html", "hvc")
 
 
 @app.get("/dashboard", response_class=HTMLResponse)

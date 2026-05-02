@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard — CIRQO Almere</title>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet">
+  <title>Dashboard — De Bouwkringloop</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/brand.css">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Space Grotesk', sans-serif; background: #f2f1ee; color: #1a1a1a; min-height: 100vh; }
+    body { font-family: 'Inter', sans-serif; background: #f8f4ef; color: #1a1a1a; min-height: 100vh; }
 
     .hdr { display: flex; flex-direction: column; align-items: center; padding: 20px 16px 14px; background: #fff; border-bottom: 1px solid #e0ddd8; }
     .hdr img { height: 30px; }
@@ -16,13 +16,13 @@
 
     .dash { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; }
 
-    .dash-titel { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 900; margin-bottom: 20px; }
+    .dash-titel { font-family: 'Outfit', sans-serif; font-size: 1.6rem; font-weight: 900; margin-bottom: 20px; }
 
     .stat-rij { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }
     @media (min-width: 600px) { .stat-rij { grid-template-columns: repeat(4, 1fr); } }
 
     .stat-kaart { background: #fff; border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
-    .stat-waarde { font-family: 'Barlow Condensed', sans-serif; font-size: 2.2rem; font-weight: 900; color: var(--orange, #5B8C6C); line-height: 1; }
+    .stat-waarde { font-family: 'Outfit', sans-serif; font-size: 2.2rem; font-weight: 900; color: var(--orange, #e67026); line-height: 1; }
     .stat-label { font-size: 0.72rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
 
     .sectie-titel { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin-bottom: 12px; }
@@ -32,8 +32,8 @@
     .cat-rij:last-child { border-bottom: none; }
     .cat-naam { font-size: 0.88rem; font-weight: 700; flex: 1; }
     .cat-balk-wrap { flex: 2; height: 6px; background: #f0efeb; border-radius: 3px; overflow: hidden; }
-    .cat-balk { height: 100%; background: var(--orange, #5B8C6C); border-radius: 3px; transition: width 0.6s ease; }
-    .cat-n { font-size: 0.78rem; font-weight: 700; color: var(--orange, #5B8C6C); min-width: 32px; text-align: right; }
+    .cat-balk { height: 100%; background: var(--orange, #e67026); border-radius: 3px; transition: width 0.6s ease; }
+    .cat-n { font-size: 0.78rem; font-weight: 700; color: var(--orange, #e67026); min-width: 32px; text-align: right; }
     .cat-kg { font-size: 0.72rem; color: #aaa; min-width: 56px; text-align: right; }
 
     .recent-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -51,12 +51,12 @@
     .bedrijf-cats { display: flex; flex-wrap: wrap; gap: 4px; }
     .bedrijf-cat { font-size: 0.68rem; font-weight: 600; background: #f0efeb; color: #555; padding: 2px 8px; border-radius: 100px; }
 
-    .dash-link { display: inline-block; margin-top: 16px; padding: 10px 24px; border-radius: 100px; background: var(--orange, #5B8C6C); color: #fff; font-weight: 700; font-size: 0.85rem; text-decoration: none; }
+    .dash-link { display: inline-block; margin-top: 16px; padding: 10px 24px; border-radius: 100px; background: var(--orange, #e67026); color: #fff; font-weight: 700; font-size: 0.85rem; text-decoration: none; }
   </style>
 </head>
 <body>
   <header class="hdr">
-    <img src="/static/bar-logo.jpg" alt="CIRQO">
+    <img src="/static/bouwkringloop-logo.jpg" alt="De Bouwkringloop">
     <p class="hdr-sub">Dashboard · Milieustraat Barendrecht</p>
   </header>
 

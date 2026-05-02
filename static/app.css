@@ -1,15 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap');
 
 *, *::before, *::after { box-sizing: inherit; margin: 0; padding: 0; }
 
 :root {
-  --bg:       #FAF9F7;
-  --surface:  #F2F0EB;
-  --border:   #E0DDD6;
-  --ink:      #1A1914;
-  --muted:    #9A9690;
-  --orange:   #F07820;
-  --orange-h: #D96810;
+  --bg:       #ffffff;
+  --surface:  #f8f4ef;
+  --border:   #e4e4e9;
+  --ink:      #1a1a1a;
+  --muted:    #67676e;
+  --orange:   #e67026;
+  --orange-h: #c45c1a;
   --danger:   #C8201A;
   --safe-top:    env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -26,7 +26,7 @@ body {
   width: 100%;
   background: var(--bg);
   color: var(--ink);
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
 }
@@ -58,7 +58,7 @@ body {
 .app-header-btn {
   background: none;
   border: none;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -111,7 +111,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   color: var(--ink);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.95rem;
   padding: 0 14px;
   outline: none;
@@ -128,7 +128,7 @@ body {
   padding: 15px;
   border: none;
   border-radius: 100px;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -151,7 +151,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 100px;
   background: none;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -165,7 +165,7 @@ body {
   display: inline-block;
   background: none;
   border: none;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.78rem;
   color: var(--muted);
   padding: 4px 8px;

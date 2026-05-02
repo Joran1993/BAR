@@ -5,22 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="BAR">
-  <meta name="theme-color" content="#1B4D3E">
+  <meta name="apple-mobile-web-app-title" content="De Bouwkringloop">
+  <meta name="theme-color" content="#e67026">
   <link rel="manifest" href="/static/manifest.json">
-  <link rel="apple-touch-icon" href="/static/icon-bar-192.png">
-  <title>BAR Afvalbeheer</title>
-  <link rel="preload" href="/static/bar-logo.jpg" as="image">
+  <link rel="apple-touch-icon" href="/static/icon-cirqo-192.png">
+  <title>De Bouwkringloop</title>
+  <link rel="preload" href="/static/bouwkringloop-logo.jpg" as="image">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/base.css?v=3">
-  <link rel="stylesheet" href="/static/scan.css?v=24">
+  <link rel="stylesheet" href="/static/scan.css?v=26">
   <link rel="stylesheet" href="/brand.css">
+  <script>if (!localStorage.getItem('token')) { location.replace('/login?redirect=/'); } else { document.documentElement.style.visibility = 'hidden'; }</script>
 </head>
 <body>
 
   <header class="hdr">
-    <img src="/static/bar-logo.jpg" class="hdr-logo-img" alt="CIRQO">
+    <img src="/static/bouwkringloop-logo.jpg" class="hdr-logo-img" alt="De Bouwkringloop">
     <div class="hdr-actions">
       <a href="/beheer" class="hdr-btn hidden" id="beheer-link">Beheer</a>
       <button onclick="openUserPanel()" style="background:none;border:none;cursor:pointer;padding:6px;display:flex;align-items:center;gap:6px;color:var(--muted);" title="Account">
@@ -273,6 +274,202 @@
     </div>
   </div>
 
-  <script src="/static/scan.js?v=74"></script>
+  <script src="/static/scan.js?v=75"></script>
+
+  <!-- PWA Install Prompt -->
+  <style>
+    #pwa-backdrop {
+      position: fixed; inset: 0; z-index: 900;
+      background: rgba(0,0,0,.45);
+      backdrop-filter: blur(3px);
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s ease;
+    }
+    #pwa-backdrop.pwa-show { opacity: 1; pointer-events: all; }
+
+    #pwa-sheet {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 901;
+      background: #fff;
+      border-radius: 20px 20px 0 0;
+      padding: 0 20px calc(env(safe-area-inset-bottom, 0px) + 24px);
+      box-shadow: 0 -8px 40px rgba(0,0,0,.18);
+      max-width: 520px; margin: 0 auto;
+      transform: translateY(110%);
+      transition: transform .42s cubic-bezier(.22,.8,.36,1);
+    }
+    #pwa-sheet.pwa-show { transform: translateY(0); }
+
+    .pwa-handle {
+      width: 40px; height: 4px; border-radius: 2px;
+      background: var(--border); margin: 12px auto 20px;
+    }
+    .pwa-close-btn {
+      position: absolute; top: 14px; right: 16px;
+      background: none; border: none; cursor: pointer;
+      font-size: 1.3rem; color: var(--muted); line-height: 1;
+      padding: 4px 8px;
+    }
+    .pwa-head {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 18px;
+    }
+    .pwa-icon-wrap {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: #edf7f0;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .pwa-title { font-family: 'Barlow Condensed', sans-serif; font-size: 1.3rem; font-weight: 900; }
+    .pwa-subtitle { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+    .pwa-steps { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+    .pwa-step {
+      display: flex; align-items: flex-start; gap: 12px;
+      opacity: 0; transform: translateX(-10px);
+      animation: pwaStepIn .35s ease forwards;
+      animation-delay: calc(var(--i) * .18s + .35s);
+    }
+    @keyframes pwaStepIn {
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .pwa-step-num {
+      flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
+      background: #edf7f0; color: var(--orange2);
+      font-size: .75rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 1px;
+    }
+    .pwa-step-text { font-size: .88rem; color: #444; line-height: 1.4; }
+    .pwa-step-text strong { color: var(--ink); }
+
+    .pwa-arrow-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      margin-bottom: 16px;
+      opacity: 0; animation: pwaFadeIn .4s ease 1.1s forwards;
+    }
+    @keyframes pwaFadeIn { to { opacity: 1; } }
+    .pwa-arrow-label { font-size: .7rem; color: var(--muted); }
+    .pwa-arrow {
+      font-size: 1.4rem; color: var(--orange);
+      animation: pwaBounce 1.3s ease-in-out infinite;
+    }
+    @keyframes pwaBounce {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(7px); }
+    }
+
+    .pwa-android-btn {
+      width: 100%; padding: 14px;
+      background: var(--orange); color: #fff;
+      border: none; border-radius: 12px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: .95rem; font-weight: 700;
+      cursor: pointer; margin-bottom: 10px;
+    }
+    .pwa-not-now {
+      display: block; width: 100%;
+      background: none; border: none; cursor: pointer;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: .8rem; color: var(--muted);
+      padding: 8px; text-align: center;
+    }
+  </style>
+
+  <div id="pwa-backdrop"></div>
+  <div id="pwa-sheet">
+    <div class="pwa-handle"></div>
+    <button class="pwa-close-btn" id="pwa-close">&times;</button>
+
+    <div class="pwa-head">
+      <div class="pwa-icon-wrap">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+      </div>
+      <div>
+        <div class="pwa-title">Installeer de app</div>
+        <div class="pwa-subtitle">Snelle toegang &amp; pushmeldingen</div>
+      </div>
+    </div>
+
+    <!-- iOS instructies -->
+    <div id="pwa-ios" class="pwa-steps">
+      <div class="pwa-step" style="--i:0">
+        <span class="pwa-step-num">1</span>
+        <span class="pwa-step-text">Tik op het <strong>deel-icoon ⬆</strong> onderin de browserbalk</span>
+      </div>
+      <div class="pwa-step" style="--i:1">
+        <span class="pwa-step-num">2</span>
+        <span class="pwa-step-text">Scroll omlaag en kies <strong>Zet op beginscherm</strong></span>
+      </div>
+      <div class="pwa-step" style="--i:2">
+        <span class="pwa-step-num">3</span>
+        <span class="pwa-step-text">Tik op <strong>Voeg toe</strong> om te bevestigen</span>
+      </div>
+    </div>
+
+    <div id="pwa-arrow-wrap" class="pwa-arrow-wrap">
+      <span class="pwa-arrow-label">Deel-icoon staat hier</span>
+      <span class="pwa-arrow">↓</span>
+    </div>
+
+    <!-- Android knop -->
+    <div id="pwa-android" style="display:none;margin-bottom:8px;">
+      <button class="pwa-android-btn" id="pwa-android-btn">Installeer app</button>
+    </div>
+
+    <button class="pwa-not-now" id="pwa-dismiss">Niet nu</button>
+  </div>
+
+  <script>
+    (function () {
+      const STORAGE_KEY = 'pwa_prompt_ts';
+      const COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 dagen
+
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (!isMobile) return;
+
+      const isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        navigator.standalone === true;
+
+      if (isStandalone) return;
+
+      const last = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+      if (Date.now() - last < COOLDOWN_MS) return;
+
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      let deferredPrompt = null;
+
+      function showSheet() {
+        document.getElementById('pwa-backdrop').classList.add('pwa-show');
+        document.getElementById('pwa-sheet').classList.add('pwa-show');
+      }
+
+      function hideSheet() {
+        document.getElementById('pwa-backdrop').classList.remove('pwa-show');
+        document.getElementById('pwa-sheet').classList.remove('pwa-show');
+        localStorage.setItem(STORAGE_KEY, String(Date.now()));
+      }
+
+      document.getElementById('pwa-close').addEventListener('click', hideSheet);
+      document.getElementById('pwa-dismiss').addEventListener('click', hideSheet);
+      document.getElementById('pwa-backdrop').addEventListener('click', hideSheet);
+
+      if (!isIOS) {
+        document.getElementById('pwa-ios').style.display = 'none';
+        document.getElementById('pwa-arrow-wrap').style.display = 'none';
+      }
+
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        deferredPrompt = e;
+        document.getElementById('pwa-android').style.display = 'block';
+        document.getElementById('pwa-android-btn').addEventListener('click', async function () {
+          await deferredPrompt.prompt();
+          hideSheet();
+        });
+      });
+
+      setTimeout(showSheet, 1400);
+    })();
+  </script>
 </body>
 </html>

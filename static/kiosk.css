@@ -1,5 +1,5 @@
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-html, body { height: 100%; overflow: hidden; background: #111; font-family: 'Space Grotesk', sans-serif; }
+html, body { height: 100%; overflow: hidden; background: #111; font-family: 'Inter', sans-serif; }
 
 .scherm { display: none; position: fixed; inset: 0; flex-direction: column; }
 .scherm.actief { display: flex; }
@@ -67,7 +67,7 @@ html, body { height: 100%; overflow: hidden; background: #111; font-family: 'Spa
 }
 .resultaat-icoon { font-size: 96px; line-height: 1; }
 .resultaat-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: clamp(2.4rem, 8vw, 4rem); font-weight: 900;
   color: #fff; text-align: center; line-height: 1.05; letter-spacing: -0.01em;
 }
@@ -95,7 +95,7 @@ html, body { height: 100%; overflow: hidden; background: #111; font-family: 'Spa
   padding: 14px 40px; border-radius: 100px;
   background: rgba(255,255,255,0.2); color: #fff;
   border: 2px solid rgba(255,255,255,0.4);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 1rem; font-weight: 700; cursor: pointer;
   transition: background 0.15s;
 }

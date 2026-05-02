@@ -11,6 +11,7 @@ const SVG = {
 
 const token = localStorage.getItem("token");
 if (!token) location.href = "/login?redirect=/";
+document.documentElement.style.visibility = '';
 
 async function apiFetch(url, opts = {}) {
   const res = await fetch(url, {

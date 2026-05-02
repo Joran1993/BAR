@@ -1,5 +1,5 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Space Grotesk', sans-serif; background: #fff; color: #1a1a1a; min-height: 100vh; }
+body { font-family: 'Inter', sans-serif; background: #fff; color: #1a1a1a; min-height: 100vh; }
 
 .cat-hdr {
   display: flex; flex-direction: column; align-items: center;
@@ -19,7 +19,7 @@ body { font-family: 'Space Grotesk', sans-serif; background: #fff; color: #1a1a1
   border: 1.5px solid #ddd; font-size: 1rem; font-family: inherit;
   background: #f8f7f5; outline: none;
 }
-#zoek:focus { border-color: #5B8C6C; }
+#zoek:focus { border-color: #e67026; }
 
 .cat-btns { display: flex; gap: 6px; flex-wrap: wrap; }
 .cat-btn {
@@ -27,7 +27,7 @@ body { font-family: 'Space Grotesk', sans-serif; background: #fff; color: #1a1a1
   background: none; font-size: 0.75rem; font-weight: 600; cursor: pointer;
   font-family: inherit; color: #666; transition: all 0.15s;
 }
-.cat-btn.active { background: #5B8C6C; color: #fff; border-color: #5B8C6C; }
+.cat-btn.active { background: #e67026; color: #fff; border-color: #e67026; }
 
 .cat-teller { padding: 8px 12px; font-size: 0.72rem; color: #888; font-weight: 600; background: #fff; }
 
