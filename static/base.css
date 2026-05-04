@@ -54,7 +54,10 @@ body {
   color: var(--ink);
 }
 .hdr-logo-img {
-  height: 44px;
+  height: auto !important;
+  max-height: 24px !important;
+  max-width: 160px !important;
+  width: auto !important;
   display: block;
   margin-left: 8px;
 }
