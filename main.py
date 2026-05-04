@@ -58,6 +58,10 @@ def require_admin(user=Depends(get_current_user)):
 
 
 BAR_GEMEENTEN = ["Barendrecht", "Ridderkerk", "Albrandswaard"]
+RWM_GEMEENTEN = [
+    "Roermond", "Leudal", "Maasgouw", "Echt-Susteren",
+    "Roerdalen", "Weert", "Beesel", "Bergen",
+]
 HVC_GEMEENTEN = [
     "Alblasserdam", "Alkmaar", "Almere", "Bergen", "Beverwijk", "Castricum",
     "Delft", "Den Helder", "Dordrecht", "Drechterland", "Dronten", "Dijk en Waard",
@@ -70,7 +74,7 @@ HVC_GEMEENTEN = [
     "Utrecht", "Velsen", "Vijfheerenlanden", "Wassenaar", "Waterland",
     "Westland", "Wormerland", "Zaanstad", "Zandvoort", "Zeewolde", "Zwijndrecht",
 ]
-BRAND_GEMEENTEN = {"bar": BAR_GEMEENTEN, "hvc": HVC_GEMEENTEN}
+BRAND_GEMEENTEN = {"bar": BAR_GEMEENTEN, "hvc": HVC_GEMEENTEN, "rwm": RWM_GEMEENTEN}
 
 
 def _gemeente_filter(user: dict, gemeente: Optional[str] = None) -> Optional[str]:
@@ -455,6 +459,8 @@ async def me(user=Depends(get_current_user)):
 async def list_gemeenten(user=Depends(get_current_user)):
     if DEFAULT_BRAND == "bar":
         return BAR_GEMEENTEN
+    if DEFAULT_BRAND == "rwm":
+        return RWM_GEMEENTEN
     return db.get_gemeenten()
 
 
@@ -1509,6 +1515,11 @@ BRANDS = {
         "logo": "/static/bouwkringloop-logo.jpg", "name": "De Bouwkringloop",
         "sub": "Circulaire bouwmaterialen", "gemeente": "",
     },
+    "rwm": {
+        "primary": "#F5C200", "secondary": "#D4A800",
+        "logo": "/static/rwm-logo.svg", "name": "RWM",
+        "sub": "afval & reiniging", "gemeente": "Roermond",
+    },
 }
 
 def _brand_css(brand: str) -> str:
@@ -1524,7 +1535,7 @@ def _render_html(path: str, brand: str) -> str:
     brand_css_tag = f'<style>{_brand_css(brand)}</style>'
     html = html.replace("</head>", f"{brand_css_tag}\n</head>", 1)
     # Swap logo src — vervang alle bekende logo-paden
-    for known_logo in ["/static/cirqo-logo.webp", "/static/bar-logo.jpg", "/static/hvc-logo.svg"]:
+    for known_logo in ["/static/cirqo-logo.webp", "/static/bar-logo.jpg", "/static/hvc-logo.svg", "/static/bouwkringloop-logo.jpg"]:
         html = html.replace(known_logo, b["logo"])
     # Swap subtitle
     html = html.replace("Milieustraat Almere-Buiten", b["sub"])
@@ -1575,6 +1586,36 @@ async def hvc_beheer():
 @app.get("/hvc/bedrijf", response_class=HTMLResponse)
 async def hvc_bedrijf():
     return _render_html("static/bedrijf.html", "hvc")
+
+
+@app.get("/rwm/brand.css")
+async def rwm_brand_css():
+    return Response(content=_brand_css("rwm"), media_type="text/css", headers={"Cache-Control": "no-cache"})
+
+@app.get("/rwm", response_class=HTMLResponse)
+@app.get("/rwm/", response_class=HTMLResponse)
+async def rwm_home():
+    return _render_html("static/index.html", "rwm")
+
+@app.get("/rwm/login", response_class=HTMLResponse)
+async def rwm_login():
+    return _render_html("static/login.html", "rwm")
+
+@app.get("/rwm/kiosk", response_class=HTMLResponse)
+async def rwm_kiosk():
+    return _render_html("static/kiosk.html", "rwm")
+
+@app.get("/rwm/catalogus", response_class=HTMLResponse)
+async def rwm_catalogus():
+    return _render_html("static/catalogus.html", "rwm")
+
+@app.get("/rwm/beheer", response_class=HTMLResponse)
+async def rwm_beheer():
+    return _render_html("static/beheer.html", "rwm")
+
+@app.get("/rwm/bedrijf", response_class=HTMLResponse)
+async def rwm_bedrijf():
+    return _render_html("static/bedrijf.html", "rwm")
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
