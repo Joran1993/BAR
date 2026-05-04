@@ -62,6 +62,16 @@ RWM_GEMEENTEN = [
     "Roermond", "Leudal", "Maasgouw", "Echt-Susteren",
     "Roerdalen", "Weert", "Beesel", "Bergen",
 ]
+RWM_MILIEUSTRATEN = {
+    "Roermond":      ["Milieustraat Roermond"],
+    "Leudal":        ["Milieustraat Heythuysen"],
+    "Maasgouw":      ["Milieustraat Maasbracht"],
+    "Echt-Susteren": ["Milieustraat Echt"],
+    "Roerdalen":     ["Milieustraat St. Odiliënberg"],
+    "Weert":         ["Milieustraat Weert"],
+    "Beesel":        ["Milieustraat Reuver"],
+    "Bergen":        ["Milieustraat Well"],
+}
 HVC_GEMEENTEN = [
     "Alblasserdam", "Alkmaar", "Almere", "Bergen", "Beverwijk", "Castricum",
     "Delft", "Den Helder", "Dordrecht", "Drechterland", "Dronten", "Dijk en Waard",
@@ -462,6 +472,13 @@ async def list_gemeenten(user=Depends(get_current_user)):
     if DEFAULT_BRAND == "rwm":
         return RWM_GEMEENTEN
     return db.get_gemeenten()
+
+
+@app.get("/api/milieustraten")
+async def list_milieustraten():
+    if DEFAULT_BRAND == "rwm":
+        return RWM_MILIEUSTRATEN
+    return {}
 
 
 @app.get("/api/gemeenten/stats")

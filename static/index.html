@@ -80,11 +80,16 @@
     </div>
     <div id="scan-error" class="scan-error hidden"></div>
     <div id="bedrijven-card" class="result-card hidden" style="border-top-color: #6DC4CE;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div class="result-label" style="font-size:1rem;margin:0;">Aanbieden aan</div>
-        <select id="gemeente-kiezer" style="font-size:0.78rem;font-family:'Space Grotesk',sans-serif;border:1px solid var(--border);border-radius:8px;padding:4px 8px;background:var(--surface);color:var(--ink);max-width:140px;">
-          <option value="">Gemeente…</option>
-        </select>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;">
+        <div class="result-label" style="font-size:1rem;margin:0;padding-top:6px;">Aanbieden aan</div>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+          <select id="gemeente-kiezer" style="font-size:0.78rem;font-family:'Space Grotesk',sans-serif;border:1px solid var(--border);border-radius:8px;padding:4px 8px;background:var(--surface);color:var(--ink);max-width:150px;">
+            <option value="">Gemeente…</option>
+          </select>
+          <select id="milieustraat-kiezer" style="font-size:0.78rem;font-family:'Space Grotesk',sans-serif;border:1px solid var(--border);border-radius:8px;padding:4px 8px;background:var(--surface);color:var(--ink);max-width:150px;display:none;">
+            <option value="">Milieustraat…</option>
+          </select>
+        </div>
       </div>
       <div id="bedrijven-lijst"></div>
     </div>
@@ -235,7 +240,12 @@
         </div>
         <div class="field">
           <label>Gemeente</label>
-          <input type="text" id="up-gemeente" placeholder="bijv. Amsterdam" autocomplete="off">
+          <select id="up-gemeente" style="width:100%;height:42px;border:1px solid var(--border);border-radius:10px;padding:0 12px;font-family:'Space Grotesk',sans-serif;font-size:0.9rem;background:var(--surface);color:var(--ink);">
+            <option value="">— Selecteer gemeente —</option>
+          </select>
+          <select id="up-milieustraat" style="width:100%;height:42px;border:1px solid var(--border);border-radius:10px;padding:0 12px;font-family:'Space Grotesk',sans-serif;font-size:0.9rem;background:var(--surface);color:var(--ink);margin-top:6px;display:none;">
+            <option value="">— Selecteer milieustraat —</option>
+          </select>
         </div>
         <div class="field">
           <label>Pushmeldingen</label>
