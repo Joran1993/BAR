@@ -138,6 +138,17 @@ async function laadGemeenten() {
   const sel = document.getElementById("gemeente-kiezer");
   sel.innerHTML = '<option value="">Selecteer gemeente…</option>' +
     _allGemeenten.map(g => `<option value="${g}">${g}</option>`).join("");
+
+  // Vervang het vrije tekstveld in het gebruikerspaneel door een select-dropdown
+  const upGem = document.getElementById("up-gemeente");
+  if (upGem && upGem.tagName === "INPUT" && _allGemeenten.length) {
+    const newSel = document.createElement("select");
+    newSel.id = "up-gemeente";
+    newSel.style.cssText = "width:100%;height:42px;border:1px solid var(--border);border-radius:10px;padding:0 12px;font-family:'Space Grotesk',sans-serif;font-size:0.9rem;background:var(--surface);color:var(--ink);";
+    newSel.innerHTML = '<option value="">— Selecteer gemeente —</option>' +
+      _allGemeenten.map(g => `<option value="${g}">${g}</option>`).join("");
+    upGem.parentNode.replaceChild(newSel, upGem);
+  }
 }
 
 let _scanBedrijven = []; // huidige lijst in scan-flow, herordeerbaar

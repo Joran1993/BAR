@@ -83,16 +83,16 @@ async function loadGemeenteOptions() {
     document.getElementById("il-gemeente-field").style.display = "block";
   }
 
-  // bedrijf: datalist voor autocomplete
-  const dl = document.createElement("datalist");
-  dl.id = "nb-gemeente-list";
-  lijst.forEach(g => {
-    const opt = document.createElement("option");
-    opt.value = g;
-    dl.appendChild(opt);
-  });
-  document.body.appendChild(dl);
-  document.getElementById("nb-gemeente").setAttribute("list", "nb-gemeente-list");
+  // bedrijf: vervang tekstveld door select-dropdown
+  const nbGemInput = document.getElementById("nb-gemeente");
+  if (nbGemInput && nbGemInput.tagName === "INPUT") {
+    const nbSel = document.createElement("select");
+    nbSel.id = "nb-gemeente";
+    nbSel.style.cssText = "width:100%;height:42px;border:1px solid var(--border);border-radius:10px;padding:0 12px;font-family:'Space Grotesk',sans-serif;font-size:0.9rem;background:var(--surface);color:var(--ink);";
+    nbSel.innerHTML = '<option value="">— Selecteer gemeente —</option>' +
+      lijst.map(g => `<option value="${g}">${g}</option>`).join("");
+    nbGemInput.parentNode.replaceChild(nbSel, nbGemInput);
+  }
 }
 
 // ── Categorie checkboxes opbouwen ──────────────────────────────────────────────
