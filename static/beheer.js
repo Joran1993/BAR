@@ -58,20 +58,42 @@ async function loadGemeenteOptions() {
     nbGem.style.opacity = "0.6";
     return;
   }
-  // Superadmin: gemeenten ophalen en als datalist suggesties tonen
-  const res = await apiFetch("/api/gemeenten");
-  if (!res) return;
-  const lijst = await res.json();
+  // Superadmin: gemeenten + milieustraten ophalen
+  const [gemRes, milRes] = await Promise.all([
+    apiFetch("/api/gemeenten"),
+    apiFetch("/api/milieustraten"),
+  ]);
+  if (!gemRes) return;
+  const lijst = await gemRes.json();
+  const milieustraten = (milRes && milRes.ok) ? await milRes.json() : {};
 
-  // gebruiker select
-  const sel = document.getElementById("nu-gemeente");
-  lijst.forEach(g => {
-    const opt = document.createElement("option");
-    opt.value = g; opt.textContent = g;
-    sel.appendChild(opt);
-  });
+  const SEL_STYLE = "width:100%;height:42px;border:1px solid var(--border);border-radius:10px;padding:0 12px;font-family:'Space Grotesk',sans-serif;font-size:0.9rem;background:var(--surface);color:var(--ink);";
 
-  // inzamellijst gemeente select
+  function vulMilSel(milSel, gemeente) {
+    const ms = milieustraten[gemeente] || [];
+    if (!ms.length) { milSel.style.display = "none"; return; }
+    milSel.innerHTML = '<option value="">— Selecteer milieustraat —</option>' +
+      ms.map(m => `<option value="${m}">${m}</option>`).join("");
+    milSel.style.display = "";
+    if (ms.length === 1) milSel.value = ms[0];
+  }
+
+  // ── Nieuwe gebruiker: gemeente + milieustraat cascade ────────────────────
+  const nuSel = document.getElementById("nu-gemeente");
+  nuSel.innerHTML = '<option value="">— Selecteer gemeente —</option>' +
+    lijst.map(g => `<option value="${g}">${g}</option>`).join("");
+
+  let nuMilSel = document.getElementById("nu-milieustraat");
+  if (!nuMilSel) {
+    nuMilSel = document.createElement("select");
+    nuMilSel.id = "nu-milieustraat";
+    nuMilSel.style.cssText = SEL_STYLE + "margin-top:6px;display:none;";
+    nuMilSel.innerHTML = '<option value="">— Selecteer milieustraat —</option>';
+    nuSel.parentNode.insertBefore(nuMilSel, nuSel.nextSibling);
+  }
+  nuSel.addEventListener("change", function () { vulMilSel(nuMilSel, this.value); });
+
+  // ── Inzamellijst gemeente select ─────────────────────────────────────────
   const ilSel = document.getElementById("il-gemeente");
   if (ilSel) {
     lijst.forEach(g => {
@@ -83,16 +105,23 @@ async function loadGemeenteOptions() {
     document.getElementById("il-gemeente-field").style.display = "block";
   }
 
-  // bedrijf: datalist voor autocomplete
-  const dl = document.createElement("datalist");
-  dl.id = "nb-gemeente-list";
-  lijst.forEach(g => {
-    const opt = document.createElement("option");
-    opt.value = g;
-    dl.appendChild(opt);
-  });
-  document.body.appendChild(dl);
-  document.getElementById("nb-gemeente").setAttribute("list", "nb-gemeente-list");
+  // ── Nieuw bedrijf: gemeente + milieustraat cascade ───────────────────────
+  const nbGemInput = document.getElementById("nb-gemeente");
+  if (nbGemInput && nbGemInput.tagName === "INPUT") {
+    const nbSel = document.createElement("select");
+    nbSel.id = "nb-gemeente";
+    nbSel.style.cssText = SEL_STYLE;
+    nbSel.innerHTML = '<option value="">— Selecteer gemeente —</option>' +
+      lijst.map(g => `<option value="${g}">${g}</option>`).join("");
+    nbGemInput.parentNode.replaceChild(nbSel, nbGemInput);
+
+    const nbMilSel = document.createElement("select");
+    nbMilSel.id = "nb-milieustraat";
+    nbMilSel.style.cssText = SEL_STYLE + "margin-top:6px;display:none;";
+    nbMilSel.innerHTML = '<option value="">— Selecteer milieustraat —</option>';
+    nbSel.parentNode.insertBefore(nbMilSel, nbSel.nextSibling);
+    nbSel.addEventListener("change", function () { vulMilSel(nbMilSel, this.value); });
+  }
 }
 
 // ── Categorie checkboxes opbouwen ──────────────────────────────────────────────

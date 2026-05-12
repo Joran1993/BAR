@@ -11,6 +11,7 @@ const SVG = {
 
 const token = localStorage.getItem("token");
 if (!token) location.href = "/login?redirect=/";
+document.documentElement.style.visibility = '';
 
 async function apiFetch(url, opts = {}) {
   const res = await fetch(url, {
@@ -130,13 +131,48 @@ let _allGemeenten = [];
 let _huidigItemId = null;
 let _huidigCategory = null;
 
+let _milieustraten = {}; // { gemeente: [milieustraat, ...] }
+
+function _vulMilieustraatSelect(sel, gemeente, huidig) {
+  const lijst = (_milieustraten[gemeente] || []);
+  if (!lijst.length) { sel.style.display = "none"; return; }
+  sel.innerHTML = '<option value="">— Selecteer milieustraat —</option>' +
+    lijst.map(m => `<option value="${m}"${m === huidig ? " selected" : ""}>${m}</option>`).join("");
+  sel.style.display = "";
+  if (lijst.length === 1) sel.value = lijst[0]; // auto-select als er maar 1 is
+}
+
 async function laadGemeenten() {
-  const res = await apiFetch("/api/gemeenten");
-  if (!res || !res.ok) return;
-  _allGemeenten = await res.json();
+  const [gemRes, milRes] = await Promise.all([
+    apiFetch("/api/gemeenten"),
+    apiFetch("/api/milieustraten"),
+  ]);
+  if (!gemRes || !gemRes.ok) return;
+  _allGemeenten = await gemRes.json();
+  if (milRes && milRes.ok) _milieustraten = await milRes.json();
+
+  // ── Scan-tab kiezer ──────────────────────────────────────────────────────
   const sel = document.getElementById("gemeente-kiezer");
-  sel.innerHTML = '<option value="">Selecteer gemeente…</option>' +
+  sel.innerHTML = '<option value="">Gemeente…</option>' +
     _allGemeenten.map(g => `<option value="${g}">${g}</option>`).join("");
+
+  const milSel = document.getElementById("milieustraat-kiezer");
+  if (milSel) {
+    sel.addEventListener("change", function () {
+      _vulMilieustraatSelect(milSel, this.value, "");
+    });
+  }
+
+  // ── Gebruikerspaneel selects ─────────────────────────────────────────────
+  const upGem = document.getElementById("up-gemeente");
+  if (upGem) {
+    upGem.innerHTML = '<option value="">— Selecteer gemeente —</option>' +
+      _allGemeenten.map(g => `<option value="${g}">${g}</option>`).join("");
+    upGem.addEventListener("change", function () {
+      const upMil = document.getElementById("up-milieustraat");
+      if (upMil) _vulMilieustraatSelect(upMil, this.value, "");
+    });
+  }
 }
 
 let _scanBedrijven = []; // huidige lijst in scan-flow, herordeerbaar
@@ -1038,7 +1074,13 @@ async function _abonneerPush() {
 
 // ── Gebruikerspaneel ───────────────────────────────────────────────────────────
 async function openUserPanel() {
-  document.getElementById("up-gemeente").value = localStorage.getItem("gemeente") || "";
+  const gem = localStorage.getItem("gemeente") || "";
+  const mil = localStorage.getItem("milieustraat") || "";
+  const upGem = document.getElementById("up-gemeente");
+  if (upGem) upGem.value = gem;
+  // Herstel milieustraat cascade
+  const upMil = document.getElementById("up-milieustraat");
+  if (upMil && gem) _vulMilieustraatSelect(upMil, gem, mil);
   document.getElementById("up-organisatie").value = localStorage.getItem("organisatie") || "";
   document.getElementById("up-status").textContent = "";
   document.getElementById("up-pwd").value = "";
@@ -1131,7 +1173,8 @@ function closeUserPanel() {
 }
 
 async function saveUserPanel() {
-  const gemeente    = document.getElementById("up-gemeente").value.trim();
+  const gemeente    = (document.getElementById("up-gemeente")?.value || "").trim();
+  const milieustraat = (document.getElementById("up-milieustraat")?.value || "").trim();
   const organisatie = document.getElementById("up-organisatie").value.trim();
   const pwd         = document.getElementById("up-pwd").value;
   const statusEl    = document.getElementById("up-status");
@@ -1150,6 +1193,7 @@ async function saveUserPanel() {
         window.token !== undefined && (window.token = data.token);
       }
     }
+    if (milieustraat) localStorage.setItem("milieustraat", milieustraat);
     if (organisatie !== (localStorage.getItem("organisatie") || "")) {
       const fd = new FormData(); fd.append("organisatie", organisatie);
       const res = await apiFetch(`/api/users/${userId}/organisatie`, { method: "PATCH", body: fd });

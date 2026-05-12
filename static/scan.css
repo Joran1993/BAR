@@ -160,12 +160,13 @@ body {
 
 .preview-wrap {
   position: relative;
-  margin: 16px;
+  margin: 16px auto;
+  max-width: 480px;
 }
 .preview-wrap img {
   display: block;
   width: 100%;
-  max-height: 280px;
+  max-height: 320px;
   object-fit: cover;
   border-radius: 10px;
 }
@@ -372,8 +373,8 @@ body {
 .stat-box:nth-child(2n) { border-right: none; }
 .stat-box.wide { grid-column: span 2; border-right: none; }
 .stat-box.wide:last-child { border-bottom: none; }
-.stat-box.co2-box small { color: #2e7d32; }
-.stat-box.co2-box span  { color: #2e7d32; }
+.stat-box.co2-box small { color: var(--orange); }
+.stat-box.co2-box span  { color: var(--orange); }
 .stat-box span {
   display: block;
   font-family: 'Barlow Condensed', sans-serif;
