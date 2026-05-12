@@ -5,6 +5,7 @@ Rollen: superadmin (platform), admin (gemeente), user (scanner)
 import asyncio
 import base64
 import os
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
@@ -1685,7 +1686,9 @@ async def get_dashboard(gemeente: str = "Almere"):
 
 @app.get("/catalogus", response_class=HTMLResponse)
 async def catalogus_page():
-    return _render_html("static/catalogus.html", DEFAULT_BRAND)
+    html = _render_html("static/catalogus.html", DEFAULT_BRAND)
+    html = re.sub(r'class="cat-hdr-sub">[^<]*<', 'class="cat-hdr-sub">Ingezameld bouwmateriaal · Milieustraat Almere-Buiten<', html)
+    return HTMLResponse(html)
 
 
 @app.get("/api/catalogus")
