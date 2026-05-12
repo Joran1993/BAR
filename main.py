@@ -85,20 +85,36 @@ HVC_GEMEENTEN = [
     "Utrecht", "Velsen", "Vijfheerenlanden", "Wassenaar", "Waterland",
     "Westland", "Wormerland", "Zaanstad", "Zandvoort", "Zeewolde", "Zwijndrecht",
 ]
+WAARDLANDEN_GEMEENTEN = [
+    "Alblasserdam", "Gorinchem", "Hardinxveld-Giessendam",
+    "Hendrik-Ido-Ambacht", "Molenlanden", "Papendrecht",
+    "Sliedrecht", "Vijfheerenlanden", "Zwijndrecht",
+]
 BRAND_GEMEENTEN = {"bar": BAR_GEMEENTEN, "hvc": HVC_GEMEENTEN, "rwm": RWM_GEMEENTEN}
+ORGANISATIE_GEMEENTEN = {
+    "waardlanden": WAARDLANDEN_GEMEENTEN,
+    "bar":         BAR_GEMEENTEN,
+    "rwm":         RWM_GEMEENTEN,
+    "hvc":         HVC_GEMEENTEN,
+}
 
 
 def _gemeente_filter(user: dict, gemeente: Optional[str] = None) -> Optional[str]:
     """
-    superadmin/admin: mag filteren op elke gemeente (None = alles)
-    user:             altijd eigen gemeente
+    superadmin:  mag alles zien (None = geen filter)
+    admin:       valt terug op eigen gemeente als geen param opgegeven
+    user:        altijd eigen gemeente
     """
-    if user["role"] in ("superadmin", "admin"):
+    if user["role"] == "superadmin":
         return gemeente or None
+    if user["role"] == "admin":
+        return gemeente or user.get("gemeente") or None
     return user.get("gemeente") or None
 
 
 def _gemeenten_expand(gemeente: Optional[str]) -> Optional[list]:
+    if gemeente and gemeente in ORGANISATIE_GEMEENTEN:
+        return ORGANISATIE_GEMEENTEN[gemeente]
     gemeenten = BRAND_GEMEENTEN.get(DEFAULT_BRAND)
     if not gemeenten:
         return None

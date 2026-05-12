@@ -59,8 +59,8 @@
 </head>
 <body>
   <header class="hdr">
-    <img src="/static/bouwkringloop-logo.jpg" alt="De Bouwkringloop">
-    <p class="hdr-sub">Dashboard · Milieustraat Barendrecht</p>
+    <img src="/static/bar-logo.jpg" alt="CIRQO" id="hdr-logo">
+    <p class="hdr-sub" id="hdr-sub">Dashboard</p>
   </header>
 
   <div class="dash">
@@ -86,8 +86,19 @@
   </div>
 
   <script>
+    // Auth check
+    if (!localStorage.getItem('token')) location.replace('/login?redirect=/dashboard');
+
+    const gemeente = localStorage.getItem('gemeente') || '';
+    const organisatie = localStorage.getItem('organisatie') || gemeente || 'Mijn gemeente';
+    document.getElementById('hdr-sub').textContent = 'Dashboard · ' + organisatie;
+    document.title = 'Dashboard — ' + organisatie;
+
     async function laad() {
-      const res = await fetch('/api/dashboard?gemeente=Barendrecht');
+      const token = localStorage.getItem('token');
+      const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+      const params = gemeente ? '?gemeente=' + encodeURIComponent(gemeente) : '';
+      const res = await fetch('/api/dashboard' + params, { headers });
       const d = await res.json();
 
       const t = d.totaal;

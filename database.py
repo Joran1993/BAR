@@ -205,6 +205,7 @@ def init_db():
             END $$;
         """)
     _create_default_admin()
+    _create_waardlanden_accounts()
     print("[db] PostgreSQL tabellen gereed")
 
 
@@ -222,6 +223,27 @@ def _create_default_admin():
                 "INSERT INTO users (username, password, role, gemeente, created_at) VALUES (%s, %s, 'superadmin', %s, %s)",
                 (username, hash_password(password), gemeente, datetime.now(timezone.utc).isoformat(timespec="seconds")),
             )
+
+
+def _create_waardlanden_accounts():
+    """Maak Waardlanden admin-accounts aan als ze nog niet bestaan."""
+    from auth import hash_password
+    accounts = [
+        ("gittaspruit@waardlanden.nl", "Gitta Spruit", "admin", "waardlanden", "Waardlanden2025!"),
+        ("waardlanden-test",           "Waardlanden Test", "admin", "waardlanden", "test-waardlanden"),
+    ]
+    with get_cursor() as cur:
+        for username, naam, role, gemeente, password in accounts:
+            cur.execute("SELECT 1 FROM users WHERE username = %s OR email = %s", (username, username))
+            if cur.fetchone():
+                continue
+            cur.execute(
+                """INSERT INTO users (username, password, role, gemeente, organisatie, email, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (username, hash_password(password), role, gemeente, naam, username,
+                 datetime.now(timezone.utc).isoformat(timespec="seconds"))
+            )
+            print(f"[db] Account aangemaakt: {username} (role={role}, gemeente={gemeente})")
 
 
 # ── Gebruikers ────────────────────────────────────────────────────────────────
@@ -255,12 +277,16 @@ def upsert_firebase_user(firebase_uid: str, email: str, naam: str,
     with get_cursor() as cur:
         cur.execute("SELECT * FROM users WHERE firebase_uid = %s", (firebase_uid,))
         row = cur.fetchone()
+        if not row and email:
+            # Fallback: zoek op email of username (pre-aangemaakte accounts koppelen aan Firebase)
+            cur.execute("SELECT * FROM users WHERE email = %s OR username = %s", (email, email))
+            row = cur.fetchone()
         if row:
-            # Behoud superadmin-rol — mag niet worden teruggezet door Firebase login
-            effective_role = row["role"] if row["role"] == "superadmin" else role
+            # Behoud bestaande rol voor admin/superadmin — Firebase login mag die niet terugzetten
+            effective_role = row["role"] if row["role"] in ("superadmin", "admin") else role
             cur.execute(
-                "UPDATE users SET email=%s, role=%s, organisatie=COALESCE(NULLIF(organisatie,''), %s), gemeente=COALESCE(NULLIF(gemeente,''), %s) WHERE firebase_uid=%s RETURNING *",
-                (email, effective_role, naam, gemeente, firebase_uid)
+                "UPDATE users SET email=%s, firebase_uid=%s, role=%s, organisatie=COALESCE(NULLIF(organisatie,''), %s), gemeente=COALESCE(NULLIF(gemeente,''), %s) WHERE id=%s RETURNING *",
+                (email, firebase_uid, effective_role, naam, gemeente, row["id"])
             )
             return dict(cur.fetchone())
         # Nieuw account aanmaken — geen wachtwoord nodig (firebase_uid is de authenticatie)
