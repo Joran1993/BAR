@@ -1331,36 +1331,51 @@ async def service_worker():
 
 DEFAULT_BRAND = os.getenv("BRAND", "cirqo")
 
+# Hostnames die een specifiek brand activeren (ook als substring)
+HOST_BRAND_MAP = {
+    "hvc": "hvc",
+    "bar": "bar",
+}
+
+
+def _detect_brand(request: Request) -> str:
+    host = request.headers.get("host", "").lower().split(":")[0]
+    for keyword, brand in HOST_BRAND_MAP.items():
+        if keyword in host:
+            return brand
+    return DEFAULT_BRAND
+
 
 @app.get("/", response_class=HTMLResponse)
-async def scan_app():
-    return _render_html("static/index.html", DEFAULT_BRAND)
+async def scan_app(request: Request):
+    return _render_html("static/index.html", _detect_brand(request))
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page():
-    return _render_html("static/login.html", DEFAULT_BRAND)
+async def login_page(request: Request):
+    return _render_html("static/login.html", _detect_brand(request))
 
 
 @app.get("/beheer", response_class=HTMLResponse)
-async def beheer_page():
-    return _render_html("static/beheer.html", DEFAULT_BRAND)
+async def beheer_page(request: Request):
+    return _render_html("static/beheer.html", _detect_brand(request))
 
 
 @app.get("/debug-brand")
-async def debug_brand():
+async def debug_brand(request: Request):
     import os as _os2
-    return {"DEFAULT_BRAND": DEFAULT_BRAND, "BRAND_ENV": _os2.getenv("BRAND"), "bedrijf_logo_check": "cirqo" if "cirqo-logo.webp" in _render_html("static/bedrijf.html", DEFAULT_BRAND) else "bar"}
+    detected = _detect_brand(request)
+    return {"DEFAULT_BRAND": DEFAULT_BRAND, "detected_brand": detected, "host": request.headers.get("host"), "BRAND_ENV": _os2.getenv("BRAND")}
 
 
 @app.get("/bedrijf", response_class=HTMLResponse)
-async def bedrijf_page():
-    return _render_html("static/bedrijf.html", DEFAULT_BRAND)
+async def bedrijf_page(request: Request):
+    return _render_html("static/bedrijf.html", _detect_brand(request))
 
 
 @app.get("/bedrijf/{token}", response_class=HTMLResponse)
-async def bedrijf_page_token(token: str):
-    return _render_html("static/bedrijf.html", DEFAULT_BRAND)
+async def bedrijf_page_token(token: str, request: Request):
+    return _render_html("static/bedrijf.html", _detect_brand(request))
 
 
 
@@ -1515,7 +1530,7 @@ BRANDS = {
     "cirqo": {
         "primary": "#86bc97", "secondary": "#6aaa82",
         "logo": "/static/cirqo-logo.webp", "name": "CIRQO",
-        "sub": "Milieustraat Almere-Buiten", "gemeente": "Almere",
+        "sub": "Digitaal productuitwisselingsnetwerk", "gemeente": "Almere",
     },
     "bar": {
         "primary": "#09be86", "secondary": "#07a874",
@@ -1530,7 +1545,7 @@ BRANDS = {
     "bouwkringloop": {
         "primary": "#e67026", "secondary": "#c45c1a",
         "logo": "/static/bouwkringloop-logo.jpg", "name": "De Bouwkringloop",
-        "sub": "Circulaire bouwmaterialen", "gemeente": "",
+        "sub": "Milieustraat Almere-Buiten", "gemeente": "",
     },
     "rwm": {
         "primary": "#F5C200", "secondary": "#D4A800",
@@ -1560,8 +1575,8 @@ def _render_html(path: str, brand: str) -> str:
     return html
 
 @app.get("/brand.css")
-async def brand_css():
-    css = _brand_css(DEFAULT_BRAND)
+async def brand_css(request: Request):
+    css = _brand_css(_detect_brand(request))
     return Response(content=css, media_type="text/css", headers={"Cache-Control": "no-cache"})
 
 @app.get("/bar/brand.css")

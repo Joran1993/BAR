@@ -9,6 +9,7 @@ const SVG = {
   leaf: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;display:inline-block"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>`,
 };
 
+const _BP = window._BP || "";
 const token = localStorage.getItem("token");
 if (!token) location.href = "/login?redirect=/";
 document.documentElement.style.visibility = '';
@@ -18,11 +19,11 @@ async function apiFetch(url, opts = {}) {
     ...opts,
     headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) }
   });
-  if (res.status === 401) { localStorage.clear(); location.href = "/login"; return null; }
+  if (res.status === 401) { localStorage.clear(); location.href = _BP + "/login"; return null; }
   return res;
 }
 
-function logout() { localStorage.clear(); location.href = "/login"; }
+function logout() { localStorage.clear(); location.href = _BP + "/login"; }
 
 // Toon ingelogde gebruiker en beheer-link
 const _role     = localStorage.getItem("role") || "user";
