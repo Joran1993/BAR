@@ -1115,13 +1115,14 @@ async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] 
     gemeente = _gemeente_filter(user, gemeente)
     gemeenten = _gemeenten_expand(gemeente)
     user_id = user["id"]
+    is_admin = user["role"] in ("admin", "superadmin")
     # Scanner always sees their own items regardless of GPS gemeente
     own_user_id = user_id if user["role"] == "user" else None
     cache_key = f"items:{gemeenten or gemeente}:{offset}:{user_id}"
     cached = cache_module.get(cache_key)
     if cached is not None:
         return cached
-    items = db.get_items(limit, offset, None if gemeenten else gemeente, user_id=user_id, gemeenten=gemeenten, own_user_id=own_user_id)
+    items = db.get_items(limit, offset, None if gemeenten else gemeente, user_id=user_id, gemeenten=gemeenten, own_user_id=own_user_id, all_aanbiedingen=is_admin)
     cache_module.set(cache_key, items, ttl=30)
     return items
 
@@ -1229,7 +1230,7 @@ async def get_deelnemers(user=Depends(get_current_user)):
         if gemeenten:
             cur.execute("""
                 SELECT b.id, b.naam, b.gemeente, b.email, b.telefoon,
-                       COALESCE(array_agg(bc.category ORDER BY bc.category)
+                       COALESCE(array_agg(DISTINCT bc.category)
                          FILTER (WHERE bc.category IS NOT NULL), '{}') AS categorieen,
                        COUNT(DISTINCT a.id) FILTER (WHERE a.status != 'niet_nodig') AS aanbieding_count
                 FROM bedrijven b
@@ -1242,7 +1243,7 @@ async def get_deelnemers(user=Depends(get_current_user)):
         else:
             cur.execute("""
                 SELECT b.id, b.naam, b.gemeente, b.email, b.telefoon,
-                       COALESCE(array_agg(bc.category ORDER BY bc.category)
+                       COALESCE(array_agg(DISTINCT bc.category)
                          FILTER (WHERE bc.category IS NOT NULL), '{}') AS categorieen,
                        COUNT(DISTINCT a.id) FILTER (WHERE a.status != 'niet_nodig') AS aanbieding_count
                 FROM bedrijven b
@@ -1274,11 +1275,13 @@ async def get_stats(gemeente: Optional[str] = None, user=Depends(get_current_use
         # Gewone gebruiker: alleen eigen aangeboden items
         data = db.get_stats(user_id=user["id"])
         return data
-    cache_key = f"stats:{gemeente}"
+    gemeenten = _gemeenten_expand(gemeente)
+    cache_key = f"stats:{gemeenten or gemeente}"
     cached = cache_module.get(cache_key)
     if cached is not None:
         return cached
-    data = db.get_stats(gemeente)
+    g = None if gemeenten else gemeente
+    data = db.get_stats(g, gemeenten=gemeenten)
     cache_module.set(cache_key, data, ttl=30)
     return data
 
@@ -1286,11 +1289,13 @@ async def get_stats(gemeente: Optional[str] = None, user=Depends(get_current_use
 @app.get("/api/charts")
 async def get_charts(days: int = 30, gemeente: Optional[str] = None, user=Depends(get_current_user)):
     gemeente = _gemeente_filter(user, gemeente)
-    cache_key = f"charts:{gemeente}:{days}"
+    gemeenten = _gemeenten_expand(gemeente)
+    cache_key = f"charts:{gemeenten or gemeente}:{days}"
     cached = cache_module.get(cache_key)
     if cached is not None:
         return cached
-    data = db.get_chart_data(days, gemeente)
+    g = None if gemeenten else gemeente
+    data = db.get_chart_data(days, g, gemeenten=gemeenten)
     cache_module.set(cache_key, data, ttl=60)
     return data
 
@@ -1371,6 +1376,11 @@ async def scan_app(request: Request):
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return _render_html("static/login.html", _detect_brand(request))
+
+
+@app.get("/auth-action", response_class=HTMLResponse)
+async def auth_action_page(request: Request):
+    return _render_html("static/auth-action.html", _detect_brand(request))
 
 
 @app.get("/beheer", response_class=HTMLResponse)
@@ -1576,7 +1586,7 @@ def _brand_css(brand: str) -> str:
     return f""":root {{ --orange: {b['primary']}; --orange2: {b['secondary']}; }}
 .hdr-logo-img, .cat-logo, .kiosk-logo {{ content: url('{b['logo']}') !important; }}"""
 
-def _render_html(path: str, brand: str) -> str:
+def _render_html(path: str, brand: str) -> HTMLResponse:
     with open(path, "r", encoding="utf-8") as f:
         html = f.read()
     b = BRANDS.get(brand, BRANDS["cirqo"])
@@ -1589,7 +1599,7 @@ def _render_html(path: str, brand: str) -> str:
     # Swap subtitle
     html = html.replace("Milieustraat Almere-Buiten", b["sub"])
     html = html.replace("CIRQO", b["name"])
-    return html
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
 
 @app.get("/brand.css")
 async def brand_css(request: Request):
@@ -1672,37 +1682,9 @@ async def dashboard_page():
     return _render_html("static/dashboard.html", DEFAULT_BRAND)
 
 
-@app.get("/api/dashboard")
-async def get_dashboard(gemeente: str = "Almere"):
-    gemeenten = _gemeenten_expand(gemeente)
-    gem_filter = "gemeente = ANY(%s)" if gemeenten else "gemeente = %s"
-    gem_param = gemeenten if gemeenten else gemeente
-    with db.get_cursor() as cur:
-        cur.execute(f"SELECT COUNT(*) AS cnt, ROUND(SUM(gewicht_kg)::numeric,1) AS totaal_kg FROM items WHERE {gem_filter} AND photo_url IS NOT NULL", (gem_param,))
-        totaal = dict(cur.fetchone())
-
-        cur.execute(f"""
-            SELECT COALESCE(category,'Onbekend') AS cat,
-                   COUNT(*) AS n,
-                   ROUND(SUM(gewicht_kg)::numeric,1) AS kg
-            FROM items WHERE {gem_filter} AND photo_url IS NOT NULL
-            GROUP BY cat ORDER BY n DESC
-        """, (gem_param,))
-        cats = [dict(r) for r in cur.fetchall()]
-
-        cur.execute(f"""
-            SELECT id, ai_label, photo_url_thumb, photo_url, category, gewicht_kg
-            FROM items WHERE {gem_filter} AND photo_url IS NOT NULL
-            ORDER BY timestamp DESC LIMIT 12
-        """, (gem_param,))
-        recent = [dict(r) for r in cur.fetchall()]
-
-    return {"gemeente": gemeente, "totaal": totaal, "categorieen": cats, "recent": recent}
-
-
 @app.get("/catalogus", response_class=HTMLResponse)
 async def catalogus_page():
-    html = _render_html("static/catalogus.html", DEFAULT_BRAND)
+    html = _render_html("static/catalogus.html", DEFAULT_BRAND).body.decode()
     html = re.sub(r'class="cat-hdr-sub">[^<]*<', 'class="cat-hdr-sub">Ingezameld bouwmateriaal · Milieustraat Almere-Buiten<', html)
     return HTMLResponse(html)
 
