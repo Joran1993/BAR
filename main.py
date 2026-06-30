@@ -2020,13 +2020,29 @@ def _brand_css(brand: str) -> str:
     return f""":root {{ --orange: {b['primary']}; --orange2: {b['secondary']}; }}
 .hdr-logo-img, .cat-logo, .kiosk-logo {{ content: url('{b['logo']}') !important; }}"""
 
+import glob as _glob, re as _re
+
+def _compute_asset_version() -> str:
+    """Versietoken voor cache-busting: nieuwste wijzigingstijd van alle JS/CSS.
+    Verandert vanzelf bij elke deploy waarin een asset gewijzigd is."""
+    try:
+        files = _glob.glob("static/*.js") + _glob.glob("static/*.css")
+        return str(int(max(os.path.getmtime(f) for f in files)))
+    except Exception:
+        return "1"
+
+ASSET_VERSION = _compute_asset_version()
+
+
 def _render_html(path: str, brand: str) -> HTMLResponse:
     with open(path, "r", encoding="utf-8") as f:
         html = f.read()
     b = BRANDS.get(brand, BRANDS["cirqo"])
-    # Inject brand CSS inline
-    brand_css_tag = f'<style>{_brand_css(brand)}</style>'
-    html = html.replace("</head>", f"{brand_css_tag}\n</head>", 1)
+    # Inject brand CSS + app-versie (voor auto-update) inline
+    head_inject = f'<style>{_brand_css(brand)}</style>\n<script>window._APP_VERSION="{ASSET_VERSION}";</script>'
+    html = html.replace("</head>", f"{head_inject}\n</head>", 1)
+    # Automatische cache-busting: vers versienummer op alle /static/*.js en *.css
+    html = _re.sub(r'(/static/[\w./-]+\.(?:js|css))(\?v=[\w.]+)?', r'\1?v=' + ASSET_VERSION, html)
     # Swap logo src — vervang alle bekende logo-paden
     for known_logo in ["/static/cirqo-logo.webp", "/static/bouwkringloop-logo.jpg"]:
         html = html.replace(known_logo, b["logo"])
@@ -2034,6 +2050,11 @@ def _render_html(path: str, brand: str) -> HTMLResponse:
     html = html.replace("Milieustraat Almere-Buiten", b["sub"])
     html = html.replace("CIRQO", b["name"])
     return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/version")
+async def app_version():
+    return {"version": ASSET_VERSION}
 
 @app.get("/brand.css")
 async def brand_css(request: Request):

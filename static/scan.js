@@ -1447,3 +1447,31 @@ _ensurePushRegistered();
 setInterval(syncItems, 30000);
 setInterval(syncStats, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) syncItems(); });
+
+// ── Auto-update: herlaad zodra er een nieuwe versie live staat ──────────────────
+let _pendingUpdate = false;
+async function _checkAppVersie() {
+  try {
+    const r = await fetch("/api/version", { cache: "no-store" });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d && d.version && window._APP_VERSION && d.version !== window._APP_VERSION) {
+      _pendingUpdate = true;
+      _pasUpdateToe();
+    }
+  } catch (e) { /* offline o.i.d. — later opnieuw */ }
+}
+function _pasUpdateToe() {
+  if (!_pendingUpdate) return;
+  const ae = document.activeElement;
+  const typing = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA");
+  const modalOpen = !document.getElementById("modal").classList.contains("hidden");
+  if (typing || modalOpen) return;  // niet storen; opnieuw bij volgende check/focus
+  const t = document.createElement("div");
+  t.textContent = "App wordt bijgewerkt…";
+  t.style.cssText = "position:fixed;left:50%;bottom:calc(90px + var(--sab));transform:translateX(-50%);z-index:900;background:var(--ink);color:#fff;padding:10px 16px;border-radius:100px;font-size:0.85rem;box-shadow:0 4px 16px rgba(0,0,0,.3);";
+  document.body.appendChild(t);
+  setTimeout(() => location.reload(), 1200);
+}
+setInterval(_checkAppVersie, 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { _checkAppVersie(); _pasUpdateToe(); } });
