@@ -292,21 +292,23 @@
     }
 
     var OL = "style='margin:8px 0 0 18px;padding:0;display:flex;flex-direction:column;gap:6px;'";
+    var SHARE = "<svg width='22' height='22' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' style='vertical-align:middle'><path d='M12 3v12'/><path d='M8 7l4-4 4 4'/><path d='M7 11H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1'/></svg>";
+    var SHARE_CUE = "<div style='display:flex;align-items:center;gap:10px;margin:10px 0;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;'><span style='display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:#fff;border:1px solid var(--border);color:var(--orange);flex-shrink:0;'>" + SHARE + "</span><span style='font-size:.8rem;color:var(--muted);'>Zoek dit <b>deel-icoon</b> — onderin (iPhone) of rechtsboven (iPad) in Safari.</span></div>";
     var STAPPEN = {
       'installed': "✓ De app is al op dit apparaat geïnstalleerd.",
       'ios-safari':
-        "<b>iPhone / iPad — Safari</b>" +
-        "<ol " + OL + "><li>Tik onderin op het <b>deel-icoon</b> (vierkantje met pijltje omhoog).</li>" +
+        "<b>iPhone / iPad — Safari</b>" + SHARE_CUE +
+        "<ol " + OL + "><li>Tik op het <b>deel-icoon</b> hierboven.</li>" +
         "<li>Scroll en kies <b>‘Zet op beginscherm’</b>.</li>" +
         "<li>Tik rechtsboven op <b>‘Voeg toe’</b>.</li></ol>",
       'ios-chrome':
-        "<b>iPhone / iPad — Chrome</b>" +
+        "<b>iPhone / iPad — Chrome</b>" + SHARE_CUE +
         "<ol " + OL + "><li>Tik op het <b>deel-icoon</b> (of het <b>⋯</b>-menu).</li>" +
         "<li>Kies <b>‘Zet op beginscherm’</b>.</li></ol>" +
         "<p style='margin-top:8px;color:var(--muted);font-size:.8rem;'>Werkt het niet? Open deze pagina in <b>Safari</b> en probeer het daar.</p>",
       'ios-firefox':
         "<b>iPhone / iPad — Firefox</b>" +
-        "<p style='margin-top:6px;'>Op iOS kun je een app het makkelijkst via <b>Safari</b> installeren.</p>" +
+        "<p style='margin-top:6px;'>Op iOS kun je een app het makkelijkst via <b>Safari</b> installeren.</p>" + SHARE_CUE +
         "<ol " + OL + "><li>Open deze pagina in <b>Safari</b>.</li>" +
         "<li>Tik op het <b>deel-icoon</b> → <b>‘Zet op beginscherm’</b>.</li></ol>",
       'android':
