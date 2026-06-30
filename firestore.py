@@ -49,6 +49,11 @@ def _get_db():
         if _db is not None:
             return _db
         try:
+            import firebase_admin
+            try:
+                firebase_admin.get_app()
+            except ValueError:
+                init_firebase()
             from firebase_admin import firestore
             _db = firestore.client()
             print("[firestore] Verbonden met Firebase project")

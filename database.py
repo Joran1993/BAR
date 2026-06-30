@@ -405,6 +405,52 @@ def update_user_password(user_id: int, new_password: str):
         cur.execute("UPDATE users SET password = %s WHERE id = %s", (hash_password(new_password), user_id))
 
 
+def get_user_by_id_full(user_id: int):
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_user_by_email(email: str):
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM users WHERE email = %s OR username = %s", (email, email))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_reset_token(user_id: int, token: str, expires_at):
+    with get_cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        cur.execute("DELETE FROM password_reset_tokens WHERE user_id = %s", (user_id,))
+        cur.execute(
+            "INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES (%s, %s, %s)",
+            (token, user_id, expires_at),
+        )
+
+
+def get_reset_token(token: str):
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM password_reset_tokens WHERE token = %s AND expires_at > NOW()",
+            (token,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def delete_reset_token(token: str):
+    with get_cursor() as cur:
+        cur.execute("DELETE FROM password_reset_tokens WHERE token = %s", (token,))
+
+
 def get_gemeenten():
     with get_cursor() as cur:
         cur.execute(
@@ -453,9 +499,9 @@ def update_item(item_id: int, manual_note: Optional[str], category: Optional[str
         )
 
 
-def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None, own_user_id: Optional[int] = None):
+def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None, own_user_id: Optional[int] = None, all_aanbiedingen: bool = False):
     with get_cursor() as cur:
-        base = "SELECT id, timestamp, photo_url, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items"
+        base = "SELECT id, timestamp, photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items"
         if gemeenten:
             if own_user_id:
                 cur.execute(
@@ -485,7 +531,31 @@ def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, 
             )
         items = [dict(r) for r in cur.fetchall()]
 
-        if user_id and items:
+        if all_aanbiedingen and items:
+            item_ids = [i["id"] for i in items]
+            placeholders = ",".join(["%s"] * len(item_ids))
+            cur.execute(
+                f"""SELECT DISTINCT ON (a.item_id) a.item_id, a.id as aanbieding_id,
+                       a.status as aanbieding_status, a.created_at as aanbieding_created_at,
+                       COALESCE(u.organisatie, u.username) as aangeboden_door_naam,
+                       bdr.naam as bedrijf_naam
+                    FROM aanbiedingen a
+                    LEFT JOIN users u ON u.id = a.aangeboden_door
+                    LEFT JOIN bedrijven bdr ON bdr.id = a.bedrijf_id
+                    WHERE a.item_id IN ({placeholders})
+                    ORDER BY a.item_id, a.created_at DESC""",
+                item_ids,
+            )
+            aanbiedingen_map = {r["item_id"]: dict(r) for r in cur.fetchall()}
+            for item in items:
+                a = aanbiedingen_map.get(item["id"])
+                if a:
+                    item["aanbieding_id"] = a["aanbieding_id"]
+                    item["aanbieding_status"] = a["aanbieding_status"]
+                    item["aanbieding_created_at"] = a["aanbieding_created_at"]
+                    item["aangeboden_door_naam"] = a["aangeboden_door_naam"]
+                    item["bedrijf_naam"] = a["bedrijf_naam"]
+        elif user_id and items:
             item_ids = [i["id"] for i in items]
             placeholders = ",".join(["%s"] * len(item_ids))
             cur.execute(
@@ -527,7 +597,7 @@ def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, 
 def get_item(item_id: int, include_photo: bool = False):
     with get_cursor() as cur:
         cur.execute(
-            "SELECT id, timestamp, photo_url, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd FROM items WHERE id = %s",
+            "SELECT id, timestamp, photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd FROM items WHERE id = %s",
             (item_id,),
         )
         row = cur.fetchone()
@@ -557,7 +627,7 @@ def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gem
         today = cur.fetchone()["n"]
         cur.execute(f"SELECT COALESCE(SUM(gewicht_kg), 0) as kg FROM items {where}", params)
         totaal_kg = cur.fetchone()["kg"]
-        cur.execute(f"SELECT category, COUNT(*) as count FROM items {where} {'AND' if where else 'WHERE'} category IS NOT NULL GROUP BY category ORDER BY count DESC", params)
+        cur.execute(f"SELECT category, COUNT(*) as count, COALESCE(SUM(gewicht_kg), 0) as kg FROM items {where} {'AND' if where else 'WHERE'} category IS NOT NULL GROUP BY category ORDER BY count DESC", params)
         categories = [dict(r) for r in cur.fetchall()]
         return {
             "total": total,
@@ -742,17 +812,32 @@ def get_aanbiedingen_voor_item(item_id: int):
         return [dict(r) for r in cur.fetchall()]
 
 
-def get_aanbiedingen_voor_bedrijf(bedrijf_id: int):
+def get_aanbiedingen_voor_bedrijf(bedrijf_id: int, limit: int = 15, offset: int = 0, status: str = None):
     with get_cursor() as cur:
-        cur.execute("""
+        params: list = [bedrijf_id]
+        status_clause = ""
+        if status == "open":
+            status_clause = " AND a.status IN ('open', 'beschikbaar')"
+        elif status and status != "alle":
+            status_clause = " AND a.status = %s"
+            params.append(status)
+
+        cur.execute(
+            f"SELECT COUNT(*) FROM aanbiedingen a JOIN items i ON i.id = a.item_id WHERE a.bedrijf_id = %s{status_clause}",
+            params,
+        )
+        total = cur.fetchone()[0]
+
+        cur.execute(f"""
             SELECT a.id, a.status, a.created_at, a.updated_at,
                    i.ai_label, i.ai_detail, i.gewicht_kg, i.category, i.photo_url, i.gemeente
             FROM aanbiedingen a
             JOIN items i ON i.id = a.item_id
-            WHERE a.bedrijf_id = %s
+            WHERE a.bedrijf_id = %s{status_clause}
             ORDER BY a.created_at DESC
-        """, (bedrijf_id,))
-        return [dict(r) for r in cur.fetchall()]
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        return {"items": [dict(r) for r in cur.fetchall()], "total": total}
 
 
 def get_aanbiedingen_voor_beheer(gemeente: Optional[str] = None):

@@ -58,7 +58,6 @@ def require_admin(user=Depends(get_current_user)):
     return user
 
 
-BAR_GEMEENTEN = ["Barendrecht", "Ridderkerk", "Albrandswaard"]
 RWM_GEMEENTEN = [
     "Roermond", "Leudal", "Maasgouw", "Echt-Susteren",
     "Roerdalen", "Weert", "Beesel", "Bergen",
@@ -73,29 +72,15 @@ RWM_MILIEUSTRATEN = {
     "Beesel":        ["Milieustraat Reuver"],
     "Bergen":        ["Milieustraat Well"],
 }
-HVC_GEMEENTEN = [
-    "Alblasserdam", "Alkmaar", "Almere", "Bergen", "Beverwijk", "Castricum",
-    "Delft", "Den Helder", "Dordrecht", "Drechterland", "Dronten", "Dijk en Waard",
-    "Edam-Volendam", "Enkhuizen", "Gorinchem", "Haarlem", "Hardinxveld-Giessendam",
-    "Heemskerk", "Heiloo", "Hendrik-Ido-Ambacht", "Hollands Kroon", "Hoorn",
-    "Koggenland", "Leidschendam-Voorburg", "Lelystad", "Maassluis", "Medemblik",
-    "Midden-Delfland", "Molenlanden", "Nieuwegein", "Noordoostpolder", "Opmeer",
-    "Papendrecht", "Pijnacker-Nootdorp", "Purmerend", "Rijswijk", "Schagen",
-    "Sliedrecht", "Smallingerland", "Stede Broec", "Texel", "Uitgeest", "Urk",
-    "Utrecht", "Velsen", "Vijfheerenlanden", "Wassenaar", "Waterland",
-    "Westland", "Wormerland", "Zaanstad", "Zandvoort", "Zeewolde", "Zwijndrecht",
-]
 WAARDLANDEN_GEMEENTEN = [
     "Alblasserdam", "Gorinchem", "Hardinxveld-Giessendam",
     "Hendrik-Ido-Ambacht", "Molenlanden", "Papendrecht",
     "Sliedrecht", "Vijfheerenlanden", "Zwijndrecht",
 ]
-BRAND_GEMEENTEN = {"bar": BAR_GEMEENTEN, "hvc": HVC_GEMEENTEN, "rwm": RWM_GEMEENTEN}
+BRAND_GEMEENTEN = {"rwm": RWM_GEMEENTEN}
 ORGANISATIE_GEMEENTEN = {
     "waardlanden": WAARDLANDEN_GEMEENTEN,
-    "bar":         BAR_GEMEENTEN,
     "rwm":         RWM_GEMEENTEN,
-    "hvc":         HVC_GEMEENTEN,
 }
 
 
@@ -134,6 +119,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[main] Firebase init mislukt (niet fataal): {e}")
     print(f"[main] gestart — DEFAULT_BRAND={DEFAULT_BRAND!r}, BRAND_ENV={os.getenv('BRAND')!r}")
+    asyncio.create_task(_firestore_sync_loop())
     yield
 
 
@@ -149,8 +135,355 @@ def _migrate_admin_to_superadmin():
         print(f"[migrate] {e}")
 
 
+# Ringtweelijst e-mail → bedrijf_id
+_RINGTWO_EMAIL_BEDRIJF = {
+    "info@kringloopgorinchem.nl": 20,   # Kringloop Gorinchem
+    "daan@opwaarts.nu":           38,   # Opwaarts (Almere)
+    "martin@behoudenvaart.net":   23,   # SitY academie
+}
+
+# Gemeente → standaard afnemer als er geen Ringtweelijst is
+_GEMEENTE_BEDRIJF = {
+    "hardinxveld-giessendam": 21,  # De Gezel
+    "hardinxveld": 21,
+}
+
+
+def _backup_firestore_docs(docs: list):
+    """Sla alle Firestore Marketplaceoffers op als raw JSON backup — ongeacht of we de gebruiker kennen."""
+    import json as _json
+    try:
+        with db.get_cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS firestore_backup (
+                    doc_id      TEXT PRIMARY KEY,
+                    collection  TEXT NOT NULL DEFAULT 'Marketplaceoffers',
+                    data        JSONB NOT NULL,
+                    first_seen  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    last_seen   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            for doc in docs:
+                raw = {}
+                for k, v in doc.to_dict().items():
+                    if hasattr(v, "timestamp"):
+                        raw[k] = v.isoformat() if hasattr(v, "isoformat") else str(v)
+                    elif hasattr(v, "_seconds"):
+                        from datetime import datetime, timezone
+                        raw[k] = datetime.fromtimestamp(v.timestamp(), tz=timezone.utc).isoformat()
+                    else:
+                        raw[k] = v
+                cur.execute("""
+                    INSERT INTO firestore_backup (doc_id, data)
+                    VALUES (%s, %s)
+                    ON CONFLICT (doc_id) DO UPDATE
+                        SET data = EXCLUDED.data, last_seen = NOW()
+                """, (doc.id, _json.dumps(raw, default=str)))
+    except Exception as e:
+        print(f"[firestore-backup] Fout: {e}")
+
+
+def _estimate_weight_background(item_id: int, photo_url: str):
+    """Download foto en schat gewicht via AI — draait in achtergrond-thread."""
+    def _run():
+        try:
+            import urllib.request
+            import base64
+            with urllib.request.urlopen(photo_url, timeout=15) as r:
+                img_b64 = base64.b64encode(r.read()).decode()
+            _, _, gewicht_kg, _, _ = ai_module.analyse_photo(img_b64)
+            if gewicht_kg is not None:
+                with db.get_cursor() as cur:
+                    cur.execute("UPDATE items SET gewicht_kg = %s WHERE id = %s AND gewicht_kg IS NULL",
+                                (gewicht_kg, item_id))
+                print(f"[gewicht] Item {item_id}: {gewicht_kg} kg")
+        except Exception as e:
+            print(f"[gewicht] Item {item_id} fout: {e}")
+    import threading
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _fix_ringtwo_aanbieding(doc):
+    """Corrigeer aanbieding van een al-geïmporteerd item als Ringtweelijst afwijkt."""
+    try:
+        d = doc.to_dict()
+        ringtwo = d.get("Ringtweelijst") or []
+        if isinstance(ringtwo, str):
+            ringtwo = [ringtwo]
+        bedrijf_ids = [_RINGTWO_EMAIL_BEDRIJF[e] for e in ringtwo if e in _RINGTWO_EMAIL_BEDRIJF]
+        if not bedrijf_ids:
+            return  # geen Ringtweelijst-match, geen actie
+        with db.get_cursor() as cur:
+            cur.execute("SELECT id FROM items WHERE firestore_doc_id = %s", (doc.id,))
+            row = cur.fetchone()
+            if not row:
+                return
+            item_id = row["id"]
+            cur.execute("SELECT bedrijf_id FROM aanbiedingen WHERE item_id = %s", (item_id,))
+            huidige = {r["bedrijf_id"] for r in cur.fetchall()}
+            for bedrijf_id in bedrijf_ids:
+                if bedrijf_id not in huidige:
+                    cur.execute("""
+                        INSERT INTO aanbiedingen (item_id, bedrijf_id, aangeboden_door, status, created_at)
+                        VALUES (%s, %s, (SELECT uploaded_by FROM items WHERE id=%s), 'beschikbaar', NOW())
+                        ON CONFLICT DO NOTHING
+                    """, (item_id, bedrijf_id, item_id))
+                    print(f"[ringtwo-fix] Item {item_id} → bedrijf {bedrijf_id}")
+            # Verwijder foute gemeente-fallback als Ringtweelijst wél gevuld is
+            wrong = huidige - set(bedrijf_ids)
+            for w in wrong:
+                cur.execute(
+                    "DELETE FROM aanbiedingen WHERE item_id=%s AND bedrijf_id=%s AND status='beschikbaar'",
+                    (item_id, w)
+                )
+    except Exception as e:
+        print(f"[ringtwo-fix] {e}")
+
+
+def _sync_firestore_items_now() -> int:
+    """Importeer nieuwe Marketplaceoffers uit Firestore. Geeft aantal geïmporteerde items terug."""
+    try:
+        fsdb = fs._get_db()
+        if not fsdb:
+            return 0
+
+        # Bestaande firestore_doc_ids ophalen
+        with db.get_cursor() as cur:
+            cur.execute("SELECT firestore_doc_id FROM items WHERE firestore_doc_id IS NOT NULL")
+            existing = {r["firestore_doc_id"] for r in cur.fetchall()}
+
+        docs = fsdb.collection("Marketplaceoffers").get()
+        imported = 0
+
+        # Backup alle docs ongeacht of ze al geïmporteerd zijn
+        _backup_firestore_docs(docs)
+
+        for doc in docs:
+            if doc.id in existing:
+                # Controleer of aanbieding klopt met Ringtweelijst — herstel indien nodig
+                _fix_ringtwo_aanbieding(doc)
+                continue
+            d = doc.to_dict()
+
+            # Datum bepalen
+            ts = d.get("Datumaangemaakt")
+            if not ts or not hasattr(ts, "timestamp"):
+                continue
+            from datetime import datetime, timezone
+            dt = datetime.fromtimestamp(ts.timestamp(), tz=timezone.utc)
+
+            foto = d.get("Foto") or ""
+            foto_urls = [u for u in [d.get("Foto"), d.get("foto2"), d.get("foto3"), d.get("foto4")] if u]
+            omschrijving = d.get("Omschrijving") or ""
+            categorie = d.get("Categorie") or ""
+            gemeente = d.get("Gemeente") or ""
+            firebase_uid = d.get("uid") or ""
+            email = d.get("user") or d.get("Productaanbieder") or ""
+
+            # Gebruiker opzoeken
+            supabase_user = None
+            if firebase_uid:
+                supabase_user = db.get_user_by_firebase_uid(firebase_uid)
+            if not supabase_user and email:
+                supabase_user = db.get_user_by_email(email)
+            if not supabase_user:
+                continue  # onbekende gebruiker — sla over
+
+            user_id = supabase_user["id"]
+
+            # Item aanmaken
+            import json as _json
+            with db.get_cursor() as cur:
+                cur.execute("""
+                    INSERT INTO items (timestamp, photo_url, photo_urls, ai_label, ai_detail, category,
+                                       gemeente, geaccepteerd, uploaded_by, firestore_doc_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, true, %s, %s)
+                    ON CONFLICT DO NOTHING
+                    RETURNING id
+                """, (dt, foto, _json.dumps(foto_urls) if len(foto_urls) > 1 else None,
+                      omschrijving, omschrijving, categorie, gemeente, user_id, doc.id))
+                row = cur.fetchone()
+                if not row:
+                    continue
+                item_id = row["id"]
+
+                # Afnemer bepalen via Ringtweelijst, anders gemeente-default
+                ringtwo = d.get("Ringtweelijst") or []
+                bedrijf_ids = [
+                    _RINGTWO_EMAIL_BEDRIJF[e]
+                    for e in (ringtwo if isinstance(ringtwo, list) else [])
+                    if e in _RINGTWO_EMAIL_BEDRIJF
+                ]
+                if not bedrijf_ids:
+                    gemeente_key = gemeente.lower().strip()
+                    fallback = next(
+                        (v for k, v in _GEMEENTE_BEDRIJF.items() if k in gemeente_key), None
+                    )
+                    if fallback:
+                        bedrijf_ids = [fallback]
+                for bedrijf_id in bedrijf_ids:
+                    cur.execute("""
+                        INSERT INTO aanbiedingen (item_id, bedrijf_id, aangeboden_door, status, created_at)
+                        VALUES (%s, %s, %s, 'beschikbaar', %s)
+                        ON CONFLICT DO NOTHING
+                    """, (item_id, bedrijf_id, user_id, dt))
+
+            imported += 1
+            print(f"[firestore-sync] Item {item_id} geïmporteerd: {omschrijving[:60]}")
+            if foto:
+                _estimate_weight_background(item_id, foto)
+
+        return imported
+    except Exception as e:
+        print(f"[firestore-sync] Fout: {e}")
+        return 0
+
+
+def _start_firestore_listener():
+    """Start een realtime Firestore listener die direct reageert op nieuwe Marketplaceoffers."""
+    try:
+        fsdb = fs._get_db()
+        if not fsdb:
+            return
+
+        def _on_snapshot(col_snapshot, changes, read_time):
+            for change in changes:
+                if change.type.name != "ADDED":
+                    continue
+                doc = change.document
+                # Backup altijd
+                _backup_firestore_docs([doc])
+                # Controleer of al geïmporteerd
+                with db.get_cursor() as cur:
+                    cur.execute("SELECT id FROM items WHERE firestore_doc_id = %s", (doc.id,))
+                    if cur.fetchone():
+                        continue
+                # Verwerk als nieuw item via bestaande sync-logica
+                _sync_single_doc(doc)
+
+        fsdb.collection("Marketplaceoffers").on_snapshot(_on_snapshot)
+        print("[firestore-listener] Realtime listener gestart op Marketplaceoffers")
+    except Exception as e:
+        print(f"[firestore-listener] Start mislukt: {e}")
+
+
+def _sync_single_doc(doc):
+    """Importeer één Firestore-document als CIRQO-item."""
+    try:
+        d = doc.to_dict()
+        ts = d.get("Datumaangemaakt")
+        if not ts or not hasattr(ts, "timestamp"):
+            return
+        from datetime import datetime, timezone
+        dt = datetime.fromtimestamp(ts.timestamp(), tz=timezone.utc)
+
+        foto        = d.get("Foto") or ""
+        foto_urls   = [u for u in [d.get("Foto"), d.get("foto2"), d.get("foto3"), d.get("foto4")] if u]
+        omschrijving = d.get("Omschrijving") or ""
+        categorie   = d.get("Categorie") or ""
+        gemeente    = d.get("Gemeente") or ""
+        firebase_uid = d.get("uid") or ""
+        email       = d.get("user") or d.get("Productaanbieder") or ""
+
+        supabase_user = None
+        if firebase_uid:
+            supabase_user = db.get_user_by_firebase_uid(firebase_uid)
+        if not supabase_user and email:
+            supabase_user = db.get_user_by_email(email)
+        if not supabase_user:
+            print(f"[firestore-listener] Onbekende gebruiker voor doc {doc.id}, sla op in backup")
+            return
+
+        import json as _json
+        user_id = supabase_user["id"]
+        with db.get_cursor() as cur:
+            cur.execute("""
+                INSERT INTO items (timestamp, photo_url, photo_urls, ai_label, ai_detail, category,
+                                   gemeente, geaccepteerd, uploaded_by, firestore_doc_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, true, %s, %s)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+            """, (dt, foto, _json.dumps(foto_urls) if len(foto_urls) > 1 else None,
+                  omschrijving, omschrijving, categorie, gemeente, user_id, doc.id))
+            row = cur.fetchone()
+            if not row:
+                return
+            item_id = row["id"]
+
+            ringtwo = d.get("Ringtweelijst") or []
+            bedrijf_ids = [
+                _RINGTWO_EMAIL_BEDRIJF[e]
+                for e in (ringtwo if isinstance(ringtwo, list) else [])
+                if e in _RINGTWO_EMAIL_BEDRIJF
+            ]
+            if not bedrijf_ids:
+                gemeente_key = gemeente.lower().strip()
+                fallback = next(
+                    (v for k, v in _GEMEENTE_BEDRIJF.items() if k in gemeente_key), None
+                )
+                if fallback:
+                    bedrijf_ids = [fallback]
+            for bedrijf_id in bedrijf_ids:
+                cur.execute("""
+                    INSERT INTO aanbiedingen (item_id, bedrijf_id, aangeboden_door, status, created_at)
+                    VALUES (%s, %s, %s, 'beschikbaar', %s)
+                    ON CONFLICT DO NOTHING
+                """, (item_id, bedrijf_id, user_id, dt))
+
+        print(f"[firestore-listener] Item {item_id} direct geïmporteerd: {omschrijving[:60]}")
+        if foto:
+            _estimate_weight_background(item_id, foto)
+    except Exception as e:
+        print(f"[firestore-listener] Fout bij verwerken doc {doc.id}: {e}")
+
+
+async def _firestore_sync_loop():
+    """Eenmalige initiële sync bij startup, daarna houdt de realtime listener het bij."""
+    import asyncio as _asyncio
+    # Kleine delay zodat de app volledig gestart is
+    await _asyncio.sleep(5)
+    n = await _asyncio.get_event_loop().run_in_executor(None, _sync_firestore_items_now)
+    if n:
+        print(f"[firestore-sync] {n} nieuwe items geïmporteerd bij startup")
+    # Start realtime listener in achtergrond-thread
+    import threading
+    threading.Thread(target=_start_firestore_listener, daemon=True).start()
+
+
 app = FastAPI(title="De Bouwkringloop", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=()"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+@app.get("/robots.txt", response_class=Response)
+async def robots_txt():
+    content = "User-agent: *\nAllow: /\nSitemap: https://app.cirqo.nl/sitemap.xml\n"
+    return Response(content=content, media_type="text/plain")
+
+
+@app.get("/sitemap.xml", response_class=Response)
+async def sitemap_xml():
+    content = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://app.cirqo.nl/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://app.cirqo.nl/login</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://app.cirqo.nl/catalogus</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+</urlset>"""
+    return Response(content=content, media_type="application/xml")
 
 
 @app.get("/health")
@@ -210,6 +543,7 @@ async def login(username: str = Form(...), password: str = Form(...)):
         "gemeente": user.get("gemeente") or "",
         "bedrijf_id": user.get("bedrijf_id"),
         "organisatie": user.get("organisatie") or "",
+        "auth_type": "local",
     }
 
 
@@ -264,7 +598,16 @@ async def firebase_login(request: Request):
         "gemeente": user.get("gemeente") or "",
         "bedrijf_id": user.get("bedrijf_id"),
         "organisatie": user.get("organisatie") or naam,
+        "auth_type": "firebase",
     }
+
+
+@app.post("/api/admin/sync-firestore")
+async def sync_firestore_manual(user=Depends(require_superadmin)):
+    """Handmatige trigger: sync nieuwe Firestore items naar Supabase."""
+    import asyncio as _asyncio
+    n = await _asyncio.get_event_loop().run_in_executor(None, _sync_firestore_items_now)
+    return {"imported": n}
 
 
 @app.post("/api/admin/import-firestore")
@@ -459,6 +802,98 @@ def _has_firestore_col():
         return False
 
 
+@app.post("/api/auth/impersonate/{user_id}")
+async def impersonate(user_id: int, user=Depends(get_current_user)):
+    if user["role"] != "superadmin":
+        raise HTTPException(status_code=403, detail="Geen toegang")
+    target = db.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
+    token = auth_module.create_token(
+        target["id"], target["username"], target["role"],
+        target.get("gemeente") or "", target.get("bedrijf_id")
+    )
+    return {
+        "token": token,
+        "user_id": target["id"],
+        "username": target["username"],
+        "role": target["role"],
+        "gemeente": target.get("gemeente") or "",
+        "organisatie": target.get("organisatie") or "",
+        "bedrijf_id": target.get("bedrijf_id"),
+    }
+
+
+@app.post("/api/auth/request-reset")
+async def request_reset(email: str = Form(...)):
+    """
+    Zorgt dat er een Firebase-account bestaat voor dit e-mailadres.
+    De browser stuurt daarna zelf sendPasswordResetEmail() — Firebase verstuurt de mail.
+    """
+    email = email.strip().lower()
+    if "@" not in email:
+        return {"ok": True}
+
+    try:
+        import firebase_admin.auth as _fb_auth
+        fs._get_db()
+
+        # Controleer of Firebase-account al bestaat
+        firebase_exists = False
+        try:
+            _fb_auth.get_user_by_email(email)
+            firebase_exists = True
+        except Exception:
+            pass
+
+        if not firebase_exists:
+            # Supabase-gebruiker zonder Firebase-account: maak Firebase-account aan
+            user = db.get_user_by_email(email)
+            if user:
+                import secrets as _sec
+                fb_user = _fb_auth.create_user(
+                    email=email,
+                    password=_sec.token_urlsafe(24),  # tijdelijk wachtwoord, wordt meteen gereset
+                    email_verified=False,
+                )
+                # Koppel firebase_uid aan bestaand Supabase-account
+                with db.get_cursor() as cur:
+                    cur.execute(
+                        "UPDATE users SET firebase_uid = %s, email = %s WHERE id = %s",
+                        (fb_user.uid, email, user["id"]),
+                    )
+    except Exception as e:
+        print(f"[request-reset] Fout: {e}")
+
+    return {"ok": True}
+
+
+@app.post("/api/auth/sync-password")
+async def sync_password(request: Request):
+    """Na Firebase wachtwoord-reset: sync het nieuwe wachtwoord naar Supabase."""
+    data = await request.json()
+    id_token = data.get("id_token")
+    password = data.get("password", "")
+    if not id_token or len(password) < 6:
+        raise HTTPException(status_code=400, detail="Ongeldige invoer")
+    try:
+        import firebase_admin.auth as _fb_auth
+        fs._get_db()
+        decoded = _fb_auth.verify_id_token(id_token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Ongeldig token: {e}")
+    firebase_uid = decoded["uid"]
+    email = decoded.get("email", "")
+    # Zoek Supabase-gebruiker op firebase_uid of email/username
+    user = db.get_user_by_firebase_uid(firebase_uid)
+    if not user and email:
+        user = db.get_user_by_email(email)
+    if not user:
+        return {"ok": True}  # geen Supabase-account, niets te doen
+    db.update_user_password(user["id"], password)
+    return {"ok": True}
+
+
 @app.get("/api/auth/me")
 async def me(user=Depends(get_current_user)):
     db_user = db.get_user_by_id(user["id"])
@@ -484,8 +919,6 @@ async def me(user=Depends(get_current_user)):
 
 @app.get("/api/gemeenten")
 async def list_gemeenten(user=Depends(get_current_user)):
-    if DEFAULT_BRAND == "bar":
-        return BAR_GEMEENTEN
     if DEFAULT_BRAND == "rwm":
         return RWM_GEMEENTEN
     return db.get_gemeenten()
@@ -596,6 +1029,17 @@ async def change_password(
 ):
     if user["role"] == "user" and user["id"] != user_id:
         raise HTTPException(status_code=403, detail="Geen rechten")
+    target = db.get_user_by_id_full(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
+    # Update Firebase Auth als de gebruiker een Firebase-account heeft
+    if target.get("firebase_uid"):
+        try:
+            import firebase_admin.auth as _fb_auth
+            fs._get_db()
+            _fb_auth.update_user(target["firebase_uid"], password=password)
+        except Exception as e:
+            print(f"[change-password] Firebase update fout: {e}")
     db.update_user_password(user_id, password)
     return {"ok": True}
 
@@ -826,10 +1270,13 @@ async def mijn_aanbiedingen_als_aanbieder(user=Depends(get_current_user)):
 
 
 @app.get("/api/mijn-aanbiedingen")
-async def mijn_aanbiedingen(user=Depends(get_current_user)):
+async def mijn_aanbiedingen(
+    limit: int = 15, offset: int = 0, status: Optional[str] = None,
+    user=Depends(get_current_user)
+):
     if user["role"] != "bedrijf" or not user.get("bedrijf_id"):
         raise HTTPException(status_code=403)
-    return db.get_aanbiedingen_voor_bedrijf(user["bedrijf_id"])
+    return db.get_aanbiedingen_voor_bedrijf(user["bedrijf_id"], limit=limit, offset=offset, status=status)
 
 
 @app.patch("/api/mijn-aanbiedingen/{aanbieding_id}")
@@ -1056,14 +1503,14 @@ async def upload(
             loop.run_in_executor(None, storage_module.upload_photo, content),
         )
 
-        item_id = db.insert_item(photo_url, label, detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by=user["id"])
+        item_id = db.insert_item(photo_url, label, detail, gewicht_kg, gemeente, True, uploaded_by=user["id"])
         # Gebruik AI-categorie tenzij handmatig overschreven
         final_category = category if category else ai_category
         if manual_note or final_category:
             db.update_item(item_id, manual_note, final_category)
         item = db.get_item(item_id)
         fs.sync_item(item)
-        # Cache invalideren met BAR-expanded gemeenten zodat key matcht
+        # Cache invalideren met org-expanded gemeenten zodat key matcht
         gemeenten_exp = _gemeenten_expand(user.get("gemeente"))
         user_gem = user.get("gemeente") or gemeente
         cache_module.delete(
@@ -1071,7 +1518,7 @@ async def upload(
             f"items:None:0:{user['id']}",
             f"stats:{gemeente}", "stats:None"
         )
-        # Bedrijven ophalen op basis van account-gemeente (niet GPS), BAR-expanded
+        # Bedrijven ophalen op basis van account-gemeente (niet GPS), org-expanded
         acct_gemeente = user.get("gemeente") or None
         acct_gemeenten = _gemeenten_expand(acct_gemeente)
         alle_bedrijven = db.get_bedrijven(None if acct_gemeenten else acct_gemeente, gemeenten=acct_gemeenten)
@@ -1123,7 +1570,7 @@ async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] 
     if cached is not None:
         return cached
     items = db.get_items(limit, offset, None if gemeenten else gemeente, user_id=user_id, gemeenten=gemeenten, own_user_id=own_user_id, all_aanbiedingen=is_admin)
-    cache_module.set(cache_key, items, ttl=30)
+    cache_module.set(cache_key, items, ttl=90)
     return items
 
 
@@ -1354,10 +1801,7 @@ async def service_worker():
 DEFAULT_BRAND = os.getenv("BRAND", "cirqo")
 
 # Hostnames die een specifiek brand activeren (ook als substring)
-HOST_BRAND_MAP = {
-    "hvc": "hvc",
-    "bar": "bar",
-}
+HOST_BRAND_MAP = {}
 
 
 def _detect_brand(request: Request) -> str:
@@ -1559,16 +2003,6 @@ BRANDS = {
         "logo": "/static/cirqo-logo.webp", "name": "CIRQO",
         "sub": "Digitaal productuitwisselingsnetwerk", "gemeente": "Almere",
     },
-    "bar": {
-        "primary": "#09be86", "secondary": "#07a874",
-        "logo": "/static/bar-logo.jpg", "name": "BAR Afvalbeheer",
-        "sub": "Breng uw afval slim in", "gemeente": "Barendrecht",
-    },
-    "hvc": {
-        "primary": "#E3000F", "secondary": "#c20000",
-        "logo": "/static/hvc-logo.jpg", "name": "HVC",
-        "sub": "Digitaal productuitwisselingsnetwerk", "gemeente": "Alkmaar",
-    },
     "bouwkringloop": {
         "primary": "#e67026", "secondary": "#c45c1a",
         "logo": "/static/bouwkringloop-logo.jpg", "name": "De Bouwkringloop",
@@ -1594,7 +2028,7 @@ def _render_html(path: str, brand: str) -> HTMLResponse:
     brand_css_tag = f'<style>{_brand_css(brand)}</style>'
     html = html.replace("</head>", f"{brand_css_tag}\n</head>", 1)
     # Swap logo src — vervang alle bekende logo-paden
-    for known_logo in ["/static/cirqo-logo.webp", "/static/bar-logo.jpg", "/static/hvc-logo.svg", "/static/bouwkringloop-logo.jpg"]:
+    for known_logo in ["/static/cirqo-logo.webp", "/static/bouwkringloop-logo.jpg"]:
         html = html.replace(known_logo, b["logo"])
     # Swap subtitle
     html = html.replace("Milieustraat Almere-Buiten", b["sub"])
@@ -1605,47 +2039,6 @@ def _render_html(path: str, brand: str) -> HTMLResponse:
 async def brand_css(request: Request):
     css = _brand_css(_detect_brand(request))
     return Response(content=css, media_type="text/css", headers={"Cache-Control": "no-cache"})
-
-@app.get("/bar/brand.css")
-async def bar_brand_css():
-    css = _brand_css("bar")
-    return Response(content=css, media_type="text/css", headers={"Cache-Control": "no-cache"})
-
-@app.get("/bar", response_class=HTMLResponse)
-@app.get("/bar/", response_class=HTMLResponse)
-async def bar_home():
-    return _render_html("static/index.html", "bar")
-
-@app.get("/bar/kiosk", response_class=HTMLResponse)
-async def bar_kiosk():
-    return _render_html("static/kiosk.html", "bar")
-
-@app.get("/bar/catalogus", response_class=HTMLResponse)
-async def bar_catalogus():
-    return _render_html("static/catalogus.html", "bar")
-
-
-@app.get("/hvc/brand.css")
-async def hvc_brand_css():
-    return Response(content=_brand_css("hvc"), media_type="text/css", headers={"Cache-Control": "no-cache"})
-
-@app.get("/hvc", response_class=HTMLResponse)
-@app.get("/hvc/", response_class=HTMLResponse)
-async def hvc_home():
-    return _render_html("static/index.html", "hvc")
-
-@app.get("/hvc/login", response_class=HTMLResponse)
-async def hvc_login():
-    return _render_html("static/login.html", "hvc")
-
-@app.get("/hvc/beheer", response_class=HTMLResponse)
-async def hvc_beheer():
-    return _render_html("static/beheer.html", "hvc")
-
-@app.get("/hvc/bedrijf", response_class=HTMLResponse)
-async def hvc_bedrijf():
-    return _render_html("static/bedrijf.html", "hvc")
-
 
 @app.get("/rwm/brand.css")
 async def rwm_brand_css():
@@ -1683,6 +2076,8 @@ async def dashboard_page():
 
 
 @app.get("/catalogus", response_class=HTMLResponse)
+@app.get("/pilotalmere", response_class=HTMLResponse)
+@app.get("/pilotalmere/", response_class=HTMLResponse)
 async def catalogus_page():
     html = _render_html("static/catalogus.html", DEFAULT_BRAND).body.decode()
     html = re.sub(r'class="cat-hdr-sub">[^<]*<', 'class="cat-hdr-sub">Ingezameld bouwmateriaal · Milieustraat Almere-Buiten<', html)
