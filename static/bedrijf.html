@@ -228,8 +228,10 @@
     if (token && localStorage.getItem("role") === "bedrijf" && !localStorage.getItem("bedrijf_naam")) {
       localStorage.setItem("bedrijf_naam", localStorage.getItem("organisatie") || localStorage.getItem("username") || "");
     }
-    let alleAanbiedingen = [];
     let huidigFilter = "open";
+    const PAGE_SIZE = 15;
+    let currentPage = 0;
+    let totalItems = 0;
 
     // Auto-login via token in URL (/bedrijf/{token})
     const urlToken = location.pathname.split("/bedrijf/")[1];
@@ -386,35 +388,44 @@
     }
 
     async function laadAanbiedingen() {
-      const res = await apiFetch("/api/mijn-aanbiedingen");
+      const list = document.getElementById("aanbiedingen-list");
+      list.innerHTML = `<div class="empty">Laden…</div>`;
+      const statusParam = huidigFilter !== "alle" ? `&status=${huidigFilter}` : "";
+      const res = await apiFetch(`/api/mijn-aanbiedingen?limit=${PAGE_SIZE}&offset=${currentPage * PAGE_SIZE}${statusParam}`);
       if (!res) return;
-      alleAanbiedingen = await res.json();
-      renderAanbiedingen();
+      const data = await res.json();
+      totalItems = data.total;
+      renderAanbiedingen(data.items);
     }
 
     // ── Filter & render ────────────────────────────────────────────────────────
     function setFilter(status) {
       huidigFilter = status;
+      currentPage = 0;
       document.querySelectorAll(".filter-btn").forEach(b =>
         b.classList.toggle("active", b.dataset.status === status));
-      renderAanbiedingen();
+      laadAanbiedingen();
     }
 
-    function renderAanbiedingen() {
-      const gefilterd = huidigFilter === "alle"
-        ? alleAanbiedingen
-        : alleAanbiedingen.filter(a => a.status === huidigFilter);
+    function isOpen(a) {
+      return a.status === "open" || a.status === "beschikbaar";
+    }
 
+    function renderAanbiedingen(items) {
       const list = document.getElementById("aanbiedingen-list");
-      if (!gefilterd.length) {
+
+      if (!items.length) {
         list.innerHTML = `<div class="empty">Geen aanbiedingen${huidigFilter !== "alle" ? " in dit filter" : ""}.</div>`;
         return;
       }
 
-      const statusLabel = { open: "Open", ophalen: "Wordt opgehaald", niet_nodig: "Niet nodig" };
-      const statusCls   = { open: "status-open", ophalen: "status-ophalen", niet_nodig: "status-niet_nodig" };
+      const statusLabel = { open: "Open", beschikbaar: "Open", ophalen: "Wordt opgehaald", niet_nodig: "Niet nodig" };
+      const statusCls   = { open: "status-open", beschikbaar: "status-open", ophalen: "status-ophalen", niet_nodig: "status-niet_nodig" };
+      const totalPages  = Math.ceil(totalItems / PAGE_SIZE);
+      const from = currentPage * PAGE_SIZE + 1;
+      const to   = Math.min(from + items.length - 1, totalItems);
 
-      list.innerHTML = gefilterd.map(a => {
+      list.innerHTML = items.map(a => {
         const datum = new Date(a.created_at).toLocaleDateString("nl-NL",
           { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
         return `
@@ -423,11 +434,11 @@
             <div class="card-body">
               <div class="card-label">${a.ai_label || "Onbekend materiaal"}</div>
               <div class="card-meta">
-                ${a.gewicht_kg != null ? `${a.gewicht_kg} kg · ` : ""}${a.category || ""}${a.gemeente ? ` · ${a.gemeente}` : ""} · ${datum}
+                ${a.category || ""}${a.gemeente ? ` · ${a.gemeente}` : ""} · ${datum}
               </div>
               ${a.ai_detail ? `<div class="card-detail">${a.ai_detail}</div>` : ""}
               <span class="card-status ${statusCls[a.status] || ""}">${statusLabel[a.status] || a.status}</span>
-              ${a.status === "open" ? `
+              ${isOpen(a) ? `
                 <div class="card-actions">
                   <button class="btn-ophalen" onclick="reageer(${a.id}, 'ophalen')">Ophalen</button>
                   <button class="btn-niet-nodig" onclick="reageer(${a.id}, 'niet_nodig')">Niet nodig</button>
@@ -435,6 +446,27 @@
             </div>
           </div>`;
       }).join("");
+
+      if (totalPages > 1) {
+        list.innerHTML += `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 4px 4px;gap:8px;">
+            <button onclick="naarPagina(${currentPage - 1})" ${currentPage === 0 ? "disabled" : ""}
+              style="padding:10px 20px;border:1px solid var(--border);border-radius:100px;background:none;font-family:'Inter',sans-serif;font-size:0.75rem;font-weight:700;color:var(--muted);cursor:pointer;${currentPage === 0 ? "opacity:0.35;cursor:default;" : ""}">
+              ← Vorige
+            </button>
+            <span style="font-size:0.72rem;color:var(--muted);text-align:center;">${from}–${to} van ${totalItems}</span>
+            <button onclick="naarPagina(${currentPage + 1})" ${currentPage >= totalPages - 1 ? "disabled" : ""}
+              style="padding:10px 20px;border:1px solid var(--border);border-radius:100px;background:none;font-family:'Inter',sans-serif;font-size:0.75rem;font-weight:700;color:var(--muted);cursor:pointer;${currentPage >= totalPages - 1 ? "opacity:0.35;cursor:default;" : ""}">
+              Volgende →
+            </button>
+          </div>`;
+      }
+    }
+
+    function naarPagina(page) {
+      currentPage = page;
+      document.getElementById("panel-aanbiedingen").scrollTop = 0;
+      laadAanbiedingen();
     }
 
     async function reageer(id, status) {
@@ -442,9 +474,7 @@
       fd.append("status", status);
       const res = await apiFetch(`/api/mijn-aanbiedingen/${id}`, { method: "PATCH", body: fd });
       if (!res || !res.ok) { alert("Fout bij opslaan"); return; }
-      const a = alleAanbiedingen.find(x => x.id === id);
-      if (a) a.status = status;
-      renderAanbiedingen();
+      laadAanbiedingen();
     }
 
     async function laadNetwerk() {

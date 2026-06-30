@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/static/favicon.ico">
-  <link rel="apple-touch-icon" href="/static/icon-bouwkringloop-192.png">
-  <title>Dashboard — De Bouwkringloop</title>
+  <link rel="icon" href="/static/icon-cirqo-192.png">
+  <link rel="apple-touch-icon" href="/static/icon-cirqo-192.png">
+  <title>Dashboard — CIRQO</title>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/brand.css">
   <style>
@@ -59,7 +59,7 @@
 </head>
 <body>
   <header class="hdr">
-    <img src="/static/bar-logo.jpg" alt="CIRQO" id="hdr-logo">
+    <img src="/static/cirqo-logo.webp" alt="CIRQO" id="hdr-logo">
     <p class="hdr-sub" id="hdr-sub">Dashboard</p>
   </header>
 
@@ -80,9 +80,6 @@
     <div class="recent-grid" id="recent-grid"></div>
 
     <a href="/catalogus" class="dash-link">Bekijk alle items →</a>
-
-    <div class="sectie-titel" style="margin-top:32px">Deelnemende bedrijven</div>
-    <div class="bedrijven-grid" id="bedrijven-grid"></div>
   </div>
 
   <script>
@@ -96,45 +93,50 @@
 
     async function laad() {
       const token = localStorage.getItem('token');
-      const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+      if (!token) { location.replace('/login?redirect=/dashboard'); return; }
+      const headers = { 'Authorization': 'Bearer ' + token };
       const params = gemeente ? '?gemeente=' + encodeURIComponent(gemeente) : '';
-      const res = await fetch('/api/dashboard' + params, { headers });
-      const d = await res.json();
+      let res, d;
+      try {
+        res = await fetch('/api/dashboard' + params, { headers });
+        d   = await res.json();
+      } catch (e) {
+        document.getElementById('s-kg').textContent = 'fout';
+        return;
+      }
+      if (!res.ok) {
+        // Token verlopen — opnieuw inloggen
+        localStorage.clear();
+        location.replace('/login?redirect=/dashboard');
+        return;
+      }
 
-      const t = d.totaal;
-      document.getElementById('s-items').textContent = t.cnt;
-      document.getElementById('s-kg').textContent = t.totaal_kg ? Math.round(t.totaal_kg) : '—';
-      document.getElementById('s-cats').textContent = d.categorieen.filter(c => c.cat !== 'Onbekend').length;
-      document.getElementById('s-gem').textContent = t.cnt ? Math.round(t.totaal_kg / t.cnt * 10) / 10 : '—';
+      // API geeft {stats, charts, recent} terug
+      const s = d.stats || {};
+      const total = s.total || 0;
+      const kg    = s.totaal_kg || 0;
+      const cats  = s.categories || [];
+      console.log('[dashboard] stats:', s);
 
-      const max = Math.max(...d.categorieen.map(c => c.n));
-      document.getElementById('cat-lijst').innerHTML = d.categorieen.map(c => `
+      document.getElementById('s-items').textContent = total;
+      document.getElementById('s-kg').textContent = kg ? Math.round(kg) : '—';
+      document.getElementById('s-cats').textContent = cats.filter(c => c.category && c.category !== 'Onbekend').length;
+      document.getElementById('s-gem').textContent = total && kg ? Math.round(kg / total * 10) / 10 : '—';
+
+      const max = Math.max(...cats.map(c => c.count), 1);
+      document.getElementById('cat-lijst').innerHTML = cats.map(c => `
         <div class="cat-rij">
-          <div class="cat-naam">${c.cat}</div>
-          <div class="cat-balk-wrap"><div class="cat-balk" style="width:${Math.round(c.n/max*100)}%"></div></div>
-          <div class="cat-n">${c.n}</div>
-          <div class="cat-kg">${c.kg ? c.kg + ' kg' : ''}</div>
+          <div class="cat-naam">${c.category || 'Onbekend'}</div>
+          <div class="cat-balk-wrap"><div class="cat-balk" style="width:${Math.round(c.count/max*100)}%"></div></div>
+          <div class="cat-n">${c.count}</div>
+          <div class="cat-kg">${c.kg ? Math.round(c.kg) + ' kg' : ''}</div>
         </div>`).join('');
 
-      document.getElementById('recent-grid').innerHTML = d.recent.map(item => `
+      document.getElementById('recent-grid').innerHTML = (d.recent || []).map(item => `
         <div class="recent-tegel" title="${item.ai_label || ''}">
           <img src="${item.photo_url_thumb || item.photo_url}" loading="lazy" onerror="this.style.opacity=0.2">
         </div>`).join('');
 
-      try {
-        const token = localStorage.getItem('token');
-        const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
-        const br = await fetch('/api/deelnemers', { headers });
-        if (br.ok) {
-          const bd = await br.json();
-          document.getElementById('bedrijven-grid').innerHTML = bd.bedrijven.map(b => `
-            <div class="bedrijf-kaart">
-              <div class="bedrijf-naam">${b.naam}</div>
-              <div class="bedrijf-gem">${b.gemeente}</div>
-              <div class="bedrijf-cats">${(b.categorieen || []).map(c => `<span class="bedrijf-cat">${c}</span>`).join('')}</div>
-            </div>`).join('');
-        }
-      } catch(e) {}
     }
     laad();
   </script>

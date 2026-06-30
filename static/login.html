@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="De Bouwkringloop">
+  <meta name="apple-mobile-web-app-title" content="CIRQO">
   <link rel="manifest" href="/static/manifest.json">
-  <link rel="icon" href="/static/favicon.ico">
-  <link rel="apple-touch-icon" href="/static/icon-bouwkringloop-192.png">
-  <title>Inloggen — De Bouwkringloop</title>
+  <link rel="icon" href="/static/icon-cirqo-192.png">
+  <link rel="apple-touch-icon" href="/static/icon-cirqo-192.png">
+  <title>Inloggen — CIRQO</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/base.css?v=5">
@@ -47,7 +47,7 @@
   <div class="wrap">
     <div class="brand" style="text-align:center;margin-bottom:28px;">
       <img src="/static/bouwkringloop-logo.jpg" alt="De Bouwkringloop" style="height:52px;max-width:100%;width:auto;margin:0 auto 10px;display:block;object-fit:contain;">
-      <div class="brand-sub" style="text-align:center;">Circulaire bouwmaterialen</div>
+      <div class="brand-sub" style="text-align:center;">Digitaal productuitwisselingsnetwerk</div>
     </div>
     <div class="panel">
       <h1>Inloggen</h1>
@@ -58,12 +58,34 @@
         </div>
         <div class="field">
           <label>Wachtwoord</label>
-          <input type="password" id="login-pass" autocomplete="current-password" required>
+          <div style="position:relative;">
+            <input type="password" id="login-pass" autocomplete="current-password" required style="padding-right:44px;width:100%;box-sizing:border-box;">
+            <button type="button" id="toggle-pass" onclick="(function(){var i=document.getElementById('login-pass'),b=document.getElementById('toggle-pass');i.type=i.type==='password'?'text':'password';b.innerHTML=i.type==='password'?eyeIcon:eyeOffIcon;})()" style="position:absolute;right:0;top:0;bottom:0;width:44px;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted);padding:0;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
         <button type="submit" id="btn" class="btn btn-primary">Inloggen</button>
         <div class="error-bar" id="err"></div>
       </form>
-      <button id="how-btn" onclick="onboardingOpen()" style="display:block;width:100%;margin-top:14px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--muted);padding:6px;text-align:center;">Hoe werkt de app? →</button>
+      <button id="reset-link" style="display:block;width:100%;margin-top:12px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--muted);padding:6px;text-align:center;">Wachtwoord vergeten?</button>
+      <button onclick="onboardingOpen()" style="display:block;width:100%;margin-top:2px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--muted);padding:6px;text-align:center;">Hoe werkt de app? →</button>
+    </div>
+
+    <!-- Wachtwoord herstel panel -->
+    <div class="panel" id="reset-panel" style="display:none;margin-top:12px;">
+      <h1 style="font-size:1.3rem;margin-bottom:16px;">Wachtwoord herstellen</h1>
+      <p style="font-size:0.83rem;color:var(--muted);margin-bottom:16px;">Vul je e-mailadres in. Als er een account mee verbonden is, ontvang je een herstelmail.</p>
+      <div class="field">
+        <label>E-mailadres</label>
+        <input type="email" id="reset-email" autocomplete="email" placeholder="naam@organisatie.nl">
+      </div>
+      <button id="reset-btn" class="btn btn-primary">Verstuur herstelmail</button>
+      <div class="error-bar" id="reset-err"></div>
+      <div id="reset-ok" style="display:none;margin-top:12px;padding:12px;background:#edf7f0;border-radius:10px;font-size:0.83rem;color:#3a7a52;text-align:center;">
+        ✓ Herstelmail verstuurd. Controleer je inbox.
+      </div>
+      <button id="reset-back" style="display:block;width:100%;margin-top:10px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--muted);padding:6px;text-align:center;">← Terug naar inloggen</button>
     </div>
   </div>
 
@@ -71,6 +93,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
   <script>
+    const eyeIcon    = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    const eyeOffIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
     if (localStorage.getItem('token')) {
       const role = localStorage.getItem('role');
       location.href = new URLSearchParams(location.search).get('redirect') || (role === 'bedrijf' ? '/bedrijf' : '/');
@@ -132,6 +157,53 @@
       }
     });
 
+    // ── Wachtwoord vergeten ───────────────────────────────────────────────────
+    const panel     = document.getElementById('reset-panel');
+    const resetLink = document.getElementById('reset-link');
+    const resetBack = document.getElementById('reset-back');
+    const resetBtn  = document.getElementById('reset-btn');
+
+    resetLink.addEventListener('click', () => {
+      panel.style.display = 'block';
+      resetLink.style.display = 'none';
+      document.getElementById('reset-email').value = document.getElementById('login-input').value.includes('@')
+        ? document.getElementById('login-input').value.trim() : '';
+      document.getElementById('reset-ok').style.display = 'none';
+      document.getElementById('reset-err').style.display = 'none';
+    });
+
+    resetBack.addEventListener('click', () => {
+      panel.style.display = 'none';
+      resetLink.style.display = 'block';
+    });
+
+    resetBtn.addEventListener('click', async () => {
+      const email = document.getElementById('reset-email').value.trim();
+      const errEl = document.getElementById('reset-err');
+      const okEl  = document.getElementById('reset-ok');
+      errEl.style.display = 'none'; okEl.style.display = 'none';
+      if (!email || !email.includes('@')) {
+        errEl.textContent = 'Vul een geldig e-mailadres in.'; errEl.style.display = 'block'; return;
+      }
+      resetBtn.disabled = true; resetBtn.textContent = 'Bezig…';
+      try {
+        // Stap 1: zorg dat er een Firebase-account bestaat (ook voor Supabase-gebruikers)
+        const fd = new FormData(); fd.append('email', email);
+        await fetch('/api/auth/request-reset', { method: 'POST', body: fd });
+        // Stap 2: Firebase stuurt de reset-mail zelf
+        await fbAuth.sendPasswordResetEmail(email, {
+          url: 'https://app.cirqo.nl/login',
+          handleCodeInApp: false,
+        });
+        okEl.style.display = 'block';
+        resetBtn.style.display = 'none';
+      } catch (ex) {
+        errEl.textContent = 'Fout: ' + (ex.code || ex.message || 'onbekend');
+        errEl.style.display = 'block';
+        resetBtn.disabled = false; resetBtn.textContent = 'Verstuur herstelmail';
+      }
+    });
+
     function _redirectNaLogin(data) {
       location.href = new URLSearchParams(location.search).get('redirect') || (data.role === 'bedrijf' ? '/bedrijf' : '/');
     }
@@ -143,6 +215,7 @@
       localStorage.setItem('role',        data.role);
       localStorage.setItem('gemeente',    data.gemeente || '');
       localStorage.setItem('organisatie', data.organisatie || '');
+      localStorage.setItem('auth_type',   data.auth_type || 'local');
       if (data.bedrijf_id) localStorage.setItem('bedrijf_id', data.bedrijf_id);
       if (data.role === 'bedrijf') {
         localStorage.setItem('bedrijf_token', data.token);
@@ -151,327 +224,122 @@
     }
   </script>
 
-  <!-- ── Onboarding ───────────────────────────────────────────────────────── -->
+
+
   <style>
-    #ob-backdrop {
-      position: fixed; inset: 0; z-index: 800;
-      background: rgba(0,0,0,.52);
-      backdrop-filter: blur(5px);
-      opacity: 0; pointer-events: none;
-      transition: opacity .34s ease;
-    }
-    #ob-backdrop.ob-show { opacity: 1; pointer-events: all; }
-
-    #ob-sheet {
-      position: fixed; left: 0; right: 0; bottom: 0; z-index: 801;
-      background: #fff;
-      border-radius: 26px 26px 0 0;
-      padding: 0 0 calc(env(safe-area-inset-bottom, 0px) + 28px);
-      box-shadow: 0 -16px 56px rgba(0,0,0,.2);
-      max-width: 520px; margin: 0 auto;
-      transform: translateY(110%);
-      transition: transform .48s cubic-bezier(.22,.8,.36,1);
-      overflow: hidden;
-      user-select: none;
-    }
-    #ob-sheet.ob-show { transform: translateY(0); }
-
-    /* progress bar */
-    .ob-progress-track {
-      height: 3px; background: #f0ede8;
-      margin: 0; border-radius: 0;
-    }
-    .ob-progress-fill {
-      height: 100%; background: var(--orange, #e67026);
-      border-radius: 0 3px 3px 0;
-      transition: width .42s cubic-bezier(.22,.8,.36,1);
-    }
-
-    .ob-top-row {
-      display: flex; align-items: center;
-      justify-content: space-between;
-      padding: 14px 20px 0;
-    }
-    .ob-handle {
-      width: 36px; height: 4px; border-radius: 2px;
-      background: #E4E4E9; margin: 0 auto;
-    }
-    .ob-skip {
-      background: none; border: none; cursor: pointer;
-      font-family: 'Inter', sans-serif; font-size: 0.75rem;
-      font-weight: 600; color: #9A9690; padding: 4px 0;
-      transition: color .15s;
-    }
-    .ob-skip:hover { color: #555; }
-
-    /* viewport & track */
-    .ob-viewport { overflow: hidden; touch-action: pan-y; }
-    .ob-track {
-      display: flex;
-      will-change: transform;
-    }
-    .ob-track.ob-animated {
-      transition: transform .42s cubic-bezier(.22,.8,.36,1);
-    }
-    .ob-slide {
-      min-width: 100%;
-      padding: 28px 32px 16px;
-      text-align: center;
-      box-sizing: border-box;
-    }
-
-    /* staggered content — hidden by default, animated in when .ob-active is on the slide */
-    .ob-slide .ob-icon-wrap,
-    .ob-slide .ob-step-label,
-    .ob-slide .ob-title,
-    .ob-slide .ob-desc {
-      opacity: 0;
-      transform: translateY(14px);
-    }
-    .ob-slide.ob-active .ob-icon-wrap {
-      animation: obItemIn .38s cubic-bezier(.2,.82,.26,1) .05s both;
-    }
-    .ob-slide.ob-active .ob-step-label {
-      animation: obItemIn .34s cubic-bezier(.2,.82,.26,1) .14s both;
-    }
-    .ob-slide.ob-active .ob-title {
-      animation: obItemIn .34s cubic-bezier(.2,.82,.26,1) .2s both;
-    }
-    .ob-slide.ob-active .ob-desc {
-      animation: obItemIn .34s cubic-bezier(.2,.82,.26,1) .27s both;
-    }
-    @keyframes obItemIn {
-      from { opacity: 0; transform: translateY(14px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    /* icon */
-    .ob-icon-wrap {
-      width: 96px; height: 96px; border-radius: 50%;
-      background: rgba(230,112,38,.1);
-      display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 22px;
-    }
-
-    .ob-step-label {
-      font-size: 0.65rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: .12em;
-      color: var(--orange, #e67026); margin-bottom: 10px;
-    }
-    .ob-title {
-      font-family: 'Outfit', sans-serif;
-      font-size: 1.5rem; font-weight: 900;
-      color: #1A1914; line-height: 1.2; margin-bottom: 12px;
-    }
-    .ob-desc {
-      font-size: 0.88rem; color: #666;
-      line-height: 1.6; max-width: 290px; margin: 0 auto;
-    }
-
-    /* dots — pill style */
-    .ob-dots {
-      display: flex; justify-content: center; align-items: center;
-      gap: 6px; margin: 22px 0 18px;
-    }
-    .ob-dot {
-      height: 7px; border-radius: 4px;
-      background: #E4E4E9; cursor: pointer;
-      transition: width .3s cubic-bezier(.22,.8,.36,1),
-                  background .3s ease;
-      width: 7px;
-    }
-    .ob-dot.active { width: 22px; background: var(--orange, #e67026); }
-
-    /* buttons */
-    .ob-actions { padding: 0 24px; display: flex; flex-direction: column; gap: 10px; }
-    .ob-next {
-      width: 100%; padding: 15px;
-      background: var(--orange, #e67026); color: #fff;
-      border: none; border-radius: 14px;
-      font-family: 'Inter', sans-serif; font-size: .95rem; font-weight: 700;
-      cursor: pointer; letter-spacing: -.01em;
-      transition: transform .12s ease, box-shadow .12s ease, background .15s;
-      box-shadow: 0 4px 18px rgba(230,112,38,.35);
-    }
-    .ob-next:active { transform: scale(.96); box-shadow: 0 2px 8px rgba(230,112,38,.2); }
-    .ob-back {
-      width: 100%; padding: 10px; background: none; border: none; cursor: pointer;
-      font-family: 'Inter', sans-serif; font-size: .82rem;
-      font-weight: 600; color: #9A9690;
-      transition: color .15s;
-    }
-    .ob-back:hover { color: #555; }
-
-    /* ── Animated illustrations ── */
-
-    /* Slide 1 — Camera pulse + flash rays */
-    .ob-cam-lens { transform-origin: 26px 28px; }
-    .ob-slide.ob-active .ob-cam-lens {
-      animation: obCamPulse 1.8s ease-in-out .4s infinite;
-    }
-    @keyframes obCamPulse {
-      0%, 100% { transform: scale(1);    opacity: .55; }
-      50%       { transform: scale(1.4); opacity: 1;   }
-    }
-    .ob-cam-rays { transform-origin: 26px 28px; }
-    .ob-slide.ob-active .ob-cam-rays {
-      animation: obRaysFlash 2.2s ease-out .1s infinite;
-    }
-    @keyframes obRaysFlash {
-      0%, 50%, 100% { opacity: 0; transform: scale(.85); }
-      28%           { opacity: 1; transform: scale(1);   }
-    }
-
-    /* Slide 2 — Scan line + badge pop */
-    .ob-scanline, .ob-scanglow { transform: translateY(0); }
-    .ob-slide.ob-active .ob-scanline,
-    .ob-slide.ob-active .ob-scanglow {
-      animation: obScanMove 2.5s ease-in-out .3s infinite;
-    }
-    @keyframes obScanMove {
-      0%   { transform: translateY(0px);  opacity: 1; }
-      72%  { transform: translateY(22px); opacity: .9; }
-      90%  { transform: translateY(22px); opacity: 0; }
-      100% { transform: translateY(0);    opacity: 0; }
-    }
-    .ob-aibadge { transform-origin: 40px 40px; transform: scale(0); opacity: 0; }
-    .ob-slide.ob-active .ob-aibadge {
-      animation: obBadgePop .45s cubic-bezier(.2,.82,.26,1) 1.6s forwards;
-    }
-    @keyframes obBadgePop {
-      0%   { transform: scale(0);    opacity: 0; }
-      60%  { transform: scale(1.18); opacity: 1; }
-      100% { transform: scale(1);    opacity: 1; }
-    }
-
-    /* Slide 3 — Ping rings + notif bounce */
-    .ob-ping { transform-origin: 26px 26px; opacity: 0; }
-    .ob-slide.ob-active .ob-ping1 { animation: obPingOut 2.4s ease-out .3s infinite; }
-    .ob-slide.ob-active .ob-ping2 { animation: obPingOut 2.4s ease-out 1.25s infinite; }
-    @keyframes obPingOut {
-      0%   { transform: scale(.35); opacity: .9; stroke-width: 3; }
-      100% { transform: scale(2.4); opacity: 0;  stroke-width: .3; }
-    }
-    .ob-notif { transform-origin: 37px 14px; }
-    .ob-slide.ob-active .ob-notif {
-      animation: obNotifBounce 1.7s cubic-bezier(.2,.82,.26,1) .5s infinite;
-    }
-    @keyframes obNotifBounce {
-      0%, 55%, 100% { transform: scale(1);   }
-      28%           { transform: scale(1.35); }
-    }
-
-    /* Slide 4 — Draw circle + checkmark */
-    .ob-circle {
-      stroke-dasharray: 126;
-      stroke-dashoffset: 126;
-    }
-    .ob-check {
-      stroke-dasharray: 42;
-      stroke-dashoffset: 42;
-    }
-    .ob-slide.ob-active .ob-circle {
-      animation: obDrawLine .9s cubic-bezier(.22,.8,.36,1) .15s forwards;
-    }
-    .ob-slide.ob-active .ob-check {
-      animation: obDrawLine .5s cubic-bezier(.22,.8,.36,1) .95s forwards;
-    }
-    @keyframes obDrawLine { to { stroke-dashoffset: 0; } }
+    #ob-backdrop { position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.52);backdrop-filter:blur(5px);opacity:0;pointer-events:none;transition:opacity .34s ease; }
+    #ob-backdrop.ob-show { opacity:1;pointer-events:all; }
+    #ob-sheet { position:fixed;left:0;right:0;bottom:0;z-index:801;background:#fff;border-radius:26px 26px 0 0;padding:0 0 calc(env(safe-area-inset-bottom,0px) + 28px);box-shadow:0 -16px 56px rgba(0,0,0,.2);max-width:520px;margin:0 auto;transform:translateY(110%);visibility:hidden;transition:transform .48s cubic-bezier(.22,.8,.36,1),visibility .48s;overflow:hidden;user-select:none; }
+    #ob-sheet.ob-show { transform:translateY(0);visibility:visible; }
+    .ob-progress-track { height:3px;background:#f0ede8;margin:0;border-radius:0; }
+    .ob-progress-fill { height:100%;background:var(--orange,#e67026);border-radius:0 3px 3px 0;transition:width .42s cubic-bezier(.22,.8,.36,1); }
+    .ob-top-row { display:flex;align-items:center;justify-content:space-between;padding:14px 20px 0; }
+    .ob-handle { width:36px;height:4px;border-radius:2px;background:#E4E4E9;margin:0 auto; }
+    .ob-skip { background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.75rem;font-weight:600;color:#9A9690;padding:4px 0;transition:color .15s; }
+    .ob-skip:hover { color:#555; }
+    .ob-viewport { overflow:hidden;touch-action:pan-y; }
+    .ob-track { display:flex;will-change:transform; }
+    .ob-track.ob-animated { transition:transform .42s cubic-bezier(.22,.8,.36,1); }
+    .ob-slide { min-width:100%;padding:28px 32px 16px;text-align:center;box-sizing:border-box; }
+    .ob-slide .ob-icon-wrap,.ob-slide .ob-step-label,.ob-slide .ob-title,.ob-slide .ob-desc { opacity:0;transform:translateY(14px); }
+    .ob-slide.ob-active .ob-icon-wrap { animation:obItemIn .38s cubic-bezier(.2,.82,.26,1) .05s both; }
+    .ob-slide.ob-active .ob-step-label { animation:obItemIn .34s cubic-bezier(.2,.82,.26,1) .14s both; }
+    .ob-slide.ob-active .ob-title { animation:obItemIn .34s cubic-bezier(.2,.82,.26,1) .2s both; }
+    .ob-slide.ob-active .ob-desc { animation:obItemIn .34s cubic-bezier(.2,.82,.26,1) .27s both; }
+    @keyframes obItemIn { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+    .ob-icon-wrap { width:96px;height:96px;border-radius:50%;background:rgba(230,112,38,.1);display:flex;align-items:center;justify-content:center;margin:0 auto 22px; }
+    .ob-step-label { font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--orange,#e67026);margin-bottom:10px; }
+    .ob-title { font-family:'Outfit',sans-serif;font-size:1.5rem;font-weight:900;color:#1A1914;line-height:1.2;margin-bottom:12px; }
+    .ob-desc { font-size:0.88rem;color:#666;line-height:1.6;max-width:290px;margin:0 auto; }
+    .ob-dots { display:flex;justify-content:center;align-items:center;gap:6px;margin:22px 0 18px; }
+    .ob-dot { height:7px;border-radius:4px;background:#E4E4E9;cursor:pointer;transition:width .3s cubic-bezier(.22,.8,.36,1),background .3s ease;width:7px; }
+    .ob-dot.active { width:22px;background:var(--orange,#e67026); }
+    .ob-actions { padding:0 24px;display:flex;flex-direction:column;gap:10px; }
+    .ob-next { width:100%;padding:15px;background:var(--orange,#e67026);color:#fff;border:none;border-radius:14px;font-family:'Inter',sans-serif;font-size:.95rem;font-weight:700;cursor:pointer;letter-spacing:-.01em;transition:transform .12s ease,box-shadow .12s ease,background .15s;box-shadow:0 4px 18px rgba(230,112,38,.35); }
+    .ob-next:active { transform:scale(.96);box-shadow:0 2px 8px rgba(230,112,38,.2); }
+    .ob-back { width:100%;padding:10px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:.82rem;font-weight:600;color:#9A9690;transition:color .15s; }
+    .ob-back:hover { color:#555; }
+    .ob-cam-lens { transform-origin:26px 28px; }
+    .ob-slide.ob-active .ob-cam-lens { animation:obCamPulse 1.8s ease-in-out .4s infinite; }
+    @keyframes obCamPulse { 0%,100%{transform:scale(1);opacity:.55} 50%{transform:scale(1.4);opacity:1} }
+    .ob-cam-rays { transform-origin:26px 28px; }
+    .ob-slide.ob-active .ob-cam-rays { animation:obRaysFlash 2.2s ease-out .1s infinite; }
+    @keyframes obRaysFlash { 0%,50%,100%{opacity:0;transform:scale(.85)} 28%{opacity:1;transform:scale(1)} }
+    .ob-scanline,.ob-scanglow { transform:translateY(0); }
+    .ob-slide.ob-active .ob-scanline,.ob-slide.ob-active .ob-scanglow { animation:obScanMove 2.5s ease-in-out .3s infinite; }
+    @keyframes obScanMove { 0%{transform:translateY(0px);opacity:1} 72%{transform:translateY(22px);opacity:.9} 90%{transform:translateY(22px);opacity:0} 100%{transform:translateY(0);opacity:0} }
+    .ob-aibadge { transform-origin:40px 40px;transform:scale(0);opacity:0; }
+    .ob-slide.ob-active .ob-aibadge { animation:obBadgePop .45s cubic-bezier(.2,.82,.26,1) 1.6s forwards; }
+    @keyframes obBadgePop { 0%{transform:scale(0);opacity:0} 60%{transform:scale(1.18);opacity:1} 100%{transform:scale(1);opacity:1} }
+    .ob-ping { transform-origin:26px 26px;opacity:0; }
+    .ob-slide.ob-active .ob-ping1 { animation:obPingOut 2.4s ease-out .3s infinite; }
+    .ob-slide.ob-active .ob-ping2 { animation:obPingOut 2.4s ease-out 1.25s infinite; }
+    @keyframes obPingOut { 0%{transform:scale(.35);opacity:.9;stroke-width:3} 100%{transform:scale(2.4);opacity:0;stroke-width:.3} }
+    .ob-notif { transform-origin:37px 14px; }
+    .ob-slide.ob-active .ob-notif { animation:obNotifBounce 1.7s cubic-bezier(.2,.82,.26,1) .5s infinite; }
+    @keyframes obNotifBounce { 0%,55%,100%{transform:scale(1)} 28%{transform:scale(1.35)} }
+    .ob-circle { stroke-dasharray:126;stroke-dashoffset:126; }
+    .ob-check { stroke-dasharray:42;stroke-dashoffset:42; }
+    .ob-slide.ob-active .ob-circle { animation:obDrawLine .9s cubic-bezier(.22,.8,.36,1) .15s forwards; }
+    .ob-slide.ob-active .ob-check { animation:obDrawLine .5s cubic-bezier(.22,.8,.36,1) .95s forwards; }
+    @keyframes obDrawLine { to{stroke-dashoffset:0} }
   </style>
 
   <div id="ob-backdrop"></div>
   <div id="ob-sheet">
     <div class="ob-progress-track"><div class="ob-progress-fill" id="ob-progress" style="width:25%"></div></div>
-    <div class="ob-top-row">
-      <div class="ob-handle"></div>
-      <button class="ob-skip" id="ob-skip">Overslaan</button>
-    </div>
-
+    <div class="ob-top-row"><div class="ob-handle"></div><button class="ob-skip" id="ob-skip">Overslaan</button></div>
     <div class="ob-viewport" id="ob-viewport">
       <div class="ob-track" id="ob-track">
-
-        <!-- Stap 1 -->
         <div class="ob-slide ob-active">
           <div class="ob-icon-wrap">
             <svg width="54" height="54" viewBox="0 0 52 52" fill="none">
-              <!-- Flash rays -->
-              <g class="ob-cam-rays">
-                <line x1="26" y1="5"  x2="26" y2="1"  stroke="#e67026" stroke-width="2" stroke-linecap="round"/>
-                <line x1="39" y1="9"  x2="42" y2="6"  stroke="#e67026" stroke-width="2" stroke-linecap="round"/>
-                <line x1="47" y1="22" x2="51" y2="22" stroke="#e67026" stroke-width="2" stroke-linecap="round"/>
-              </g>
-              <!-- Camera body -->
+              <g class="ob-cam-rays"><line x1="26" y1="5" x2="26" y2="1" stroke="#e67026" stroke-width="2" stroke-linecap="round"/><line x1="39" y1="9" x2="42" y2="6" stroke="#e67026" stroke-width="2" stroke-linecap="round"/><line x1="47" y1="22" x2="51" y2="22" stroke="#e67026" stroke-width="2" stroke-linecap="round"/></g>
               <rect x="6" y="14" width="40" height="28" rx="5" fill="rgba(230,112,38,.08)" stroke="#e67026" stroke-width="2"/>
-              <!-- Top bump -->
               <path d="M18 14v-3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3" fill="rgba(230,112,38,.08)" stroke="#e67026" stroke-width="2"/>
-              <!-- Lens outer -->
               <circle cx="26" cy="28" r="9" fill="rgba(230,112,38,.06)" stroke="#e67026" stroke-width="2"/>
-              <!-- Lens inner animated -->
               <circle class="ob-cam-lens" cx="26" cy="28" r="5" fill="rgba(230,112,38,.28)" stroke="#e67026" stroke-width="1.5"/>
-              <!-- Shutter dot -->
               <circle cx="39" cy="20" r="2.5" fill="rgba(230,112,38,.45)"/>
             </svg>
           </div>
           <div class="ob-step-label">Stap 1 van 4</div>
-          <div class="ob-title">Fotografeer je restmateriaal</div>
-          <div class="ob-desc">Heb je overgebleven bouwmaterialen? Maak gewoon een foto — hout, steen, sanitair, noem maar op.</div>
+          <div class="ob-title">Fotografeer je goede spullen</div>
+          <div class="ob-desc">Heb je spullen die nog goed zijn maar weg moeten? Maak gewoon een foto — meubels, gereedschap, materialen, noem maar op.</div>
         </div>
-
-        <!-- Stap 2 -->
         <div class="ob-slide">
           <div class="ob-icon-wrap">
             <svg width="54" height="54" viewBox="0 0 52 52" fill="none">
-              <!-- Document -->
               <rect x="10" y="4" width="28" height="36" rx="4" fill="rgba(230,112,38,.06)" stroke="#e67026" stroke-width="2"/>
-              <!-- Static content lines -->
               <line x1="16" y1="16" x2="32" y2="16" stroke="#e4ddd5" stroke-width="2" stroke-linecap="round"/>
               <line x1="16" y1="23" x2="32" y2="23" stroke="#e4ddd5" stroke-width="2" stroke-linecap="round"/>
               <line x1="16" y1="30" x2="26" y2="30" stroke="#e4ddd5" stroke-width="2" stroke-linecap="round"/>
-              <!-- Scan glow -->
               <rect class="ob-scanglow" x="10" y="13" width="28" height="7" fill="rgba(230,112,38,.15)" rx="1"/>
-              <!-- Scan line -->
               <line class="ob-scanline" x1="10" y1="16" x2="38" y2="16" stroke="#e67026" stroke-width="2.5" stroke-linecap="round"/>
-              <!-- AI badge -->
-              <g class="ob-aibadge">
-                <circle cx="40" cy="40" r="10" fill="#e67026"/>
-                <polyline points="35,40 38.5,43.5 45,36.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-              </g>
+              <g class="ob-aibadge"><circle cx="40" cy="40" r="10" fill="#e67026"/><polyline points="35,40 38.5,43.5 45,36.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g>
             </svg>
           </div>
           <div class="ob-step-label">Stap 2 van 4</div>
           <div class="ob-title">AI herkent het direct</div>
           <div class="ob-desc">Onze AI analyseert de foto automatisch en bepaalt wat het is, hoeveel het weegt en of het geschikt is.</div>
         </div>
-
-        <!-- Stap 3 -->
         <div class="ob-slide">
           <div class="ob-icon-wrap">
             <svg width="54" height="54" viewBox="0 0 52 52" fill="none">
-              <!-- Ping rings expanding from center -->
               <circle class="ob-ping ob-ping1" cx="26" cy="26" r="10" stroke="#e67026" fill="none" stroke-width="2.5"/>
               <circle class="ob-ping ob-ping2" cx="26" cy="26" r="10" stroke="#e67026" fill="none" stroke-width="2.5"/>
-              <!-- Center person -->
               <circle cx="26" cy="20" r="6" fill="rgba(230,112,38,.12)" stroke="#e67026" stroke-width="2"/>
               <path d="M14 40c0-6.6 5.4-12 12-12s12 5.4 12 12" stroke="#e67026" stroke-width="2" stroke-linecap="round" fill="none"/>
-              <!-- Notification badge -->
-              <g class="ob-notif">
-                <circle cx="37" cy="14" r="7" fill="#e67026"/>
-                <text x="37" y="18" text-anchor="middle" fill="white" font-size="9" font-weight="bold" font-family="Inter,sans-serif">!</text>
-              </g>
+              <g class="ob-notif"><circle cx="37" cy="14" r="7" fill="#e67026"/><text x="37" y="18" text-anchor="middle" fill="white" font-size="9" font-weight="bold" font-family="Inter,sans-serif">!</text></g>
             </svg>
           </div>
           <div class="ob-step-label">Stap 3 van 4</div>
           <div class="ob-title">Bedrijven worden gematcht</div>
           <div class="ob-desc">Lokale afnemers in jouw netwerk zien het aanbod direct en kunnen aangeven of ze het willen hebben.</div>
         </div>
-
-        <!-- Stap 4 -->
         <div class="ob-slide">
           <div class="ob-icon-wrap" style="background:rgba(76,175,80,.1);">
             <svg width="54" height="54" viewBox="0 0 52 52" fill="none">
-              <!-- Circle drawing itself -->
               <circle class="ob-circle" cx="26" cy="26" r="20" stroke="#4caf50" stroke-width="2.5" fill="rgba(76,175,80,.08)"/>
-              <!-- Checkmark drawing itself -->
               <polyline class="ob-check" points="14,26 22,34 38,18" stroke="#4caf50" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
             </svg>
           </div>
@@ -479,17 +347,11 @@
           <div class="ob-title">Materiaal krijgt een tweede leven</div>
           <div class="ob-desc">Ophaling wordt geregeld en jouw restmateriaal wordt hergebruikt. Minder afval, meer waarde.</div>
         </div>
-
       </div>
     </div>
-
     <div class="ob-dots" id="ob-dots">
-      <div class="ob-dot active" data-i="0"></div>
-      <div class="ob-dot" data-i="1"></div>
-      <div class="ob-dot" data-i="2"></div>
-      <div class="ob-dot" data-i="3"></div>
+      <div class="ob-dot active" data-i="0"></div><div class="ob-dot" data-i="1"></div><div class="ob-dot" data-i="2"></div><div class="ob-dot" data-i="3"></div>
     </div>
-
     <div class="ob-actions">
       <button class="ob-next" id="ob-next">Volgende</button>
       <button class="ob-back" id="ob-back" style="visibility:hidden;">← Terug</button>
@@ -498,224 +360,39 @@
 
   <script>
     (function () {
-      const SEEN_KEY = 'onboarding_seen_v1';
-      const total    = 4;
-      let current    = 0;
-      let dragging   = false;
-      let dragStartX = 0;
-      let dragDelta  = 0;
-
-      const backdrop  = document.getElementById('ob-backdrop');
-      const sheet     = document.getElementById('ob-sheet');
-      const track     = document.getElementById('ob-track');
-      const viewport  = document.getElementById('ob-viewport');
-      const progress  = document.getElementById('ob-progress');
-      const dots      = document.getElementById('ob-dots').querySelectorAll('.ob-dot');
-      const slides    = track.querySelectorAll('.ob-slide');
-      const nextBtn   = document.getElementById('ob-next');
-      const backBtn   = document.getElementById('ob-back');
-      const skipBtn   = document.getElementById('ob-skip');
-
-      window.onboardingOpen = function () {
-        goTo(0, false);
-        backdrop.classList.add('ob-show');
-        sheet.classList.add('ob-show');
-      };
-
-      function onboardingClose() {
-        backdrop.classList.remove('ob-show');
-        sheet.classList.remove('ob-show');
-        localStorage.setItem(SEEN_KEY, '1');
-      }
-
+      const total = 4; let current = 0, dragging = false, dragStartX = 0, dragDelta = 0;
+      const backdrop = document.getElementById('ob-backdrop'), sheet = document.getElementById('ob-sheet'),
+            track = document.getElementById('ob-track'), viewport = document.getElementById('ob-viewport'),
+            progress = document.getElementById('ob-progress'),
+            dots = document.getElementById('ob-dots').querySelectorAll('.ob-dot'),
+            slides = track.querySelectorAll('.ob-slide'),
+            nextBtn = document.getElementById('ob-next'), backBtn = document.getElementById('ob-back'),
+            skipBtn = document.getElementById('ob-skip');
+      window.onboardingOpen = function () { goTo(0, false); backdrop.classList.add('ob-show'); sheet.classList.add('ob-show'); };
+      function onboardingClose() { backdrop.classList.remove('ob-show'); sheet.classList.remove('ob-show'); }
       function goTo(idx, animated) {
         current = Math.max(0, Math.min(total - 1, idx));
-
-        // slide track
         track.classList.toggle('ob-animated', animated);
         track.style.transform = 'translateX(-' + (current * 100) + '%)';
-
-        // progress bar
         progress.style.width = ((current + 1) / total * 100) + '%';
-
-        // dots
         dots.forEach((d, i) => d.classList.toggle('active', i === current));
-
-        // stagger content of new active slide
-        slides.forEach((s, i) => {
-          if (i === current) {
-            s.classList.remove('ob-active');
-            void s.offsetWidth; // force reflow to restart animation
-            s.classList.add('ob-active');
-          } else {
-            s.classList.remove('ob-active');
-          }
-        });
-
-        // buttons
+        slides.forEach((s, i) => { s.classList.remove('ob-active'); if (i === current) { void s.offsetWidth; s.classList.add('ob-active'); } });
         backBtn.style.visibility = current > 0 ? 'visible' : 'hidden';
         nextBtn.textContent = current === total - 1 ? 'Aan de slag →' : 'Volgende';
       }
-
-      nextBtn.addEventListener('click', function () {
-        if (current < total - 1) goTo(current + 1, true);
-        else onboardingClose();
-      });
+      nextBtn.addEventListener('click', function () { if (current < total - 1) goTo(current + 1, true); else onboardingClose(); });
       backBtn.addEventListener('click', function () { goTo(current - 1, true); });
       skipBtn.addEventListener('click', onboardingClose);
       backdrop.addEventListener('click', onboardingClose);
-      dots.forEach(d => d.addEventListener('click', function () {
-        goTo(parseInt(d.dataset.i), true);
-      }));
-
-      /* ── Touch swipe ── */
-      viewport.addEventListener('touchstart', function (e) {
-        dragging  = true;
-        dragStartX = e.touches[0].clientX;
-        dragDelta  = 0;
-        track.classList.remove('ob-animated');
-      }, { passive: true });
-
-      viewport.addEventListener('touchmove', function (e) {
-        if (!dragging) return;
-        dragDelta = e.touches[0].clientX - dragStartX;
-        const base = current * viewport.offsetWidth;
-        track.style.transform = 'translateX(' + (-base + dragDelta) + 'px)';
-      }, { passive: true });
-
-      viewport.addEventListener('touchend', function () {
-        if (!dragging) return;
-        dragging = false;
-        const threshold = viewport.offsetWidth * 0.28;
-        if (dragDelta < -threshold && current < total - 1) goTo(current + 1, true);
-        else if (dragDelta > threshold && current > 0)      goTo(current - 1, true);
-        else goTo(current, true); // snap back
-      });
-
-      if (!localStorage.getItem(SEEN_KEY)) {
-        setTimeout(onboardingOpen, 800);
-      }
+      dots.forEach(d => d.addEventListener('click', function () { goTo(parseInt(d.dataset.i), true); }));
+      viewport.addEventListener('touchstart', function (e) { dragging = true; dragStartX = e.touches[0].clientX; dragDelta = 0; track.classList.remove('ob-animated'); }, { passive: true });
+      viewport.addEventListener('touchmove', function (e) { if (!dragging) return; dragDelta = e.touches[0].clientX - dragStartX; track.style.transform = 'translateX(' + (-(current * viewport.offsetWidth) + dragDelta) + 'px)'; }, { passive: true });
+      viewport.addEventListener('touchend', function () { if (!dragging) return; dragging = false; const t = viewport.offsetWidth * 0.28; if (dragDelta < -t && current < total - 1) goTo(current + 1, true); else if (dragDelta > t && current > 0) goTo(current - 1, true); else goTo(current, true); });
     })();
   </script>
 
-  <!-- PWA Install Prompt (zelfde als index.html) -->
-  <style>
-    #pwa-backdrop {
-      position: fixed; inset: 0; z-index: 900;
-      background: rgba(0,0,0,.45);
-      backdrop-filter: blur(3px);
-      opacity: 0; pointer-events: none;
-      transition: opacity .3s ease;
-    }
-    #pwa-backdrop.pwa-show { opacity: 1; pointer-events: all; }
-    #pwa-sheet {
-      position: fixed; left: 0; right: 0; bottom: 0; z-index: 901;
-      background: #fff;
-      border-radius: 20px 20px 0 0;
-      padding: 0 20px calc(env(safe-area-inset-bottom, 0px) + 24px);
-      box-shadow: 0 -8px 40px rgba(0,0,0,.18);
-      max-width: 520px; margin: 0 auto;
-      transform: translateY(110%);
-      transition: transform .42s cubic-bezier(.22,.8,.36,1);
-    }
-    #pwa-sheet.pwa-show { transform: translateY(0); }
-    .pwa-handle { width: 40px; height: 4px; border-radius: 2px; background: #E8E8E8; margin: 12px auto 20px; }
-    .pwa-close-btn { position: absolute; top: 14px; right: 16px; background: none; border: none; cursor: pointer; font-size: 1.3rem; color: #9A9690; line-height: 1; padding: 4px 8px; }
-    .pwa-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-    .pwa-icon-wrap { width: 44px; height: 44px; border-radius: 12px; background: rgba(230,112,38,0.08); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .pwa-title { font-family: 'Outfit', sans-serif; font-size: 1.3rem; font-weight: 900; color: #1A1914; }
-    .pwa-subtitle { font-size: 0.75rem; color: #9A9690; margin-top: 2px; }
-    .pwa-steps { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-    .pwa-step { display: flex; align-items: flex-start; gap: 12px; opacity: 0; transform: translateX(-10px); animation: pwaStepIn .35s ease forwards; animation-delay: calc(var(--i) * .18s + .35s); }
-    @keyframes pwaStepIn { to { opacity: 1; transform: translateX(0); } }
-    .pwa-step-num { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: rgba(230,112,38,0.08); color: #c45c1a; font-size: .75rem; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
-    .pwa-step-text { font-size: .88rem; color: #444; line-height: 1.4; }
-    .pwa-step-text strong { color: #1A1914; }
-    .pwa-arrow-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 16px; opacity: 0; animation: pwaFadeIn .4s ease 1.1s forwards; }
-    @keyframes pwaFadeIn { to { opacity: 1; } }
-    .pwa-arrow-label { font-size: .7rem; color: #9A9690; }
-    .pwa-arrow { font-size: 1.4rem; color: #e67026; animation: pwaBounce 1.3s ease-in-out infinite; }
-    @keyframes pwaBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(7px); } }
-    .pwa-android-btn { width: 100%; padding: 14px; background: #e67026; color: #fff; border: none; border-radius: 12px; font-family: 'Inter', system-ui, sans-serif; font-size: .95rem; font-weight: 700; cursor: pointer; margin-bottom: 10px; }
-    .pwa-not-now { display: block; width: 100%; background: none; border: none; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; font-size: .8rem; color: #9A9690; padding: 8px; text-align: center; }
-  </style>
-
-  <div id="pwa-backdrop"></div>
-  <div id="pwa-sheet">
-    <div class="pwa-handle"></div>
-    <button class="pwa-close-btn" id="pwa-close">&times;</button>
-    <div class="pwa-head">
-      <div class="pwa-icon-wrap">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e67026" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-      </div>
-      <div>
-        <div class="pwa-title">Installeer de app</div>
-        <div class="pwa-subtitle">Snelle toegang &amp; pushmeldingen</div>
-      </div>
-    </div>
-    <div id="pwa-ios" class="pwa-steps">
-      <div class="pwa-step" style="--i:0"><span class="pwa-step-num">1</span><span class="pwa-step-text">Tik op het <strong>deel-icoon ⬆</strong> onderin de browserbalk</span></div>
-      <div class="pwa-step" style="--i:1"><span class="pwa-step-num">2</span><span class="pwa-step-text">Scroll omlaag en kies <strong>Zet op beginscherm</strong></span></div>
-      <div class="pwa-step" style="--i:2"><span class="pwa-step-num">3</span><span class="pwa-step-text">Tik op <strong>Voeg toe</strong> om te bevestigen</span></div>
-    </div>
-    <div id="pwa-arrow-wrap" class="pwa-arrow-wrap">
-      <span class="pwa-arrow-label">Deel-icoon staat hier</span>
-      <span class="pwa-arrow">↓</span>
-    </div>
-    <div id="pwa-android" style="display:none;margin-bottom:8px;">
-      <button class="pwa-android-btn" id="pwa-android-btn">Installeer app</button>
-    </div>
-    <button class="pwa-not-now" id="pwa-dismiss">Niet nu</button>
-  </div>
-
   <script>
-    (function () {
-      const STORAGE_KEY = 'pwa_prompt_ts';
-      const COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
-
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      if (!isMobile) return;
-
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-      if (isStandalone) return;
-
-      const last = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
-      if (Date.now() - last < COOLDOWN_MS) return;
-
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      let deferredPrompt = null;
-
-      function showSheet() {
-        document.getElementById('pwa-backdrop').classList.add('pwa-show');
-        document.getElementById('pwa-sheet').classList.add('pwa-show');
-      }
-      function hideSheet() {
-        document.getElementById('pwa-backdrop').classList.remove('pwa-show');
-        document.getElementById('pwa-sheet').classList.remove('pwa-show');
-        localStorage.setItem(STORAGE_KEY, String(Date.now()));
-      }
-
-      document.getElementById('pwa-close').addEventListener('click', hideSheet);
-      document.getElementById('pwa-dismiss').addEventListener('click', hideSheet);
-      document.getElementById('pwa-backdrop').addEventListener('click', hideSheet);
-
-      if (!isIOS) {
-        document.getElementById('pwa-ios').style.display = 'none';
-        document.getElementById('pwa-arrow-wrap').style.display = 'none';
-      }
-
-      window.addEventListener('beforeinstallprompt', function (e) {
-        e.preventDefault();
-        deferredPrompt = e;
-        document.getElementById('pwa-android').style.display = 'block';
-        document.getElementById('pwa-android-btn').addEventListener('click', async function () {
-          await deferredPrompt.prompt();
-          hideSheet();
-        });
-      });
-
-      setTimeout(showSheet, 1400);
-    })();
+    window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); });
   </script>
   <script src="/static/ux.js"></script>
 </body>
