@@ -1085,10 +1085,23 @@ async function initPush() {
   const Notif = window.Notification;
   if (!Notif) return;
   if (Notif.permission === "granted") {
-    await _abonneerPush();
-    status.textContent = "✓ Pushmeldingen zijn ingeschakeld";
+    try {
+      await _abonneerPush();
+      status.textContent = "✓ Meldingen staan aan voor dit account";
+      status.style.display = "block";
+      btn.style.display = "none";
+    } catch (e) {
+      // Geen/kapotte subscription — laat de gebruiker 'm via een tik (her)activeren.
+      status.textContent = "Tik op de knop om meldingen voor dit account te activeren.";
+      status.style.display = "block";
+      btn.innerHTML = `${SVG.bell} Meldingen activeren`;
+      btn.disabled = false;
+      btn.style.display = "block";
+    }
+  } else if (Notif.permission === "denied") {
+    status.textContent = "Meldingen staan geblokkeerd in je iPhone-instellingen.";
     status.style.display = "block";
-  } else if (Notif.permission === "default") {
+  } else {
     btn.style.display = "block";
   }
 }
@@ -1125,16 +1138,19 @@ async function meldingInschakelen() {
 
 async function _abonneerPush() {
   if (!_swReg) _swReg = await navigator.serviceWorker.ready;
-  const bestaand = await _swReg.pushManager.getSubscription();
-  if (bestaand) await bestaand.unsubscribe();
-  const keyRes = await fetch("/api/push/vapid-key");
-  const keyData = await keyRes.json();
-  const public_key = keyData.public_key;
-  if (!public_key) throw new Error("Geen VAPID public key ontvangen");
-  const padding = "=".repeat((4 - public_key.length % 4) % 4);
-  const raw = atob((public_key + padding).replace(/-/g, "+").replace(/_/g, "/"));
-  const appKey = Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
-  const sub = await _swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+  // Hergebruik een bestaande subscription (NIET afmelden — dat faalt stil op iOS).
+  let sub = await _swReg.pushManager.getSubscription();
+  if (!sub) {
+    const keyRes = await fetch("/api/push/vapid-key");
+    const keyData = await keyRes.json();
+    const public_key = keyData.public_key;
+    if (!public_key) throw new Error("Geen VAPID public key ontvangen");
+    const padding = "=".repeat((4 - public_key.length % 4) % 4);
+    const raw = atob((public_key + padding).replace(/-/g, "+").replace(/_/g, "/"));
+    const appKey = Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+    sub = await _swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+  }
+  // Koppel de subscription aan het NU ingelogde account (server doet upsert op user_id).
   await apiFetch("/api/push/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1152,15 +1168,9 @@ async function _ensurePushRegistered() {
   try {
     const reg = await navigator.serviceWorker.register("/sw.js");
     await navigator.serviceWorker.ready;
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) {
-      const keyData = await (await fetch("/api/push/vapid-key")).json();
-      if (!keyData.public_key) return;
-      const padding = "=".repeat((4 - keyData.public_key.length % 4) % 4);
-      const raw = atob((keyData.public_key + padding).replace(/-/g, "+").replace(/_/g, "/"));
-      const appKey = Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
-    }
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return;  // geen bestaande subscription; op iOS kan dat alleen via een tik (knop)
+    // Koppel de bestaande subscription aan het nu ingelogde account.
     await apiFetch("/api/push/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
