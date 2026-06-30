@@ -39,6 +39,28 @@
       font-size: 1.6rem; font-weight: 900;
       margin-bottom: 20px;
     }
+    .install-fab {
+      position: fixed; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom,0px)); z-index: 600;
+      display: flex; align-items: center; gap: 7px;
+      padding: 10px 15px; border: none; border-radius: 100px;
+      background: var(--orange); color: #fff; font-family: inherit; font-weight: 700; font-size: 0.8rem;
+      box-shadow: 0 4px 16px rgba(230,112,38,.4); cursor: pointer;
+      transition: transform .12s ease, background .15s;
+    }
+    .install-fab:active { transform: scale(.94); }
+    .install-pop-overlay {
+      position: fixed; inset: 0; z-index: 700; background: rgba(26,25,20,0.5);
+      backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .install-pop-card {
+      background: #fff; border-radius: 18px; padding: 22px 20px; max-width: 360px; width: 100%;
+      position: relative; box-shadow: 0 16px 50px rgba(0,0,0,.3);
+    }
+    .install-pop-close {
+      position: absolute; top: 10px; right: 12px; width: 32px; height: 32px;
+      background: var(--surface); border: none; border-radius: 50%; color: var(--ink);
+      font-size: 1.3rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
   </style>
   <link rel="stylesheet" href="/brand.css">
   <link rel="stylesheet" href="/static/ux.css">
@@ -232,6 +254,20 @@
     }
   </script>
 
+  <!-- Zwevende install-knop (alleen als app nog niet geïnstalleerd is) -->
+  <button id="install-fab" class="install-fab" onclick="openInstallPopup()" style="display:none;" aria-label="App installeren">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+    <span>Installeer app</span>
+  </button>
+  <div id="install-pop" class="install-pop-overlay" style="display:none;" onclick="if(event.target===this)closeInstallPopup()">
+    <div class="install-pop-card">
+      <button class="install-pop-close" onclick="closeInstallPopup()">&times;</button>
+      <h1 style="font-size:1.4rem;margin-bottom:12px;">App installeren</h1>
+      <div id="install-pop-steps" style="font-size:0.88rem;color:var(--ink);line-height:1.55;"></div>
+      <button id="install-pop-now" class="btn btn-primary" style="display:none;width:100%;margin-top:16px;" onclick="installNu()">Nu installeren</button>
+    </div>
+  </div>
+
   <!-- Installatie-instructie per browser/toestel -->
   <script>
   (function () {
@@ -309,10 +345,25 @@
       deferred.prompt();
       deferred.userChoice.then(function () {
         deferred = null;
-        document.getElementById('install-now-btn').style.display = 'none';
-        document.getElementById('install-steps').innerHTML = "✓ Installatie gestart — volg de melding van je browser.";
+        ['install-now-btn', 'install-pop-now'].forEach(function (id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
+        var s = document.getElementById('install-pop-steps'); if (s) s.innerHTML = "✓ Installatie gestart — volg de melding van je browser.";
       });
     };
+
+    window.openInstallPopup = function () {
+      var p = platform();
+      document.getElementById('install-pop-steps').innerHTML = STAPPEN[p] || STAPPEN['desktop-other'];
+      var nowBtn = document.getElementById('install-pop-now');
+      nowBtn.style.display = (deferred && (p === 'android' || p.indexOf('desktop') === 0)) ? 'block' : 'none';
+      document.getElementById('install-pop').style.display = 'flex';
+    };
+    window.closeInstallPopup = function () { document.getElementById('install-pop').style.display = 'none'; };
+
+    // Toon de zwevende install-knop alleen als de app nog niet geïnstalleerd is
+    if (platform() !== 'installed') {
+      var fab = document.getElementById('install-fab');
+      if (fab) fab.style.display = 'flex';
+    }
   })();
   </script>
 

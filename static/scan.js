@@ -1415,15 +1415,28 @@ window.installNu = function () {
   _deferredInstallPrompt.prompt();
   _deferredInstallPrompt.userChoice.then(() => {
     _deferredInstallPrompt = null;
-    document.getElementById("app-install-now").style.display = "none";
-    document.getElementById("app-install-steps").innerHTML = "✓ Installatie gestart — volg de melding van je browser.";
+    ["app-install-now", "install-pop-now"].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = "none"; });
+    const s = document.getElementById("install-pop-steps"); if (s) s.innerHTML = "✓ Installatie gestart — volg de melding van je browser.";
   });
 };
 
-// Verberg de install-knop als de app al als PWA draait
+// Zwevende install-knop (popup)
+window.openInstallPopup = function () {
+  const p = _installPlatform();
+  document.getElementById("install-pop-steps").innerHTML = _INSTALL_STAPPEN[p] || _INSTALL_STAPPEN["desktop-other"];
+  const nowBtn = document.getElementById("install-pop-now");
+  nowBtn.style.display = (_deferredInstallPrompt && (p === "android" || p.indexOf("desktop") === 0)) ? "block" : "none";
+  document.getElementById("install-pop").style.display = "flex";
+};
+window.closeInstallPopup = function () { document.getElementById("install-pop").style.display = "none"; };
+
+// Toon de zwevende knop alleen als de app nog NIET als PWA is geïnstalleerd
 if (_installPlatform() === "installed") {
   const _f = document.getElementById("app-install-field");
   if (_f) _f.style.display = "none";
+} else {
+  const _fab = document.getElementById("install-fab");
+  if (_fab) _fab.style.display = "flex";
 }
 
 laadGemeenten().then(() => syncAll());

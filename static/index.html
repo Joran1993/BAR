@@ -370,7 +370,21 @@
     </div>
   </div>
 
-  <script src="/static/scan.js?v=91"></script>
+  <!-- Zwevende install-knop (alleen als app nog niet geïnstalleerd is) -->
+  <button id="install-fab" class="install-fab" onclick="openInstallPopup()" style="display:none;" aria-label="App installeren">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+    <span>Installeer app</span>
+  </button>
+  <div id="install-pop" class="install-pop-overlay" style="display:none;" onclick="if(event.target===this)closeInstallPopup()">
+    <div class="install-pop-card">
+      <button class="install-pop-close" onclick="closeInstallPopup()">&times;</button>
+      <h3 style="font-family:'Barlow Condensed',sans-serif;font-size:1.4rem;font-weight:900;margin-bottom:12px;">App installeren</h3>
+      <div id="install-pop-steps" style="font-size:0.88rem;color:var(--ink);line-height:1.55;"></div>
+      <button id="install-pop-now" class="btn btn-primary" style="display:none;width:100%;margin-top:16px;" onclick="installNu()">Nu installeren</button>
+    </div>
+  </div>
+
+  <script src="/static/scan.js?v=92"></script>
 
 
   <div id="ob-backdrop"></div>
