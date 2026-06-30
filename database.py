@@ -165,6 +165,9 @@ def init_db():
             )
         """)
         cur.execute("ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE")
+        # bedrijf_id mag NULL zijn: aanbieders (rol 'user') hebben geen bedrijf_id.
+        # Oudere DB's hadden hier nog een NOT NULL constraint → subscribe gaf 500 voor users.
+        cur.execute("ALTER TABLE push_subscriptions ALTER COLUMN bedrijf_id DROP NOT NULL")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS organisatie TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS auto_doorsturen BOOLEAN DEFAULT FALSE")
         cur.execute("""
