@@ -1136,6 +1136,24 @@ async function meldingInschakelen() {
   }
 }
 
+// Bewaar het account-token in IndexedDB zodat de service worker een verlopen
+// subscription op de achtergrond kan vernieuwen (pushsubscriptionchange).
+function _idbPut(key, val) {
+  return new Promise((res, rej) => {
+    try {
+      const o = indexedDB.open("cirqo-push", 1);
+      o.onupgradeneeded = () => o.result.createObjectStore("kv");
+      o.onsuccess = () => {
+        const tx = o.result.transaction("kv", "readwrite");
+        tx.objectStore("kv").put(val, key);
+        tx.oncomplete = () => res();
+        tx.onerror = () => rej(tx.error);
+      };
+      o.onerror = () => rej(o.error);
+    } catch (e) { rej(e); }
+  });
+}
+
 async function _abonneerPush() {
   if (!_swReg) _swReg = await navigator.serviceWorker.ready;
   // Hergebruik een bestaande subscription (NIET afmelden — dat faalt stil op iOS).
@@ -1156,6 +1174,7 @@ async function _abonneerPush() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ subscription: sub.toJSON() }),
   });
+  _idbPut("token", token).catch(() => {});
 }
 
 // Bij app-start: als toestemming al is gegeven, koppel de (bestaande) subscription
@@ -1176,6 +1195,7 @@ async function _ensurePushRegistered() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ subscription: sub.toJSON() }),
     });
+    _idbPut("token", token).catch(() => {});
   } catch (e) { /* stil — push is best-effort */ }
 }
 
