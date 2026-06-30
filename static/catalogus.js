@@ -3,7 +3,6 @@ let geladen = 0;
 const PER_PAGINA = 500;
 let totaal = 0;
 let bezig = false;
-let actieveCategorie = "Alle";
 let zoekterm = "";
 let huidigLightboxIdx = -1;
 
@@ -25,23 +24,9 @@ async function laadItems() {
 
   document.getElementById("loading").style.display = "none";
 
-  if (isFirst) bouwCatFilters();
   renderGrid();
   updateTeller();
   updateLaadMeerKnop();
-}
-
-function bouwCatFilters() {
-  const cats = ["Alle", ...new Set(alleItems.map(i => i.category).filter(Boolean))].sort((a,b) => a === "Alle" ? -1 : a.localeCompare(b));
-  const wrap = document.getElementById("cat-btns");
-  wrap.innerHTML = cats.map(c => `<button class="cat-btn${c === actieveCategorie ? " active" : ""}" onclick="setCategorie('${c}')">${c}</button>`).join("");
-}
-
-function setCategorie(cat) {
-  actieveCategorie = cat;
-  document.querySelectorAll(".cat-btn").forEach(b => b.classList.toggle("active", b.textContent === cat));
-  renderGrid();
-  updateTeller();
 }
 
 function filterItems() {
@@ -51,11 +36,9 @@ function filterItems() {
 }
 
 function gefilterdItems() {
-  return alleItems.filter(i => {
-    const matchCat = actieveCategorie === "Alle" || i.category === actieveCategorie;
-    const matchZoek = !zoekterm || (i.ai_label || "").toLowerCase().includes(zoekterm) || (i.ai_detail || "").toLowerCase().includes(zoekterm);
-    return matchCat && matchZoek;
-  });
+  return alleItems.filter(i =>
+    !zoekterm || (i.ai_label || "").toLowerCase().includes(zoekterm) || (i.ai_detail || "").toLowerCase().includes(zoekterm)
+  );
 }
 
 function renderGrid() {
@@ -105,10 +88,8 @@ function vulLightbox(item, idx, total) {
   img.onload = () => { img.style.opacity = "1"; };
   document.getElementById("lb-label").textContent = item.ai_label || "Onbekend";
   document.getElementById("lb-kg").textContent = item.gewicht_kg != null ? item.gewicht_kg + " kg" : "";
-  document.getElementById("lb-cat").textContent = item.category || "";
   document.getElementById("lb-detail").textContent = item.ai_detail || "";
   document.getElementById("lb-kg").style.display = item.gewicht_kg != null ? "" : "none";
-  document.getElementById("lb-cat").style.display = item.category ? "" : "none";
   document.getElementById("lb-teller").textContent = `${idx + 1} / ${total}`;
   document.getElementById("lb-prev").style.visibility = idx > 0 ? "visible" : "hidden";
   document.getElementById("lb-next").style.visibility = idx < total - 1 ? "visible" : "hidden";

@@ -31,7 +31,7 @@ const _username = localStorage.getItem("username") || "";
 const _gemeente = localStorage.getItem("gemeente") || "";
 const _hdrUser  = document.getElementById("hdr-username");
 if (_hdrUser && _username) _hdrUser.textContent = _username + (_gemeente ? ` · ${_gemeente}` : "");
-if (_role === "admin" || _role === "superadmin") {
+if (_role === "superadmin") {
   const bl = document.getElementById("beheer-link");
   if (bl) bl.classList.remove("hidden");
 }
@@ -50,6 +50,8 @@ let activeSubtab    = "aangeboden";
 let adminGemeente   = "";
 let currentItemId   = null;
 let pendingFile     = null;
+let _listPage       = 0;
+const _PAGE_SIZE    = 15;
 
 // ── Admin layout ───────────────────────────────────────────────────────────────
 if (_isAdmin) {
@@ -72,20 +74,31 @@ document.querySelectorAll(".tabbar-btn").forEach(btn => {
 
 // ── Sync ───────────────────────────────────────────────────────────────────────
 let _lastItemsJson = "";
+let _syncInFlight  = false;
+
+function _listTabActive() {
+  return document.getElementById("tab-list")?.classList.contains("active");
+}
 
 async function syncItems() {
-  const url = _isAdmin
-    ? "/api/items?limit=500&offset=0"
-    : "/api/items?limit=200&offset=0";
-  const res = await apiFetch(url);
-  if (!res || !res.ok) return;
-  const nieuw = await res.json();
-  const nieuwJson = JSON.stringify(nieuw);
-  if (nieuwJson === _lastItemsJson) return; // niets veranderd, geen flicker
-  _lastItemsJson = nieuwJson;
-  allItems = nieuw;
-  if (_isAdmin) _vulGemeenteDropdown();
-  renderItems();
+  if (_syncInFlight) return;
+  _syncInFlight = true;
+  try {
+    const url = _isAdmin
+      ? "/api/items?limit=200&offset=0"
+      : "/api/items?limit=50&offset=0";
+    const res = await apiFetch(url);
+    if (!res || !res.ok) return;
+    const nieuw = await res.json();
+    const hash = `${nieuw.length}_${nieuw[0]?.id || 0}_${nieuw[nieuw.length - 1]?.id || 0}`;
+    if (hash === _lastItemsJson) return;
+    _lastItemsJson = hash;
+    allItems = nieuw;
+    if (_isAdmin) _vulGemeenteDropdown();
+    if (_listTabActive()) renderItems();
+  } finally {
+    _syncInFlight = false;
+  }
 }
 
 function _vulGemeenteDropdown() {
@@ -98,6 +111,7 @@ function _vulGemeenteDropdown() {
 
 document.getElementById("admin-gemeente-select").addEventListener("change", e => {
   adminGemeente = e.target.value;
+  _listPage = 0;
   renderItems();
 });
 async function syncStats() {
@@ -359,8 +373,7 @@ analyseBtn.addEventListener("click", async () => {
     }
     const item = await res.json();
     document.getElementById("result-label").textContent  = item.ai_label || "Niet herkend";
-    document.getElementById("result-weight").textContent =
-      item.gewicht_kg != null ? `Geschat gewicht: ${item.gewicht_kg} kg` : "";
+    document.getElementById("result-weight").textContent = "";
     const co2El = document.getElementById("result-co2");
     if (false && item.gewicht_kg != null) {
       co2El.textContent = co2Label(item.gewicht_kg);
@@ -371,15 +384,7 @@ analyseBtn.addEventListener("click", async () => {
     document.getElementById("result-detail").textContent = item.ai_detail || "";
 
     const acceptatieBadge = document.getElementById("result-acceptatie");
-    if (item.geaccepteerd === true) {
-      acceptatieBadge.textContent = "Geaccepteerd";
-      acceptatieBadge.className = "result-acceptatie geaccepteerd";
-    } else if (item.geaccepteerd === false) {
-      acceptatieBadge.textContent = "Niet geaccepteerd";
-      acceptatieBadge.className = "result-acceptatie geweigerd";
-    } else {
-      acceptatieBadge.className = "result-acceptatie hidden";
-    }
+    acceptatieBadge.className = "result-acceptatie hidden";
 
     resultCard.classList.remove("hidden");
 
@@ -479,6 +484,7 @@ document.querySelectorAll(".list-maintab").forEach(btn => {
     const first = subWrap.querySelector(".list-subtab");
     subWrap.querySelectorAll(".list-subtab").forEach(b => b.classList.remove("active"));
     if (first) { first.classList.add("active"); activeSubtab = first.dataset.subtab; }
+    _listPage = 0;
     renderItems();
   });
 });
@@ -489,6 +495,7 @@ document.querySelectorAll(".list-subtab").forEach(btn => {
     btn.closest(".list-subtabs").querySelectorAll(".list-subtab").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     activeSubtab = btn.dataset.subtab;
+    _listPage = 0;
     renderItems();
   });
 });
@@ -539,18 +546,23 @@ function renderItems() {
     list.innerHTML = `<p style="padding:24px 16px;color:var(--muted);">Geen items gevonden.</p>`;
     return;
   }
+  const totalPages = Math.ceil(filtered.length / _PAGE_SIZE);
+  if (_listPage >= totalPages) _listPage = totalPages - 1;
+  const pagina = filtered.slice(_listPage * _PAGE_SIZE, (_listPage + 1) * _PAGE_SIZE);
   const kanVerwijderen = !_isAdmin && activeMain === "aanbieden" && !_isAdmin;
-  list.innerHTML = filtered.map(item => {
+  list.innerHTML = pagina.map(item => {
     const rij = `
       <div class="item-row" onclick="openModal(${item.id})">
         <img class="item-thumb" src="${item.photo_url}" alt="" onerror="this.style.opacity=0" loading="lazy">
         <div class="item-info">
           <div class="item-name">${item.ai_label || "Niet herkend"}</div>
           <div class="item-meta">
-            ${item.gewicht_kg != null ? `<span class="item-kg">${item.gewicht_kg} kg</span>` : ""}
             ${item.category ? `<span class="item-cat">${item.category}</span>` : ""}
             ${_isAdmin && item.gemeente ? `<span class="item-cat" style="background:#e8f0fe;border-color:#c5d2f6;">${item.gemeente}</span>` : ""}
             <span>${formatTime(item.timestamp)}</span>
+            ${item.aangeboden_door_naam ? `<span class="aanbieder-van">${item.aangeboden_door_naam}</span>` : ""}
+            ${item.aangeboden_door_naam && item.bedrijf_naam ? `<span class="aanbieder-pijl">›</span>` : ""}
+            ${item.bedrijf_naam ? `<span class="aanbieder-aan">${item.bedrijf_naam}</span>` : ""}
           </div>
         </div>
         ${item.aanbieding_id ? `<span class="item-chat-icon${_hasUnread(item) ? ' has-unread' : ''}" onclick="event.stopPropagation();openModal(${item.id},true)">${SVG.chat}</span>` : ""}
@@ -564,10 +576,35 @@ function renderItems() {
     </div>`;
   }).join("");
   if (kanVerwijderen && !_swipeReady) { _initSwipe(); _swipeReady = true; }
+
+  if (totalPages > 1) {
+    const from = _listPage * _PAGE_SIZE + 1;
+    const to   = Math.min(from + pagina.length - 1, filtered.length);
+    const nav  = document.createElement("div");
+    nav.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:14px 16px 4px;gap:8px;";
+    nav.innerHTML = `
+      <button onclick="_goPagina(${_listPage - 1})" ${_listPage === 0 ? "disabled" : ""}
+        style="padding:9px 18px;border:1px solid var(--border);border-radius:100px;background:none;font-family:'Inter',sans-serif;font-size:0.72rem;font-weight:700;color:var(--muted);cursor:pointer;${_listPage === 0 ? "opacity:0.3;cursor:default;" : ""}">
+        ← Vorige
+      </button>
+      <span style="font-size:0.7rem;color:var(--muted);">${from}–${to} van ${filtered.length}</span>
+      <button onclick="_goPagina(${_listPage + 1})" ${_listPage >= totalPages - 1 ? "disabled" : ""}
+        style="padding:9px 18px;border:1px solid var(--border);border-radius:100px;background:none;font-family:'Inter',sans-serif;font-size:0.72rem;font-weight:700;color:var(--muted);cursor:pointer;${_listPage >= totalPages - 1 ? "opacity:0.3;cursor:default;" : ""}">
+        Volgende →
+      </button>`;
+    list.appendChild(nav);
+  }
+}
+
+function _goPagina(page) {
+  _listPage = page;
+  document.getElementById("items-list").parentElement.scrollTop = 0;
+  renderItems();
 }
 
 document.getElementById("search-input").addEventListener("input", e => {
   searchQuery = e.target.value;
+  _listPage = 0;
   renderItems();
 });
 
@@ -582,13 +619,15 @@ function renderStats() {
   const totalCo2 = stats.totaal_kg != null ? (stats.totaal_kg * CO2_PER_KG).toFixed(1) : "–";
   document.getElementById("s-co2").textContent   = totalCo2 !== "–" ? totalCo2 + " kg" : "–";
   const catList = document.getElementById("categories-list");
-  catList.innerHTML = stats.categories.length
-    ? stats.categories.map(c => `
-        <div class="cat-row">
-          <span class="cat-name">${c.category}</span>
-          <span class="cat-count">${c.count}x</span>
-        </div>`).join("")
-    : `<p style="color:var(--muted);font-size:0.9rem;padding:16px;">Nog geen categorieën.</p>`;
+  if (catList) {
+    catList.innerHTML = stats.categories.length
+      ? stats.categories.map(c => `
+          <div class="cat-row">
+            <span class="cat-name">${c.category}</span>
+            <span class="cat-count">${c.count}x${c.kg ? ' · ' + Math.round(c.kg) + ' kg' : ''}</span>
+          </div>`).join("")
+      : `<p style="color:var(--muted);font-size:0.9rem;padding:16px;">Nog geen categorieën.</p>`;
+  }
   if (_role === "superadmin") renderGemeenteStats();
   renderDeelnemers();
 }
@@ -676,15 +715,43 @@ async function syncNetwerk() {
 
 function renderNetwerk(data) {
   const wrap = document.getElementById("netwerk-wrap");
-  if (!data || !data.bedrijven.length) { wrap.style.display = "none"; return; }
-  wrap.style.display = "block";
-  wrap.innerHTML = `
-    <p class="netwerk-titel">Partners</p>
-    ${data.bedrijven.map(b => `
-      <div class="netwerk-partner-row">
-        <span class="netwerk-partner-naam">${b.naam}</span>
-      </div>`).join("")}
-  `;
+  if (wrap) wrap.style.display = "none";
+}
+
+// ── Carousel ───────────────────────────────────────────────────────────────────
+let _carouselUrls = [];
+let _carouselIdx  = 0;
+
+function _initCarousel(item) {
+  let urls = item.photo_urls;
+  if (typeof urls === "string") { try { urls = JSON.parse(urls); } catch { urls = null; } }
+  if (!Array.isArray(urls) || urls.length < 2) urls = [item.photo_url].filter(Boolean);
+  _carouselUrls = urls;
+  _carouselIdx  = 0;
+  _renderCarousel();
+}
+
+function _renderCarousel() {
+  const img   = document.getElementById("modal-img");
+  const prev  = document.getElementById("carousel-prev");
+  const next  = document.getElementById("carousel-next");
+  const dots  = document.getElementById("carousel-dots");
+  const multi = _carouselUrls.length > 1;
+
+  img.src = _carouselUrls[_carouselIdx] || "";
+  prev.classList.toggle("visible", multi && _carouselIdx > 0);
+  next.classList.toggle("visible", multi && _carouselIdx < _carouselUrls.length - 1);
+
+  dots.innerHTML = multi
+    ? _carouselUrls.map((_, i) =>
+        `<div class="carousel-dot${i === _carouselIdx ? " active" : ""}"></div>`
+      ).join("")
+    : "";
+}
+
+function carouselStep(dir) {
+  _carouselIdx = Math.max(0, Math.min(_carouselUrls.length - 1, _carouselIdx + dir));
+  _renderCarousel();
 }
 
 // ── Modal ──────────────────────────────────────────────────────────────────────
@@ -692,19 +759,18 @@ async function openModal(id, scrollToChat = false) {
   const item = allItems.find(i => i.id === id);
   if (!item) return;
   currentItemId = id;
-  document.getElementById("modal-img").src     = item.photo_url || "";
+  _initCarousel(item);
   document.getElementById("modal-label").textContent  = item.ai_label || "Niet herkend";
-  document.getElementById("modal-weight").textContent =
-    item.gewicht_kg != null ? `Geschat: ${item.gewicht_kg} kg` : "";
+  document.getElementById("modal-weight").textContent = "";
   document.getElementById("modal-co2").textContent = "";
   document.getElementById("modal-detail").textContent = item.ai_detail || "";
   document.getElementById("modal-ts").textContent     = new Date(item.timestamp).toLocaleString("nl-NL");
   document.getElementById("modal-note").value  = item.manual_note || "";
   document.getElementById("modal-cat").value   = item.category || "";
 
-  // Ontvanger: het item is aangeboden ÁÁN dit bedrijf door iemand anders
-  const isOntvanger = !!item.aanbieding_id && !!item.aangeboden_door_naam;
-  // Aanbieder: de ingelogde gebruiker heeft dit item zelf aangeboden
+  // Ontvanger: bedrijf-rol én item is aangeboden ÁÁN dit bedrijf
+  const isOntvanger = _role === "bedrijf" && !!item.aanbieding_id && !!item.aangeboden_door_naam;
+  // Aanbieder: de ingelogde gebruiker heeft dit item zelf aangeboden (geen bedrijf-rol)
   const isAanbieder = !!item.aanbieding_id && !item.aangeboden_door_naam;
   document.getElementById("modal-bedrijf-acties").style.display    = isOntvanger ? "block" : "none";
   document.getElementById("modal-aanbieder-reactie").style.display = "none";
@@ -717,6 +783,9 @@ async function openModal(id, scrollToChat = false) {
     document.getElementById("modal-aanbieding-status").textContent = statusLabel[item.aanbieding_status] || "";
     document.getElementById("modal-btn-ophalen").onclick    = () => reagerenOpAanbieding(item.aanbieding_id, "ophalen",    id);
     document.getElementById("modal-btn-niet-nodig").onclick = () => reagerenOpAanbieding(item.aanbieding_id, "niet_nodig", id);
+  } else if (item.aanbieding_id && item.bedrijf_naam) {
+    document.getElementById("modal-aanbieder").textContent = `Aangeboden aan ${item.bedrijf_naam}`;
+    document.getElementById("modal-aanbieding-status").textContent = "";
   }
 
   document.getElementById("modal").classList.remove("hidden");
@@ -1232,5 +1301,6 @@ if (_role === "bedrijf") {
 }
 
 laadGemeenten().then(() => syncAll());
-setInterval(syncItems, 5000);
+setInterval(syncItems, 30000);
 setInterval(syncStats, 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) syncItems(); });

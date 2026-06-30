@@ -55,8 +55,8 @@ body {
 }
 .hdr-logo-img {
   height: auto !important;
-  max-height: 24px !important;
-  max-width: 160px !important;
+  max-height: 36px !important;
+  max-width: 180px !important;
   width: auto !important;
   display: block;
   margin-left: 8px;
@@ -176,6 +176,13 @@ body {
   cursor: pointer;
 }
 .btn-del:hover { color: var(--danger); background: rgba(200,32,26,0.06); }
+.btn-view-as {
+  display: inline-flex; align-items: center;
+  background: none; border: none;
+  font-size: 0.88rem; padding: 4px 6px;
+  border-radius: 6px; cursor: pointer; opacity: 0.5;
+}
+.btn-view-as:hover { opacity: 1; background: rgba(0,0,0,0.05); }
 
 /* Error */
 .error-bar {

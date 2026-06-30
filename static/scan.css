@@ -350,6 +350,9 @@ body {
   font-size: 0.62rem; font-weight: 700;
   letter-spacing: 0.04em; text-transform: uppercase;
 }
+.aanbieder-van { color: var(--orange); font-weight: 600; }
+.aanbieder-pijl { color: var(--muted); }
+.aanbieder-aan { color: #3b5bdb; font-weight: 600; }
 .item-chevron { color: var(--muted); font-size: 1.1rem; flex-shrink: 0; }
 .item-chat-icon { font-size: 1.15rem; flex-shrink: 0; padding: 4px 2px; opacity: .75; position: relative; }
 .item-chat-icon.has-unread::after { content: ""; position: absolute; top: 2px; right: 0px; width: 8px; height: 8px; border-radius: 50%; background: #e53935; border: 1.5px solid #fff; }
@@ -440,12 +443,37 @@ body {
   color: var(--muted); font-size: 1.1rem; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
+.modal-carousel {
+  position: relative;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  background: var(--surface);
+}
 .modal-img {
   display: block; width: 100%; max-height: 300px;
   object-fit: contain; object-position: center;
-  background: var(--surface);
-  border-radius: 16px 16px 0 0;
 }
+.carousel-btn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  background: rgba(0,0,0,0.35); color: #fff; border: none;
+  width: 36px; height: 36px; border-radius: 50%;
+  font-size: 1.4rem; line-height: 1; cursor: pointer;
+  display: none; align-items: center; justify-content: center;
+  z-index: 2;
+}
+.carousel-btn.visible { display: flex; }
+.carousel-prev { left: 8px; }
+.carousel-next { right: 8px; }
+.carousel-dots {
+  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 5px;
+}
+.carousel-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,0.5);
+  transition: background .2s;
+}
+.carousel-dot.active { background: #fff; }
 .modal-body { padding: 20px 16px; }
 .modal-ts { font-size: 0.7rem; color: var(--muted); margin-bottom: 8px; }
 .modal-body h3 {

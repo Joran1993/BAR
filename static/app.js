@@ -140,8 +140,7 @@ analyseBtn.addEventListener("click", async () => {
     }
     const item = await res.json();
     document.getElementById("result-label").textContent = item.ai_label || "Niet herkend";
-    document.getElementById("result-weight").textContent =
-      item.gewicht_kg != null ? `Geschat gewicht: ${item.gewicht_kg} kg` : "";
+    document.getElementById("result-weight").textContent = "";
     document.getElementById("result-detail").textContent = item.ai_detail || "";
     resultCard.style.display = "block";
     allItems.unshift(item);
@@ -179,7 +178,6 @@ function renderItems() {
       <div class="item-info">
         <div class="item-name">${item.ai_label || "Niet herkend"}</div>
         <div class="item-sub">
-          ${item.gewicht_kg != null ? `<span class="item-kg">${item.gewicht_kg} kg</span>` : ""}
           ${item.category ? `<span class="item-badge">${item.category}</span>` : ""}
           <span>${formatTime(item.timestamp)}</span>
         </div>
@@ -216,8 +214,7 @@ function openModal(id) {
   currentItemId = id;
   document.getElementById("modal-img").src = item.photo_url || "";
   document.getElementById("modal-label").textContent = item.ai_label || "Niet herkend";
-  document.getElementById("modal-weight").textContent =
-    item.gewicht_kg != null ? `Geschat: ${item.gewicht_kg} kg` : "";
+  document.getElementById("modal-weight").textContent = "";
   document.getElementById("modal-detail").textContent = item.ai_detail || "";
   document.getElementById("modal-ts").textContent = new Date(item.timestamp).toLocaleString("nl-NL");
   document.getElementById("modal-note").value = item.manual_note || "";
