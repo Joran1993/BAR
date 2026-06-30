@@ -877,6 +877,12 @@ function _stopChatPoll() {
   _chatRenderedCount = 0;
 }
 
+function _esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 async function laadBerichten(aanbiedingId, silent = false) {
   const res = await apiFetch(`/api/aanbiedingen/${aanbiedingId}/berichten`);
   if (!res || !res.ok) return;
@@ -884,7 +890,7 @@ async function laadBerichten(aanbiedingId, silent = false) {
   const mijnId = JSON.parse(atob(token.split(".")[1])).sub;
   const wrap = document.getElementById("chat-berichten");
   if (!berichten.length) {
-    if (!silent) wrap.innerHTML = `<p style="font-size:0.8rem;color:var(--muted);text-align:center;padding:8px 0;">Nog geen berichten.</p>`;
+    if (!silent) wrap.innerHTML = `<div class="chat-empty">Nog geen berichten — start het gesprek 👋</div>`;
     return;
   }
   // Alleen herschrijven als er nieuwe berichten zijn
@@ -900,12 +906,15 @@ async function laadBerichten(aanbiedingId, silent = false) {
   const wasAtBottom = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < 60;
   wrap.innerHTML = berichten.map((b, i) => {
     const mine = String(b.user_id) === String(mijnId);
-    const showNaam = !mine && (i === 0 || berichten[i-1].user_id !== b.user_id);
+    const prev = berichten[i-1];
+    const sameAsPrev = prev && String(prev.user_id) === String(b.user_id);
+    const showNaam = !mine && !sameAsPrev;
     const tijd = new Date(b.created_at).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
-    return `<div class="chat-spacer"></div>
+    const spacer = i === 0 ? "" : `<div class="chat-spacer${sameAsPrev ? ' tight' : ''}"></div>`;
+    return `${spacer}
       <div class="chat-msg ${mine ? 'mine' : 'theirs'}">
-        ${showNaam ? `<div class="chat-msg-naam">${b.naam}</div>` : ""}
-        ${b.tekst}
+        ${showNaam ? `<div class="chat-msg-naam">${_esc(b.naam)}</div>` : ""}
+        ${_esc(b.tekst)}
         <div class="chat-msg-tijd">${tijd}</div>
       </div>`;
   }).join("");
@@ -922,8 +931,9 @@ async function verstuurBericht() {
   const mijnId = JSON.parse(atob(token.split(".")[1])).sub;
   const wrap = document.getElementById("chat-berichten");
   const nu = new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+  if (wrap.querySelector(".chat-empty")) wrap.innerHTML = "";
   wrap.innerHTML += `<div class="chat-spacer"></div>
-    <div class="chat-msg mine">${tekst}<div class="chat-msg-tijd">${nu}</div></div>`;
+    <div class="chat-msg mine">${_esc(tekst)}<div class="chat-msg-tijd">${nu}</div></div>`;
   wrap.scrollTop = wrap.scrollHeight;
   input.value = "";
 

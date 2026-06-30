@@ -264,11 +264,14 @@
         <!-- Chat (gedeeld voor alle rollen) -->
         <div id="modal-chat" style="display:none;">
           <hr class="divider">
-          <p style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:12px;">Gesprek</p>
+          <p style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;">Gesprek</p>
           <div id="chat-berichten" class="chat-wrap"></div>
           <div class="chat-input-row">
-            <input type="text" id="chat-input" placeholder="Typ een bericht…" maxlength="500">
-            <button class="chat-send" onclick="verstuurBericht()">Stuur</button>
+            <input type="text" id="chat-input" placeholder="Typ een bericht…" maxlength="500" autocomplete="off"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();verstuurBericht();}">
+            <button id="chat-send-btn" class="chat-send" onclick="verstuurBericht()" aria-label="Versturen">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
           </div>
         </div>
 
@@ -360,7 +363,7 @@
     </div>
   </div>
 
-  <script src="/static/scan.js?v=89"></script>
+  <script src="/static/scan.js?v=90"></script>
 
 
   <div id="ob-backdrop"></div>
