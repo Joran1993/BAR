@@ -1142,6 +1142,33 @@ async function _abonneerPush() {
   });
 }
 
+// Bij app-start: als toestemming al is gegeven, koppel de (bestaande) subscription
+// aan het ingelogde account. Zo "claimt" het account dat nu op dit apparaat is
+// ingelogd altijd zijn eigen pushmeldingen — ook na inloggen of herstart, zonder
+// dat je eerst het accountpaneel hoeft te openen. Vraagt zelf geen toestemming.
+async function _ensurePushRegistered() {
+  if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
+  if (window.Notification.permission !== "granted") return;
+  try {
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const keyData = await (await fetch("/api/push/vapid-key")).json();
+      if (!keyData.public_key) return;
+      const padding = "=".repeat((4 - keyData.public_key.length % 4) % 4);
+      const raw = atob((keyData.public_key + padding).replace(/-/g, "+").replace(/_/g, "/"));
+      const appKey = Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+    }
+    await apiFetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subscription: sub.toJSON() }),
+    });
+  } catch (e) { /* stil — push is best-effort */ }
+}
+
 // ── Gebruikerspaneel ───────────────────────────────────────────────────────────
 async function openUserPanel() {
   const gem = localStorage.getItem("gemeente") || "";
@@ -1301,6 +1328,7 @@ if (_role === "bedrijf") {
 }
 
 laadGemeenten().then(() => syncAll());
+_ensurePushRegistered();
 setInterval(syncItems, 30000);
 setInterval(syncStats, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) syncItems(); });
