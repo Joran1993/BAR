@@ -585,7 +585,23 @@ async def firebase_login(request: Request):
     except Exception as e:
         print(f"[firebase-login] Firestore lookup fout: {e}")
 
-    user = db.upsert_firebase_user(firebase_uid, email, naam, gemeente, role)
+    # Naadloze koppeling: hoort deze e-mail bij een bedrijf? → log direct in als afnemer
+    bedrijf_id = None
+    bdrf = db.get_bedrijf_by_email(email) if email else None
+    if not bdrf and email:
+        _bid = _RINGTWO_EMAIL_BEDRIJF.get(email.lower())
+        if _bid:
+            bdrf = {"id": _bid}
+    if bdrf:
+        bedrijf_id = bdrf["id"]
+        if role not in ("admin", "superadmin"):
+            role = "bedrijf"
+        if bdrf.get("gemeente"):
+            gemeente = bdrf["gemeente"]
+        if bdrf.get("naam") and not naam:
+            naam = bdrf["naam"]
+
+    user = db.upsert_firebase_user(firebase_uid, email, naam, gemeente, role, bedrijf_id=bedrijf_id)
     token = auth_module.create_token(
         user["id"], user["username"], user["role"],
         user.get("gemeente") or "", user.get("bedrijf_id")

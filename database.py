@@ -274,9 +274,31 @@ def get_user_by_firebase_uid(firebase_uid: str):
         return dict(row) if row else None
 
 
+def get_bedrijf_by_email(email: str):
+    """Vind het bedrijf bij een e-mailadres — via bedrijven.email of via een al
+    gekoppelde bedrijf-login. Gebruikt om Firebase-logins aan het juiste bedrijf te koppelen."""
+    if not email:
+        return None
+    with get_cursor() as cur:
+        cur.execute("SELECT id, naam, gemeente FROM bedrijven WHERE lower(email) = lower(%s) LIMIT 1", (email,))
+        r = cur.fetchone()
+        if r:
+            return dict(r)
+        cur.execute(
+            """SELECT b.id, b.naam, b.gemeente FROM bedrijven b
+               JOIN users u ON u.bedrijf_id = b.id
+               WHERE lower(u.username) = lower(%s) OR lower(COALESCE(u.email,'')) = lower(%s)
+               LIMIT 1""",
+            (email, email)
+        )
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
 def upsert_firebase_user(firebase_uid: str, email: str, naam: str,
-                         gemeente: str = "", role: str = "user") -> dict:
-    """Maak of update een gebruiker op basis van Firebase UID. Geeft het user-dict terug."""
+                         gemeente: str = "", role: str = "user", bedrijf_id: int = None) -> dict:
+    """Maak of update een gebruiker op basis van Firebase UID. Geeft het user-dict terug.
+    Met bedrijf_id wordt de gebruiker als 'bedrijf' aan dat bedrijf gekoppeld (afnemer-portal)."""
     with get_cursor() as cur:
         cur.execute("SELECT * FROM users WHERE firebase_uid = %s", (firebase_uid,))
         row = cur.fetchone()
@@ -285,11 +307,16 @@ def upsert_firebase_user(firebase_uid: str, email: str, naam: str,
             cur.execute("SELECT * FROM users WHERE email = %s OR username = %s", (email, email))
             row = cur.fetchone()
         if row:
-            # Behoud bestaande rol voor admin/superadmin — Firebase login mag die niet terugzetten
-            effective_role = row["role"] if row["role"] in ("superadmin", "admin") else role
+            # admin/superadmin behouden; anders bedrijf als er een koppeling is, anders meegegeven rol
+            if row["role"] in ("superadmin", "admin"):
+                effective_role = row["role"]
+            elif bedrijf_id:
+                effective_role = "bedrijf"
+            else:
+                effective_role = role
             cur.execute(
-                "UPDATE users SET email=%s, firebase_uid=%s, role=%s, organisatie=COALESCE(NULLIF(organisatie,''), %s), gemeente=COALESCE(NULLIF(gemeente,''), %s) WHERE id=%s RETURNING *",
-                (email, firebase_uid, effective_role, naam, gemeente, row["id"])
+                "UPDATE users SET email=%s, firebase_uid=%s, role=%s, organisatie=COALESCE(NULLIF(organisatie,''), %s), gemeente=COALESCE(NULLIF(gemeente,''), %s), bedrijf_id=COALESCE(%s, bedrijf_id) WHERE id=%s RETURNING *",
+                (email, firebase_uid, effective_role, naam, gemeente, bedrijf_id, row["id"])
             )
             return dict(cur.fetchone())
         # Nieuw account aanmaken — geen wachtwoord nodig (firebase_uid is de authenticatie)
@@ -303,10 +330,11 @@ def upsert_firebase_user(firebase_uid: str, email: str, naam: str,
                 break
             username = f"{base}{i}"
             i += 1
+        new_role = "bedrijf" if bedrijf_id else role
         cur.execute(
-            """INSERT INTO users (username, password, role, gemeente, organisatie, firebase_uid, email, created_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
-            (username, "", role, gemeente, naam, firebase_uid, email,
+            """INSERT INTO users (username, password, role, gemeente, organisatie, firebase_uid, email, bedrijf_id, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+            (username, "", new_role, gemeente, naam, firebase_uid, email, bedrijf_id,
              datetime.now(timezone.utc).isoformat(timespec="seconds"))
         )
         return dict(cur.fetchone())
