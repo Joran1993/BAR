@@ -294,23 +294,24 @@
     var OL = "style='margin:8px 0 0 18px;padding:0;display:flex;flex-direction:column;gap:6px;'";
     var SHARE = "<svg width='22' height='22' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' style='vertical-align:middle'><path d='M12 3v12'/><path d='M8 7l4-4 4 4'/><path d='M7 11H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1'/></svg>";
     var SHARE_CUE = "<div style='display:flex;align-items:center;gap:10px;margin:10px 0;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;'><span style='display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:#fff;border:1px solid var(--border);color:var(--orange);flex-shrink:0;'>" + SHARE + "</span><span style='font-size:.8rem;color:var(--muted);'>Zoek dit <b>deel-icoon</b> — onderin (iPhone) of rechtsboven (iPad) in Safari.</span></div>";
+    var ADD = "<span style='display:inline-flex;vertical-align:middle;color:var(--orange);margin-left:3px;'><svg width='17' height='17' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='3' width='18' height='18' rx='4'/><line x1='12' y1='8' x2='12' y2='16'/><line x1='8' y1='12' x2='16' y2='12'/></svg></span>";
     var STAPPEN = {
       'installed': "✓ De app is al op dit apparaat geïnstalleerd.",
       'ios-safari':
         "<b>iPhone / iPad — Safari</b>" + SHARE_CUE +
         "<ol " + OL + "><li>Tik op het <b>deel-icoon</b> hierboven.</li>" +
-        "<li>Scroll en kies <b>‘Zet op beginscherm’</b>.</li>" +
+        "<li>Scroll en kies <b>‘Zet op beginscherm’</b>" + ADD + ".</li>" +
         "<li>Tik rechtsboven op <b>‘Voeg toe’</b>.</li></ol>",
       'ios-chrome':
         "<b>iPhone / iPad — Chrome</b>" + SHARE_CUE +
         "<ol " + OL + "><li>Tik op het <b>deel-icoon</b> (of het <b>⋯</b>-menu).</li>" +
-        "<li>Kies <b>‘Zet op beginscherm’</b>.</li></ol>" +
+        "<li>Kies <b>‘Zet op beginscherm’</b>" + ADD + ".</li></ol>" +
         "<p style='margin-top:8px;color:var(--muted);font-size:.8rem;'>Werkt het niet? Open deze pagina in <b>Safari</b> en probeer het daar.</p>",
       'ios-firefox':
         "<b>iPhone / iPad — Firefox</b>" +
         "<p style='margin-top:6px;'>Op iOS kun je een app het makkelijkst via <b>Safari</b> installeren.</p>" + SHARE_CUE +
         "<ol " + OL + "><li>Open deze pagina in <b>Safari</b>.</li>" +
-        "<li>Tik op het <b>deel-icoon</b> → <b>‘Zet op beginscherm’</b>.</li></ol>",
+        "<li>Tik op het <b>deel-icoon</b> → <b>‘Zet op beginscherm’</b>" + ADD + ".</li></ol>",
       'android':
         "<b>Android — Chrome</b>" +
         "<ol " + OL + "><li>Tik rechtsboven op <b>⋮</b> (menu).</li>" +
