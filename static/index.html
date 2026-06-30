@@ -358,12 +358,19 @@
         </div>
         <div id="up-status" style="font-size:0.8rem;margin-top:10px;text-align:center;"></div>
         <hr class="divider">
+        <div class="field" id="app-install-field">
+          <label>App op je toestel</label>
+          <button class="btn btn-ghost" onclick="toonInstallInstructie()" style="width:100%;">📲 Op beginscherm zetten</button>
+          <div id="app-install-steps" style="display:none;font-size:0.86rem;color:var(--ink);line-height:1.55;margin-top:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;"></div>
+          <button id="app-install-now" class="btn btn-primary" style="display:none;width:100%;margin-top:10px;" onclick="installNu()">Nu installeren</button>
+        </div>
+        <hr class="divider">
         <button class="btn btn-ghost" onclick="logout()" style="width:100%;color:var(--danger);border-color:var(--danger);">Uitloggen</button>
       </div>
     </div>
   </div>
 
-  <script src="/static/scan.js?v=90"></script>
+  <script src="/static/scan.js?v=91"></script>
 
 
   <div id="ob-backdrop"></div>

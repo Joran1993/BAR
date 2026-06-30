@@ -1367,6 +1367,65 @@ if (_role === "bedrijf") {
   document.getElementById("tab-list").dataset.main = "ontvangen";
 }
 
+// ── PWA-installatie (instructie per browser) ───────────────────────────────────
+let _deferredInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); _deferredInstallPrompt = e; });
+
+function _installPlatform() {
+  const ua = navigator.userAgent || "";
+  const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+  if (standalone) return "installed";
+  const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (isIOS) {
+    if (/CriOS/i.test(ua)) return "ios-chrome";
+    if (/FxiOS/i.test(ua)) return "ios-firefox";
+    return "ios-safari";
+  }
+  if (/android/i.test(ua)) return "android";
+  if (/Edg/i.test(ua)) return "desktop-edge";
+  if (/Firefox/i.test(ua)) return "desktop-firefox";
+  if (/Chrome/i.test(ua)) return "desktop-chrome";
+  return "desktop-other";
+}
+
+const _OL = "style='margin:8px 0 0 18px;padding:0;display:flex;flex-direction:column;gap:6px;'";
+const _INSTALL_STAPPEN = {
+  "installed": "✓ De app is al op dit apparaat geïnstalleerd.",
+  "ios-safari": "<b>iPhone / iPad — Safari</b><ol " + _OL + "><li>Tik onderin op het <b>deel-icoon</b> (vierkantje met pijltje omhoog).</li><li>Scroll en kies <b>‘Zet op beginscherm’</b>.</li><li>Tik rechtsboven op <b>‘Voeg toe’</b>.</li></ol>",
+  "ios-chrome": "<b>iPhone / iPad — Chrome</b><ol " + _OL + "><li>Tik op het <b>deel-icoon</b> (of het <b>⋯</b>-menu).</li><li>Kies <b>‘Zet op beginscherm’</b>.</li></ol><p style='margin-top:8px;color:var(--muted);font-size:.8rem;'>Werkt het niet? Open deze pagina in <b>Safari</b>.</p>",
+  "ios-firefox": "<b>iPhone / iPad — Firefox</b><p style='margin-top:6px;'>Op iOS gaat installeren het makkelijkst via <b>Safari</b>:</p><ol " + _OL + "><li>Open deze pagina in <b>Safari</b>.</li><li>Deel-icoon → <b>‘Zet op beginscherm’</b>.</li></ol>",
+  "android": "<b>Android — Chrome</b><ol " + _OL + "><li>Tik rechtsboven op <b>⋮</b> (menu).</li><li>Kies <b>‘App installeren’</b> of <b>‘Toevoegen aan startscherm’</b>.</li></ol><p style='margin-top:8px;color:var(--muted);font-size:.8rem;'>Of gebruik de knop hieronder als die verschijnt.</p>",
+  "desktop-chrome": "<b>Computer — Chrome</b><ol " + _OL + "><li>Klik rechts in de <b>adresbalk</b> op het <b>installatie-icoon</b>.</li><li>Of: menu <b>⋮ → ‘App installeren’</b> → <b>Installeren</b>.</li></ol>",
+  "desktop-edge": "<b>Computer — Edge</b><ol " + _OL + "><li>Klik rechtsboven op <b>⋯</b> → <b>Apps</b> → <b>‘Deze site als app installeren’</b>.</li></ol>",
+  "desktop-firefox": "<b>Computer — Firefox</b><p style='margin-top:6px;'>Firefox kan web-apps niet standaard installeren. Gebruik <b>Chrome</b> of <b>Edge</b>.</p>",
+  "desktop-other": "<b>App installeren</b><p style='margin-top:6px;'>Open deze site in <b>Chrome</b>/<b>Edge</b> (computer/Android) of <b>Safari</b> (iPhone/iPad) en kies <b>‘App installeren’</b> of <b>‘Zet op beginscherm’</b>.</p>",
+};
+
+window.toonInstallInstructie = function () {
+  const p = _installPlatform();
+  const steps = document.getElementById("app-install-steps");
+  const nowBtn = document.getElementById("app-install-now");
+  steps.innerHTML = _INSTALL_STAPPEN[p] || _INSTALL_STAPPEN["desktop-other"];
+  steps.style.display = "block";
+  nowBtn.style.display = (_deferredInstallPrompt && (p === "android" || p.indexOf("desktop") === 0)) ? "block" : "none";
+};
+
+window.installNu = function () {
+  if (!_deferredInstallPrompt) return;
+  _deferredInstallPrompt.prompt();
+  _deferredInstallPrompt.userChoice.then(() => {
+    _deferredInstallPrompt = null;
+    document.getElementById("app-install-now").style.display = "none";
+    document.getElementById("app-install-steps").innerHTML = "✓ Installatie gestart — volg de melding van je browser.";
+  });
+};
+
+// Verberg de install-knop als de app al als PWA draait
+if (_installPlatform() === "installed") {
+  const _f = document.getElementById("app-install-field");
+  if (_f) _f.style.display = "none";
+}
+
 laadGemeenten().then(() => syncAll());
 _ensurePushRegistered();
 setInterval(syncItems, 30000);
