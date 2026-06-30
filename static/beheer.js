@@ -1,6 +1,7 @@
 /* De Bouwkringloop — Beheerpagina */
 
-const CATEGORIES = ["Hout", "Metaal", "Beton / steen", "Glas", "Kunststof", "Gevaarlijk afval", "Overig"];
+const CATEGORIES = ["Hout", "Metaal", "Beton / steen", "Glas", "Kunststof", "Gevaarlijk afval", "Overig",
+  "kringloop", "meubels", "fietsen", "bouwmateriaal", "diversen"];
 
 const token = localStorage.getItem("token");
 if (!token) location.href = "/login?redirect=/beheer";
@@ -9,13 +10,13 @@ const role     = localStorage.getItem("role") || "user";
 const gemeente = localStorage.getItem("gemeente") || "";
 const username = localStorage.getItem("username") || "";
 
-// Alleen admin en superadmin mogen hier
-if (role === "user") location.href = "/";
+// Alleen superadmin mag hier
+if (role !== "superadmin") { location.replace("/"); throw new Error("Geen toegang"); }
+
+document.documentElement.style.visibility = '';
 
 // Superadmin ziet ook het gemeenten-tabblad
-if (role === "superadmin") {
-  document.getElementById("tab-gemeenten-btn").style.display = "flex";
-}
+document.getElementById("tab-gemeenten-btn").style.display = "flex";
 
 // Admin ziet geen gemeente-keuze (al gekoppeld aan hun gemeente)
 if (role === "admin") {
@@ -32,6 +33,22 @@ async function apiFetch(url, opts = {}) {
 }
 
 function logout() { localStorage.clear(); location.href = "/login"; }
+
+async function loginAls(userId) {
+  const res = await apiFetch(`/api/auth/impersonate/${userId}`, { method: "POST" });
+  if (!res || !res.ok) { alert("Kon niet inloggen als deze gebruiker."); return; }
+  const data = await res.json();
+  const params = new URLSearchParams({
+    _imp_token:       data.token,
+    _imp_user_id:     data.user_id,
+    _imp_username:    data.username,
+    _imp_role:        data.role,
+    _imp_gemeente:    data.gemeente || "",
+    _imp_organisatie: data.organisatie || "",
+    _imp_bedrijf_id:  data.bedrijf_id || "",
+  });
+  window.open(`/?${params}`, "_blank");
+}
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
 document.querySelectorAll(".tabbar-btn").forEach(btn => {
@@ -175,6 +192,7 @@ async function loadUsers() {
           ${u.role === "bedrijf" && u.bedrijf_id ? `<span class="badge badge-neutral">gekoppeld</span>` : ""}
         </div>
       </div>
+      <button class="btn-view-as" onclick="event.stopPropagation();loginAls(${u.id})" title="Bekijk app als deze gebruiker">👁</button>
       ${u.username !== username ? `<button class="btn-del" onclick="event.stopPropagation();deleteUser(${u.id}, '${u.username}')">Verwijder</button>` : ""}
       <div class="user-edit-panel" id="user-edit-${u.id}" style="display:none;width:100%;padding:12px 0 4px;">
         <div class="field" style="margin-bottom:10px;">
@@ -397,7 +415,7 @@ async function openGemeenteDashboard(gem) {
       ${it.photo_url ? `<img src="${it.photo_url}" class="gd-thumb" alt="">` : `<div class="gd-thumb gd-thumb-empty"></div>`}
       <div class="gd-item-info">
         <div class="gd-item-label">${it.ai_label || "Onbekend"}</div>
-        <div class="gd-item-meta">${it.gewicht_kg ? it.gewicht_kg + " kg · " : ""}${it.category || ""}</div>
+        <div class="gd-item-meta">${it.category || ""}</div>
       </div>
       ${it.bedrijf_naam ? `<span class="badge badge-green" style="flex-shrink:0;">${it.bedrijf_naam}</span>` : (it.status === "aangeboden" ? `<span class="badge badge-orange" style="flex-shrink:0;">Aangeboden</span>` : "")}
     </div>`).join("");
