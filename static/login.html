@@ -70,6 +70,15 @@
       </form>
       <button id="reset-link" style="display:block;width:100%;margin-top:12px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--muted);padding:6px;text-align:center;">Wachtwoord vergeten?</button>
       <button onclick="onboardingOpen()" style="display:block;width:100%;margin-top:2px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--muted);padding:6px;text-align:center;">Hoe werkt de app? →</button>
+      <button onclick="toonInstallInstructie()" style="display:block;width:100%;margin-top:2px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--orange);font-weight:600;padding:6px;text-align:center;">📲 Op beginscherm zetten (app installeren)</button>
+    </div>
+
+    <!-- Installatie-instructie (per browser) -->
+    <div class="panel" id="install-panel" style="display:none;margin-top:12px;">
+      <h1 style="font-size:1.25rem;margin-bottom:12px;">App installeren</h1>
+      <div id="install-steps" style="font-size:0.88rem;color:var(--ink);line-height:1.55;"></div>
+      <button id="install-now-btn" class="btn btn-primary" style="display:none;width:100%;margin-top:16px;" onclick="installNu()">Nu installeren</button>
+      <button onclick="document.getElementById('install-panel').style.display='none'" style="display:block;width:100%;margin-top:10px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.8rem;color:var(--muted);padding:6px;text-align:center;">Sluiten</button>
     </div>
 
     <!-- Wachtwoord herstel panel -->
@@ -221,6 +230,90 @@
         localStorage.setItem('bedrijf_naam', data.organisatie || data.username);
       }
     }
+  </script>
+
+  <!-- Installatie-instructie per browser/toestel -->
+  <script>
+  (function () {
+    var deferred = null;
+    window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferred = e; });
+
+    function platform() {
+      var ua = navigator.userAgent || '';
+      var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+      if (standalone) return 'installed';
+      var isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (isIOS) {
+        if (/CriOS/i.test(ua)) return 'ios-chrome';
+        if (/FxiOS/i.test(ua)) return 'ios-firefox';
+        return 'ios-safari';
+      }
+      if (/android/i.test(ua)) return 'android';
+      if (/Edg/i.test(ua)) return 'desktop-edge';
+      if (/Firefox/i.test(ua)) return 'desktop-firefox';
+      if (/Chrome/i.test(ua)) return 'desktop-chrome';
+      return 'desktop-other';
+    }
+
+    var OL = "style='margin:8px 0 0 18px;padding:0;display:flex;flex-direction:column;gap:6px;'";
+    var STAPPEN = {
+      'installed': "✓ De app is al op dit apparaat geïnstalleerd.",
+      'ios-safari':
+        "<b>iPhone / iPad — Safari</b>" +
+        "<ol " + OL + "><li>Tik onderin op het <b>deel-icoon</b> (vierkantje met pijltje omhoog).</li>" +
+        "<li>Scroll en kies <b>‘Zet op beginscherm’</b>.</li>" +
+        "<li>Tik rechtsboven op <b>‘Voeg toe’</b>.</li></ol>",
+      'ios-chrome':
+        "<b>iPhone / iPad — Chrome</b>" +
+        "<ol " + OL + "><li>Tik op het <b>deel-icoon</b> (of het <b>⋯</b>-menu).</li>" +
+        "<li>Kies <b>‘Zet op beginscherm’</b>.</li></ol>" +
+        "<p style='margin-top:8px;color:var(--muted);font-size:.8rem;'>Werkt het niet? Open deze pagina in <b>Safari</b> en probeer het daar.</p>",
+      'ios-firefox':
+        "<b>iPhone / iPad — Firefox</b>" +
+        "<p style='margin-top:6px;'>Op iOS kun je een app het makkelijkst via <b>Safari</b> installeren.</p>" +
+        "<ol " + OL + "><li>Open deze pagina in <b>Safari</b>.</li>" +
+        "<li>Tik op het <b>deel-icoon</b> → <b>‘Zet op beginscherm’</b>.</li></ol>",
+      'android':
+        "<b>Android — Chrome</b>" +
+        "<ol " + OL + "><li>Tik rechtsboven op <b>⋮</b> (menu).</li>" +
+        "<li>Kies <b>‘App installeren’</b> of <b>‘Toevoegen aan startscherm’</b>.</li></ol>" +
+        "<p style='margin-top:8px;color:var(--muted);font-size:.8rem;'>Of gebruik de knop hieronder als die verschijnt.</p>",
+      'desktop-chrome':
+        "<b>Computer — Chrome</b>" +
+        "<ol " + OL + "><li>Klik rechts in de <b>adresbalk</b> op het <b>installatie-icoon</b> (schermpje met pijltje).</li>" +
+        "<li>Of: menu <b>⋮ → ‘App installeren’</b>. Klik op <b>‘Installeren’</b>.</li></ol>",
+      'desktop-edge':
+        "<b>Computer — Edge</b>" +
+        "<ol " + OL + "><li>Klik rechtsboven op <b>⋯</b> → <b>Apps</b> → <b>‘Deze site als app installeren’</b>.</li>" +
+        "<li>Klik op <b>‘Installeren’</b>.</li></ol>",
+      'desktop-firefox':
+        "<b>Computer — Firefox</b>" +
+        "<p style='margin-top:6px;'>Firefox kan web-apps niet standaard installeren. Gebruik <b>Chrome</b> of <b>Edge</b> om de app op je computer te installeren.</p>",
+      'desktop-other':
+        "<b>App installeren</b>" +
+        "<p style='margin-top:6px;'>Open deze site in <b>Chrome</b>, <b>Edge</b> (computer/Android) of <b>Safari</b> (iPhone/iPad) en kies in het menu <b>‘App installeren’</b> of <b>‘Zet op beginscherm’</b>.</p>"
+    };
+
+    window.toonInstallInstructie = function () {
+      var p = platform();
+      document.getElementById('install-steps').innerHTML = STAPPEN[p] || STAPPEN['desktop-other'];
+      var nowBtn = document.getElementById('install-now-btn');
+      nowBtn.style.display = (deferred && (p === 'android' || p.indexOf('desktop') === 0)) ? 'block' : 'none';
+      var panel = document.getElementById('install-panel');
+      panel.style.display = 'block';
+      panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
+    window.installNu = function () {
+      if (!deferred) return;
+      deferred.prompt();
+      deferred.userChoice.then(function () {
+        deferred = null;
+        document.getElementById('install-now-btn').style.display = 'none';
+        document.getElementById('install-steps').innerHTML = "✓ Installatie gestart — volg de melding van je browser.";
+      });
+    };
+  })();
   </script>
 
 
