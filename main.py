@@ -58,6 +58,21 @@ def require_admin(user=Depends(get_current_user)):
     return user
 
 
+def _mag_item_beheren(user: dict, item: dict) -> bool:
+    """Mag deze gebruiker dit item lezen/wijzigen/verwijderen?
+    superadmin: alles; admin: items binnen eigen gemeente-scope; user/bedrijf: eigen items."""
+    if user["role"] == "superadmin":
+        return True
+    if user["role"] == "admin":
+        gem = item.get("gemeente")
+        if not gem:
+            return False
+        scope = _gemeenten_expand(user.get("gemeente")) or ([user.get("gemeente")] if user.get("gemeente") else [])
+        return gem in scope
+    up = item.get("uploaded_by")
+    return up is not None and up == user["id"]
+
+
 RWM_GEMEENTEN = [
     "Roermond", "Leudal", "Maasgouw", "Echt-Susteren",
     "Roerdalen", "Weert", "Beesel", "Bergen",
@@ -563,6 +578,7 @@ async def firebase_login(request: Request):
 
     firebase_uid = decoded["uid"]
     email = decoded.get("email", "")
+    email_verified = bool(decoded.get("email_verified"))
 
     # Haal naam op uit Firestore users3
     naam = email
@@ -580,15 +596,16 @@ async def firebase_login(request: Request):
                 d = doc.to_dict() or {}
                 naam = d.get("Naamofbedrijf") or d.get("naam") or email
                 gemeente = d.get("Gemeente") or d.get("gemeente") or ""
-                if d.get("Administrator"):
+                if d.get("Administrator") and email_verified:
                     role = "admin"
     except Exception as e:
         print(f"[firebase-login] Firestore lookup fout: {e}")
 
     # Naadloze koppeling: hoort deze e-mail bij een bedrijf? → log direct in als afnemer
+    # Alleen bij een geverifieerd e-mailadres (anders geen bedrijf-/adminrechten via claim).
     bedrijf_id = None
-    bdrf = db.get_bedrijf_by_email(email) if email else None
-    if not bdrf and email:
+    bdrf = db.get_bedrijf_by_email(email) if (email and email_verified) else None
+    if not bdrf and email and email_verified:
         _bid = _RINGTWO_EMAIL_BEDRIJF.get(email.lower())
         if _bid:
             bdrf = {"id": _bid}
@@ -1007,7 +1024,7 @@ async def change_user_role(
     user_id: int,
     role: str = Form(...),
     bedrijf_id: Optional[int] = Form(None),
-    admin=Depends(require_admin),
+    admin=Depends(require_superadmin),
 ):
     target = db.get_user_by_id(user_id)
     if not target:
@@ -1043,11 +1060,16 @@ async def change_password(
     password: str = Form(...),
     user=Depends(get_current_user),
 ):
-    if user["role"] == "user" and user["id"] != user_id:
+    # Gewone user of bedrijf mag alleen het eigen wachtwoord wijzigen
+    if user["role"] in ("user", "bedrijf") and user["id"] != user_id:
         raise HTTPException(status_code=403, detail="Geen rechten")
     target = db.get_user_by_id_full(user_id)
     if not target:
         raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
+    # Gemeente-admin: alleen users in eigen gemeente, nooit een superadmin
+    if user["role"] == "admin" and user["id"] != user_id:
+        if target.get("role") == "superadmin" or target.get("gemeente") != user.get("gemeente"):
+            raise HTTPException(status_code=403, detail="Geen rechten voor deze gebruiker")
     # Update Firebase Auth als de gebruiker een Firebase-account heeft
     if target.get("firebase_uid"):
         try:
@@ -1169,6 +1191,11 @@ async def create_aanbieding(
     bedrijf_id: int = Form(...),
     user=Depends(get_current_user),
 ):
+    _item = db.get_item(item_id)
+    if not _item:
+        raise HTTPException(status_code=404)
+    if not _mag_item_beheren(user, _item):
+        raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
     aanbieding_id = db.create_aanbieding(item_id, bedrijf_id, user_id=user["id"])
     fs.sync_aanbieding({"id": aanbieding_id, "item_id": item_id, "bedrijf_id": bedrijf_id, "status": "open"})
     gemeente = _gemeente_filter(user)
@@ -1207,6 +1234,11 @@ async def create_aanbiedingen_bulk(
     bedrijf_ids = data.get("bedrijf_ids", [])
     if not item_id or not bedrijf_ids:
         raise HTTPException(status_code=400, detail="item_id en bedrijf_ids vereist")
+    _item = db.get_item(int(item_id))
+    if not _item:
+        raise HTTPException(status_code=404)
+    if not _mag_item_beheren(user, _item):
+        raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
 
     ids = []
     for bedrijf_id in bedrijf_ids:
@@ -1364,8 +1396,8 @@ async def get_berichten(aanbieding_id: int, user=Depends(get_current_user)):
     info = db.get_aanbieding_deelnemers(aanbieding_id)
     if not info:
         raise HTTPException(status_code=404)
-    is_aanbieder = info.get("aangeboden_door") == user["id"]
-    is_bedrijf   = user.get("bedrijf_id") == info.get("bedrijf_id")
+    is_aanbieder = info.get("aangeboden_door") is not None and info.get("aangeboden_door") == user["id"]
+    is_bedrijf   = user.get("bedrijf_id") is not None and user.get("bedrijf_id") == info.get("bedrijf_id")
     is_admin     = user["role"] in ("admin", "superadmin")
     if not (is_aanbieder or is_bedrijf or is_admin):
         raise HTTPException(status_code=403)
@@ -1383,8 +1415,8 @@ async def stuur_bericht(
     info = db.get_aanbieding_deelnemers(aanbieding_id)
     if not info:
         raise HTTPException(status_code=404)
-    is_aanbieder = info.get("aangeboden_door") == user["id"]
-    is_bedrijf   = user.get("bedrijf_id") == info.get("bedrijf_id")
+    is_aanbieder = info.get("aangeboden_door") is not None and info.get("aangeboden_door") == user["id"]
+    is_bedrijf   = user.get("bedrijf_id") is not None and user.get("bedrijf_id") == info.get("bedrijf_id")
     is_admin     = user["role"] in ("admin", "superadmin")
     if not (is_aanbieder or is_bedrijf or is_admin):
         raise HTTPException(status_code=403)
@@ -1611,6 +1643,13 @@ async def update_aanbieding_status_admin(
 ):
     if status not in ("open", "ophalen", "niet_nodig"):
         raise HTTPException(status_code=400, detail="Ongeldige status")
+    info = db.get_aanbieding_deelnemers(aanbieding_id)
+    if not info:
+        raise HTTPException(status_code=404)
+    is_aanbieder = info.get("aangeboden_door") is not None and info.get("aangeboden_door") == user["id"]
+    is_bedrijf   = user.get("bedrijf_id") is not None and user.get("bedrijf_id") == info.get("bedrijf_id")
+    if not (is_aanbieder or is_bedrijf or user["role"] in ("admin", "superadmin")):
+        raise HTTPException(status_code=403, detail="Geen rechten voor deze aanbieding")
     db.update_aanbieding_status(aanbieding_id, status)
     fs.update_aanbieding_status(aanbieding_id, status)
     return {"ok": True}
@@ -1623,16 +1662,22 @@ async def update_item(
     category: Optional[str] = Form(None),
     user=Depends(get_current_user),
 ):
-    if not db.get_item(item_id):
+    item = db.get_item(item_id)
+    if not item:
         raise HTTPException(status_code=404)
+    if not _mag_item_beheren(user, item):
+        raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
     db.update_item(item_id, manual_note, category)
     return {"ok": True}
 
 
 @app.delete("/api/items/{item_id}")
 async def delete_item(item_id: int, user=Depends(get_current_user)):
-    if not db.get_item(item_id):
+    item = db.get_item(item_id)
+    if not item:
         raise HTTPException(status_code=404)
+    if not _mag_item_beheren(user, item):
+        raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
     db.delete_item(item_id)
     fs.delete_item(item_id)
     gemeente = _gemeente_filter(user)
@@ -1779,12 +1824,6 @@ async def health():
     return {"status": "ok"}
 
 
-@app.get("/api/debug")
-async def debug():
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    return {"key_set": bool(key), "key_prefix": key[:12] if key else "leeg"}
-
-
 # ── Pagina's ──────────────────────────────────────────────────────────────────
 
 from fastapi.responses import FileResponse
@@ -1886,11 +1925,31 @@ def _firebase_thumb_url(original_url: str) -> str:
     return base + urllib.parse.quote(thumb_path, safe='') + '?alt=media'
 
 
+def _thumb_url_toegestaan(u: str) -> bool:
+    """Sta alleen https-URLs van vertrouwde opslag-hosts toe (tegen SSRF)."""
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(u or "")
+        if p.scheme != "https":
+            return False
+        host = (p.hostname or "").lower()
+        if host in ("firebasestorage.googleapis.com", "storage.googleapis.com"):
+            return True
+        if host.endswith(".supabase.co") or host.endswith(".supabase.in"):
+            return True
+        return False
+    except Exception:
+        return False
+
+
 @app.get("/api/thumb")
-async def get_thumb(url: str, size: int = 400):
+async def get_thumb(url: str, size: int = 400, user=Depends(get_current_user)):
     import ssl, urllib.request, io
     from PIL import Image
     from fastapi.responses import Response
+
+    if not _thumb_url_toegestaan(url):
+        raise HTTPException(status_code=400, detail="Ongeldige URL")
 
     cache_key = _hashlib.md5(f"{url}{size}".encode()).hexdigest()
     thumb_path = f"{_THUMB_DIR}/{cache_key}.jpg"
@@ -1900,9 +1959,8 @@ async def get_thumb(url: str, size: int = 400):
             return Response(content=f.read(), media_type="image/jpeg",
                             headers={"Cache-Control": "public, max-age=604800"})
 
+    # TLS-verificatie AAN (default context)
     ssl_ctx = ssl.create_default_context()
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_NONE
 
     # Try the _1024x1024 Firebase variant first (much smaller, no resize needed)
     thumb_url = _firebase_thumb_url(url)
@@ -1942,7 +2000,7 @@ async def get_thumb(url: str, size: int = 400):
 
 
 @app.get("/api/tuya/test/{kleur}")
-async def tuya_test(kleur: str):
+async def tuya_test(kleur: str, user=Depends(require_admin)):
     import tuya as t
     if kleur == "wit":
         return t.lamp_groen()

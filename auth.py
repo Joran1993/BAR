@@ -5,7 +5,9 @@ import hmac
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "verander-dit-in-productie-naar-iets-geheims")
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY ontbreekt als omgevingsvariabele — app weigert te starten (geen onveilige fallback)")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_DAYS = 365
 

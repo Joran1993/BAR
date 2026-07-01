@@ -628,7 +628,7 @@ def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, 
 def get_item(item_id: int, include_photo: bool = False):
     with get_cursor() as cur:
         cur.execute(
-            "SELECT id, timestamp, photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd FROM items WHERE id = %s",
+            "SELECT id, timestamp, photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items WHERE id = %s",
             (item_id,),
         )
         row = cur.fetchone()
