@@ -8,7 +8,7 @@ import os
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -1510,30 +1510,41 @@ async def delete_inzamellijst(entry_id: int, gemeente: Optional[str] = None, use
 
 @app.post("/api/upload")
 async def upload(
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     manual_note: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
     gemeente_override: Optional[str] = Form(None),
     user=Depends(get_current_user),
 ):
     try:
-        content = await file.read()
-        try:
-            from PIL import Image, ImageOps
-            import io as _io
-            img = Image.open(_io.BytesIO(content))
-            img = ImageOps.exif_transpose(img)
-            img = img.convert("RGB")
-            if img.width > 512:
-                ratio = 512 / img.width
-                img = img.resize((512, int(img.height * ratio)), Image.LANCZOS)
-            buf = _io.BytesIO()
-            img.save(buf, format="JPEG", quality=72)
-            content = buf.getvalue()
-        except Exception as e:
-            print(f"[upload] Resize overgeslagen: {e}")
+        import json as _json
+        from PIL import Image, ImageOps
+        import io as _io
+        files = (files or [])[:4]   # maximaal 4 foto's
+        if not files:
+            raise HTTPException(status_code=400, detail="Geen foto ontvangen")
+        contents = []
+        for f in files:
+            raw = await f.read()
+            if not raw:
+                continue
+            try:
+                img = Image.open(_io.BytesIO(raw))
+                img = ImageOps.exif_transpose(img)
+                img = img.convert("RGB")
+                if img.width > 512:
+                    ratio = 512 / img.width
+                    img = img.resize((512, int(img.height * ratio)), Image.LANCZOS)
+                buf = _io.BytesIO()
+                img.save(buf, format="JPEG", quality=72)
+                raw = buf.getvalue()
+            except Exception as e:
+                print(f"[upload] Resize overgeslagen: {e}")
+            contents.append(raw)
+        if not contents:
+            raise HTTPException(status_code=400, detail="Geen geldige foto")
 
-        image_b64 = base64.b64encode(content).decode("utf-8")
+        image_b64 = base64.b64encode(contents[0]).decode("utf-8")
         loop = asyncio.get_event_loop()
         # GPS-gemeente heeft voorrang boven account-gemeente
         gemeente = gemeente_override.strip() if gemeente_override and gemeente_override.strip() else (user.get("gemeente") or None)
@@ -1546,12 +1557,16 @@ async def upload(
             # Geen gemeente of geen lijst voor dit gemeente → alle producten als fallback
             inzamellijst_items = [e["product"] for e in db.get_inzamellijst_alle()]
 
-        (label, detail, gewicht_kg, ai_category, geaccepteerd), photo_url = await asyncio.gather(
-            loop.run_in_executor(None, ai_module.analyse_photo, image_b64, inzamellijst_items),
-            loop.run_in_executor(None, storage_module.upload_photo, content),
-        )
+        _analyse = loop.run_in_executor(None, ai_module.analyse_photo, image_b64, inzamellijst_items)
+        _uploads = [loop.run_in_executor(None, storage_module.upload_photo, c) for c in contents]
+        _results = await asyncio.gather(_analyse, *_uploads)
+        (label, detail, gewicht_kg, ai_category, geaccepteerd) = _results[0]
+        photo_url_list = list(_results[1:])
+        photo_url = photo_url_list[0]
 
-        item_id = db.insert_item(photo_url, label, detail, gewicht_kg, gemeente, True, uploaded_by=user["id"])
+        item_id = db.insert_item(photo_url, label, detail, gewicht_kg, gemeente, True,
+                                 uploaded_by=user["id"],
+                                 photo_urls=_json.dumps(photo_url_list) if len(photo_url_list) > 1 else None)
         # Gebruik AI-categorie tenzij handmatig overschreven
         final_category = category if category else ai_category
         if manual_note or final_category:

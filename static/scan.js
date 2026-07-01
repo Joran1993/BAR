@@ -49,7 +49,8 @@ let activeMain      = "aanbieden";
 let activeSubtab    = "aangeboden";
 let adminGemeente   = "";
 let currentItemId   = null;
-let pendingFile     = null;
+let pendingFiles    = [];
+const MAX_FOTOS     = 4;
 let _listPage       = 0;
 const _PAGE_SIZE    = 15;
 
@@ -278,29 +279,69 @@ document.getElementById("gemeente-kiezer").addEventListener("change", e => {
 
 // ── Camera ─────────────────────────────────────────────────────────────────────
 const cameraInput = document.getElementById("camera-input");
-const previewWrap = document.getElementById("preview-wrap");
-const previewImg  = document.getElementById("preview-img");
+const previewWrap   = document.getElementById("preview-wrap");
+const previewThumbs = document.getElementById("preview-thumbs");
+const addPhotoInput = document.getElementById("add-photo-input");
 const analyseBtn  = document.getElementById("analyse-btn");
 const resultCard  = document.getElementById("result-card");
 const scanError   = document.getElementById("scan-error");
 const locatieTxt  = document.getElementById("locatie-txt");
 const scanHero    = document.getElementById("scan-hero");
 
-cameraInput.addEventListener("change", () => {
-  const file = cameraInput.files[0];
-  if (!file) return;
-  pendingFile = file;
-  previewImg.src = URL.createObjectURL(file);
+function _voegFotosToe(fileList) {
+  for (const f of fileList) {
+    if (!f || !f.type || !f.type.startsWith("image/")) continue;
+    if (pendingFiles.length >= MAX_FOTOS) break;
+    pendingFiles.push(f);
+  }
+  if (!pendingFiles.length) return;
   scanHero.classList.add("hidden");
   previewWrap.classList.remove("hidden");
   analyseBtn.classList.remove("hidden");
   resultCard.classList.add("hidden");
   scanError.classList.add("hidden");
-});
+  _renderThumbs();
+}
+
+function _renderThumbs() {
+  previewThumbs.innerHTML = "";
+  pendingFiles.forEach((f, i) => {
+    const cell = document.createElement("div");
+    cell.className = "preview-thumb";
+    const img = document.createElement("img");
+    img.src = URL.createObjectURL(f);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "preview-thumb-del";
+    del.innerHTML = "&times;";
+    del.setAttribute("aria-label", "Verwijder foto");
+    del.addEventListener("click", () => {
+      pendingFiles.splice(i, 1);
+      if (!pendingFiles.length) resetScan(); else _renderThumbs();
+    });
+    cell.appendChild(img);
+    cell.appendChild(del);
+    previewThumbs.appendChild(cell);
+  });
+  if (pendingFiles.length < MAX_FOTOS) {
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "preview-thumb-add";
+    add.innerHTML = "+";
+    add.setAttribute("aria-label", "Foto toevoegen");
+    add.addEventListener("click", () => addPhotoInput.click());
+    previewThumbs.appendChild(add);
+  }
+}
+
+cameraInput.addEventListener("change", () => { _voegFotosToe(cameraInput.files); cameraInput.value = ""; });
+if (addPhotoInput) addPhotoInput.addEventListener("change", () => { _voegFotosToe(addPhotoInput.files); addPhotoInput.value = ""; });
 
 function resetScan() {
-  pendingFile = null;
+  pendingFiles = [];
   cameraInput.value = "";
+  if (addPhotoInput) addPhotoInput.value = "";
+  previewThumbs.innerHTML = "";
   scanHero.classList.remove("hidden");
   previewWrap.classList.add("hidden");
   analyseBtn.classList.add("hidden");
@@ -311,8 +352,6 @@ function resetScan() {
   _huidigItemId = null; _huidigCategory = null;
   document.getElementById("gemeente-kiezer").value = "";
 }
-
-document.getElementById("preview-clear").addEventListener("click", resetScan);
 
 // ── GPS ────────────────────────────────────────────────────────────────────────
 function getGPSLocation() {
@@ -340,7 +379,7 @@ async function getGemeenteFromCoords(lat, lon) {
 
 // ── Analyseren ─────────────────────────────────────────────────────────────────
 analyseBtn.addEventListener("click", async () => {
-  if (!pendingFile) return;
+  if (!pendingFiles.length) return;
   analyseBtn.disabled = true;
   const analyseTxt = document.getElementById("analyse-txt");
   analyseTxt.textContent = "Locatie bepalen…";
@@ -364,7 +403,7 @@ analyseBtn.addEventListener("click", async () => {
 
   try {
     const fd = new FormData();
-    fd.append("file", pendingFile);
+    pendingFiles.forEach(f => fd.append("files", f));
     if (detectedGemeente) fd.append("gemeente_override", detectedGemeente);
     const res = await apiFetch("/api/upload", { method: "POST", body: fd });
     if (!res || !res.ok) {
@@ -414,8 +453,10 @@ analyseBtn.addEventListener("click", async () => {
 
     allItems.unshift(item);
     if (stats) { stats.total++; stats.today++; }
-    pendingFile = null;
+    pendingFiles = [];
     cameraInput.value = "";
+    if (addPhotoInput) addPhotoInput.value = "";
+    previewThumbs.innerHTML = "";
     previewWrap.classList.add("hidden");
     analyseBtn.classList.add("hidden");
   } catch (err) {

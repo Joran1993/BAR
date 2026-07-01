@@ -191,6 +191,7 @@ def init_db():
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_ubp_user ON user_bedrijf_prioriteit(user_id, positie)")
         cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS photo_urls TEXT")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_items_uploaded_by ON items(uploaded_by)")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid TEXT UNIQUE")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT")
@@ -513,11 +514,12 @@ def insert_item(photo_url: Optional[str], ai_label: Optional[str],
                 ai_detail: Optional[str], gewicht_kg: Optional[float] = None,
                 gemeente: Optional[str] = None,
                 geaccepteerd: Optional[bool] = None,
-                uploaded_by: Optional[int] = None) -> int:
+                uploaded_by: Optional[int] = None,
+                photo_urls: Optional[str] = None) -> int:
     with get_cursor() as cur:
         cur.execute(
-            "INSERT INTO items (timestamp, photo_url, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-            (datetime.now(timezone.utc).isoformat(timespec="seconds"), photo_url, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by),
+            "INSERT INTO items (timestamp, photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            (datetime.now(timezone.utc).isoformat(timespec="seconds"), photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by),
         )
         return cur.fetchone()["id"]
 
