@@ -213,10 +213,11 @@ function _scanBedrijfOmlaag(i) {
   _renderBedrijvenLijst(_huidigItemId);
 }
 
-async function aanbiedenAanAlle(itemId) {
-  const btn = document.getElementById("btn-aanbied-alle");
+async function aanbiedenAanSelectie(itemId) {
+  const ids = [...document.querySelectorAll(".scan-bedrijf-check:checked")].map(c => parseInt(c.value, 10));
+  if (!ids.length) { alert("Selecteer minstens één bedrijf."); return; }
+  const btn = document.getElementById("btn-aanbied-selectie");
   if (btn) { btn.disabled = true; btn.textContent = "Bezig…"; }
-  const ids = _scanBedrijven.map(b => b.id);
   const res = await apiFetch("/api/aanbiedingen/bulk", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -224,13 +225,18 @@ async function aanbiedenAanAlle(itemId) {
   });
   if (res && res.ok) {
     const data = await res.json();
-    _markeerAangeboden(itemId, "iedereen", data?.ids?.[0]);
+    const gekozen = _scanBedrijven.filter(b => ids.includes(b.id));
+    const label = gekozen.length === 1 ? gekozen[0].naam : `${gekozen.length} bedrijven`;
+    _markeerAangeboden(itemId, label, data?.ids?.[0]);
     syncItems();
-    const namen = _scanBedrijven.map(b => b.naam).join(", ");
-    _toonSucces("Aangeboden aan iedereen!", `Het item is aangeboden aan: ${namen}.`);
+    _toonSucces("Aangeboden!", `Het item is aangeboden aan: ${gekozen.map(b => b.naam).join(", ")}.`);
   } else {
     if (btn) { btn.disabled = false; btn.textContent = "Opnieuw proberen"; }
   }
+}
+
+function _scanToggleAlle(aan) {
+  document.querySelectorAll(".scan-bedrijf-check").forEach(c => { c.checked = aan; });
 }
 
 function _renderBedrijvenLijst(itemId, external) {
@@ -243,32 +249,28 @@ function _renderBedrijvenLijst(itemId, external) {
     bedrijvenCard.classList.remove("hidden");
     return;
   }
-  const n = _scanBedrijven.length;
   bedrijvenLijst.innerHTML = `
-    <button id="btn-aanbied-alle" class="btn btn-primary"
-      style="width:100%;margin-bottom:12px;background:var(--orange);"
-      onclick="aanbiedenAanAlle(${itemId})">
-      Aanbieden aan alle ${n} bedrijven tegelijk
-    </button>
-    <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Of per bedrijf in volgorde</div>
-    ${_scanBedrijven.map((b, i) => `
-    <div style="padding:10px 0;border-bottom:1px solid var(--border);">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-        <span style="font-size:0.7rem;font-weight:700;color:var(--orange);min-width:16px;">${i + 1}</span>
-        <span style="font-weight:600;font-size:0.88rem;flex:1;">${_esc(b.naam)}</span>
-        ${b.categorie_match ? `<span style="font-size:0.6rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;">Match</span>` : ""}
-        <button onclick="_scanBedrijfOmhoog(${i})" ${i === 0 ? "disabled" : ""} style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 7px;cursor:pointer;font-size:0.85rem;${i === 0 ? "opacity:.3;" : ""}">↑</button>
-        <button onclick="_scanBedrijfOmlaag(${i})" ${i === n - 1 ? "disabled" : ""} style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 7px;cursor:pointer;font-size:0.85rem;${i === n - 1 ? "opacity:.3;" : ""}">↓</button>
-      </div>
-      <div style="font-size:0.75rem;color:var(--muted);margin-bottom:8px;padding-left:22px;">
-        ${b.contactpersoon ? _esc(b.contactpersoon) : ""}${b.telefoon ? ` · ${_esc(b.telefoon)}` : ""}
-      </div>
-      <button class="btn btn-primary" style="padding:10px;font-size:0.72rem;width:100%;"
-        id="btn-aanbied-${b.id}"
-        onclick="aanbieden(${itemId}, ${b.id})">
-        Aanbieden aan ${_esc(b.naam)}
-      </button>
-    </div>`).join("")}`;
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <span style="font-size:0.72rem;color:var(--muted);">Kies één of meer bedrijven</span>
+      <span style="font-size:0.72rem;">
+        <a onclick="_scanToggleAlle(true)" style="color:var(--orange);cursor:pointer;font-weight:600;">Alles</a>
+        &nbsp;·&nbsp;
+        <a onclick="_scanToggleAlle(false)" style="color:var(--muted);cursor:pointer;">Geen</a>
+      </span>
+    </div>
+    ${_scanBedrijven.map((b) => `
+    <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+      <input type="checkbox" class="scan-bedrijf-check" value="${b.id}" ${b.categorie_match ? "checked" : ""} style="width:18px;height:18px;flex-shrink:0;accent-color:var(--orange);">
+      <span style="flex:1;">
+        <span style="font-weight:600;font-size:0.88rem;">${_esc(b.naam)}</span>
+        ${b.categorie_match ? `<span style="font-size:0.6rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;margin-left:6px;">Match</span>` : ""}
+        ${(b.contactpersoon || b.telefoon) ? `<span style="display:block;font-size:0.75rem;color:var(--muted);margin-top:2px;">${b.contactpersoon ? _esc(b.contactpersoon) : ""}${b.telefoon ? ` · ${_esc(b.telefoon)}` : ""}</span>` : ""}
+      </span>
+    </label>`).join("")}
+    <button id="btn-aanbied-selectie" class="btn btn-primary" style="width:100%;margin-top:14px;"
+      onclick="aanbiedenAanSelectie(${itemId})">
+      Aanbieden aan geselecteerde bedrijven
+    </button>`;
   bedrijvenCard.classList.remove("hidden");
 }
 
