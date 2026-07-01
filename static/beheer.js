@@ -1,5 +1,8 @@
 /* De Bouwkringloop — Beheerpagina */
 
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
+function escJs(s){return esc(String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/[\r\n]/g," "));}
+
 const CATEGORIES = ["Hout", "Metaal", "Beton / steen", "Glas", "Kunststof", "Gevaarlijk afval", "Overig",
   "kringloop", "meubels", "fietsen", "bouwmateriaal", "diversen"];
 
@@ -90,7 +93,7 @@ async function loadGemeenteOptions() {
     const ms = milieustraten[gemeente] || [];
     if (!ms.length) { milSel.style.display = "none"; return; }
     milSel.innerHTML = '<option value="">— Selecteer milieustraat —</option>' +
-      ms.map(m => `<option value="${m}">${m}</option>`).join("");
+      ms.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
     milSel.style.display = "";
     if (ms.length === 1) milSel.value = ms[0];
   }
@@ -98,7 +101,7 @@ async function loadGemeenteOptions() {
   // ── Nieuwe gebruiker: gemeente + milieustraat cascade ────────────────────
   const nuSel = document.getElementById("nu-gemeente");
   nuSel.innerHTML = '<option value="">— Selecteer gemeente —</option>' +
-    lijst.map(g => `<option value="${g}">${g}</option>`).join("");
+    lijst.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join("");
 
   let nuMilSel = document.getElementById("nu-milieustraat");
   if (!nuMilSel) {
@@ -129,7 +132,7 @@ async function loadGemeenteOptions() {
     nbSel.id = "nb-gemeente";
     nbSel.style.cssText = SEL_STYLE;
     nbSel.innerHTML = '<option value="">— Selecteer gemeente —</option>' +
-      lijst.map(g => `<option value="${g}">${g}</option>`).join("");
+      lijst.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join("");
     nbGemInput.parentNode.replaceChild(nbSel, nbGemInput);
 
     const nbMilSel = document.createElement("select");
@@ -185,15 +188,15 @@ async function loadUsers() {
   list.innerHTML = users.map(u => `
     <div class="user-row" id="user-row-${u.id}" style="flex-wrap:wrap;">
       <div class="user-info" style="cursor:pointer;flex:1;" onclick="toggleUserEdit(${u.id})">
-        <div class="user-name">${u.username}</div>
+        <div class="user-name">${esc(u.username)}</div>
         <div class="user-meta">
-          <span class="badge ${rcls[u.role] || ''}">${rlabel[u.role] || u.role}</span>
-          ${u.gemeente ? `<span class="badge badge-neutral">${u.gemeente}</span>` : ""}
+          <span class="badge ${rcls[u.role] || ''}">${esc(rlabel[u.role] || u.role)}</span>
+          ${u.gemeente ? `<span class="badge badge-neutral">${esc(u.gemeente)}</span>` : ""}
           ${u.role === "bedrijf" && u.bedrijf_id ? `<span class="badge badge-neutral">gekoppeld</span>` : ""}
         </div>
       </div>
       <button class="btn-view-as" onclick="event.stopPropagation();loginAls(${u.id})" title="Bekijk app als deze gebruiker">👁</button>
-      ${u.username !== username ? `<button class="btn-del" onclick="event.stopPropagation();deleteUser(${u.id}, '${u.username}')">Verwijder</button>` : ""}
+      ${u.username !== username ? `<button class="btn-del" onclick="event.stopPropagation();deleteUser(${u.id}, '${escJs(u.username)}')">Verwijder</button>` : ""}
       <div class="user-edit-panel" id="user-edit-${u.id}" style="display:none;width:100%;padding:12px 0 4px;">
         <div class="field" style="margin-bottom:10px;">
           <label>Rol wijzigen</label>
@@ -207,7 +210,7 @@ async function loadUsers() {
           <label>Koppel aan bedrijf</label>
           <select id="user-bedrijf-${u.id}">
             <option value="">— Selecteer bedrijf —</option>
-            ${_alleBedrijven.map(b => `<option value="${b.id}" ${u.bedrijf_id===b.id?"selected":""}>${b.naam}${b.gemeente?" ("+b.gemeente+")":""}</option>`).join("")}
+            ${_alleBedrijven.map(b => `<option value="${b.id}" ${u.bedrijf_id===b.id?"selected":""}>${esc(b.naam)}${b.gemeente?" ("+esc(b.gemeente)+")":""}</option>`).join("")}
           </select>
         </div>
         <button class="btn btn-primary" style="padding:10px 20px;font-size:0.78rem;" onclick="slaRolOp(${u.id})">Opslaan</button>
@@ -303,20 +306,20 @@ async function loadBedrijven() {
     const link = `${location.origin}/bedrijf/${b.meld_token}`;
     return `
     <div class="bedrijf-card">
-      <div class="bedrijf-naam">${b.naam}</div>
+      <div class="bedrijf-naam">${esc(b.naam)}</div>
       <div class="bedrijf-meta">
-        ${b.gemeente ? `${b.gemeente}` : ""}
-        ${b.contactpersoon ? ` · ${b.contactpersoon}` : ""}
-        ${b.email ? ` · <a href="mailto:${b.email}" style="color:var(--orange)">${b.email}</a>` : ""}
-        ${b.telefoon ? ` · ${b.telefoon}` : ""}
+        ${b.gemeente ? `${esc(b.gemeente)}` : ""}
+        ${b.contactpersoon ? ` · ${esc(b.contactpersoon)}` : ""}
+        ${b.email ? ` · <a href="mailto:${esc(b.email)}" style="color:var(--orange)">${esc(b.email)}</a>` : ""}
+        ${b.telefoon ? ` · ${esc(b.telefoon)}` : ""}
       </div>
-      ${b.categorieen.length ? `<div class="bedrijf-cats">${b.categorieen.map(c => `<span class="bedrijf-cat">${c}</span>`).join("")}</div>` : ""}
+      ${b.categorieen.length ? `<div class="bedrijf-cats">${b.categorieen.map(c => `<span class="bedrijf-cat">${esc(c)}</span>`).join("")}</div>` : ""}
       <div style="margin:10px 0 8px;font-size:0.72rem;color:var(--muted);">
         Link voor bedrijf:
-        <a href="${link}" target="_blank" style="color:var(--orange);word-break:break-all;">${link}</a>
-        <button class="btn-sm" style="margin-left:6px;" onclick="navigator.clipboard.writeText('${link}').then(()=>alert('Gekopieerd!'))">Kopieer</button>
+        <a href="${esc(link)}" target="_blank" style="color:var(--orange);word-break:break-all;">${esc(link)}</a>
+        <button class="btn-sm" style="margin-left:6px;" onclick="navigator.clipboard.writeText('${escJs(link)}').then(()=>alert('Gekopieerd!'))">Kopieer</button>
       </div>
-      <button class="btn-del" onclick="deleteBedrijf(${b.id}, '${b.naam}')">Verwijder</button>
+      <button class="btn-del" onclick="deleteBedrijf(${b.id}, '${escJs(b.naam)}')">Verwijder</button>
     </div>`;
   }).join("");
 }
@@ -375,9 +378,9 @@ async function loadGemeenten() {
     return;
   }
   list.innerHTML = data.map(g => `
-    <div class="gemeente-row" onclick="openGemeenteDashboard('${g.gemeente}')" style="cursor:pointer;">
+    <div class="gemeente-row" onclick="openGemeenteDashboard('${escJs(g.gemeente)}')" style="cursor:pointer;">
       <div>
-        <div class="gemeente-naam">${g.gemeente}</div>
+        <div class="gemeente-naam">${esc(g.gemeente)}</div>
         <div class="gemeente-meta">${g.user_count} scanner${g.user_count !== 1 ? 's' : ''} · ${g.item_count} items · ${(g.totaal_kg ?? 0).toFixed(1)} kg · <span style="color:#2e7d32;font-weight:700;">${((g.totaal_kg ?? 0) * 3.5).toFixed(1)} kg CO₂ bespaard</span></div>
       </div>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -412,12 +415,12 @@ async function openGemeenteDashboard(gem) {
 
   const itemRows = items.slice(0, 20).map(it => `
     <div class="gd-item-row">
-      ${it.photo_url ? `<img src="${it.photo_url}" class="gd-thumb" alt="">` : `<div class="gd-thumb gd-thumb-empty"></div>`}
+      ${it.photo_url ? `<img src="${esc(it.photo_url)}" class="gd-thumb" alt="">` : `<div class="gd-thumb gd-thumb-empty"></div>`}
       <div class="gd-item-info">
-        <div class="gd-item-label">${it.ai_label || "Onbekend"}</div>
-        <div class="gd-item-meta">${it.category || ""}</div>
+        <div class="gd-item-label">${esc(it.ai_label || "Onbekend")}</div>
+        <div class="gd-item-meta">${esc(it.category || "")}</div>
       </div>
-      ${it.bedrijf_naam ? `<span class="badge badge-green" style="flex-shrink:0;">${it.bedrijf_naam}</span>` : (it.status === "aangeboden" ? `<span class="badge badge-orange" style="flex-shrink:0;">Aangeboden</span>` : "")}
+      ${it.bedrijf_naam ? `<span class="badge badge-green" style="flex-shrink:0;">${esc(it.bedrijf_naam)}</span>` : (it.status === "aangeboden" ? `<span class="badge badge-orange" style="flex-shrink:0;">Aangeboden</span>` : "")}
     </div>`).join("");
 
   document.getElementById("gd-body").innerHTML = `

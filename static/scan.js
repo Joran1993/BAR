@@ -106,7 +106,7 @@ function _vulGemeenteDropdown() {
   const gemeenten = [...new Set(allItems.map(i => i.gemeente).filter(Boolean))].sort();
   const current = sel.value;
   sel.innerHTML = '<option value="">Alle gemeenten</option>' +
-    gemeenten.map(g => `<option value="${g}"${g === current ? " selected" : ""}>${g}</option>`).join("");
+    gemeenten.map(g => `<option value="${_esc(g)}"${g === current ? " selected" : ""}>${_esc(g)}</option>`).join("");
 }
 
 document.getElementById("admin-gemeente-select").addEventListener("change", e => {
@@ -135,7 +135,7 @@ async function _vulStatsGemeenteFilter() {
   const sel = document.getElementById("stats-gemeente-sel");
   const huidig = sel.value;
   sel.innerHTML = '<option value="">Alle gemeenten</option>' +
-    data.map(g => `<option value="${g.gemeente}">${g.gemeente}</option>`).join("");
+    data.map(g => `<option value="${_esc(g.gemeente)}">${_esc(g.gemeente)}</option>`).join("");
   if (huidig) sel.value = huidig;
   sel.onchange = () => { syncStats(); if (_isAdmin) syncNetwerk(); };
 }
@@ -152,7 +152,7 @@ function _vulMilieustraatSelect(sel, gemeente, huidig) {
   const lijst = (_milieustraten[gemeente] || []);
   if (!lijst.length) { sel.style.display = "none"; return; }
   sel.innerHTML = '<option value="">— Selecteer milieustraat —</option>' +
-    lijst.map(m => `<option value="${m}"${m === huidig ? " selected" : ""}>${m}</option>`).join("");
+    lijst.map(m => `<option value="${_esc(m)}"${m === huidig ? " selected" : ""}>${_esc(m)}</option>`).join("");
   sel.style.display = "";
   if (lijst.length === 1) sel.value = lijst[0]; // auto-select als er maar 1 is
 }
@@ -169,7 +169,7 @@ async function laadGemeenten() {
   // ── Scan-tab kiezer ──────────────────────────────────────────────────────
   const sel = document.getElementById("gemeente-kiezer");
   sel.innerHTML = '<option value="">Gemeente…</option>' +
-    _allGemeenten.map(g => `<option value="${g}">${g}</option>`).join("");
+    _allGemeenten.map(g => `<option value="${_esc(g)}">${_esc(g)}</option>`).join("");
 
   const milSel = document.getElementById("milieustraat-kiezer");
   if (milSel) {
@@ -182,7 +182,7 @@ async function laadGemeenten() {
   const upGem = document.getElementById("up-gemeente");
   if (upGem) {
     upGem.innerHTML = '<option value="">— Selecteer gemeente —</option>' +
-      _allGemeenten.map(g => `<option value="${g}">${g}</option>`).join("");
+      _allGemeenten.map(g => `<option value="${_esc(g)}">${_esc(g)}</option>`).join("");
     upGem.addEventListener("change", function () {
       const upMil = document.getElementById("up-milieustraat");
       if (upMil) _vulMilieustraatSelect(upMil, this.value, "");
@@ -254,18 +254,18 @@ function _renderBedrijvenLijst(itemId, external) {
     <div style="padding:10px 0;border-bottom:1px solid var(--border);">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
         <span style="font-size:0.7rem;font-weight:700;color:var(--orange);min-width:16px;">${i + 1}</span>
-        <span style="font-weight:600;font-size:0.88rem;flex:1;">${b.naam}</span>
+        <span style="font-weight:600;font-size:0.88rem;flex:1;">${_esc(b.naam)}</span>
         ${b.categorie_match ? `<span style="font-size:0.6rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;">Match</span>` : ""}
         <button onclick="_scanBedrijfOmhoog(${i})" ${i === 0 ? "disabled" : ""} style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 7px;cursor:pointer;font-size:0.85rem;${i === 0 ? "opacity:.3;" : ""}">↑</button>
         <button onclick="_scanBedrijfOmlaag(${i})" ${i === n - 1 ? "disabled" : ""} style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 7px;cursor:pointer;font-size:0.85rem;${i === n - 1 ? "opacity:.3;" : ""}">↓</button>
       </div>
       <div style="font-size:0.75rem;color:var(--muted);margin-bottom:8px;padding-left:22px;">
-        ${b.contactpersoon ? b.contactpersoon : ""}${b.telefoon ? ` · ${b.telefoon}` : ""}
+        ${b.contactpersoon ? _esc(b.contactpersoon) : ""}${b.telefoon ? ` · ${_esc(b.telefoon)}` : ""}
       </div>
       <button class="btn btn-primary" style="padding:10px;font-size:0.72rem;width:100%;"
         id="btn-aanbied-${b.id}"
         onclick="aanbieden(${itemId}, ${b.id})">
-        Aanbieden aan ${b.naam}
+        Aanbieden aan ${_esc(b.naam)}
       </button>
     </div>`).join("")}`;
   bedrijvenCard.classList.remove("hidden");
@@ -553,16 +553,16 @@ function renderItems() {
   list.innerHTML = pagina.map(item => {
     const rij = `
       <div class="item-row" onclick="openModal(${item.id})">
-        <img class="item-thumb" src="${item.photo_url}" alt="" onerror="this.style.opacity=0" loading="lazy">
+        <img class="item-thumb" src="${_esc(item.photo_url)}" alt="" onerror="this.style.opacity=0" loading="lazy">
         <div class="item-info">
-          <div class="item-name">${item.ai_label || "Niet herkend"}</div>
+          <div class="item-name">${_esc(item.ai_label || "Niet herkend")}</div>
           <div class="item-meta">
-            ${item.category ? `<span class="item-cat">${item.category}</span>` : ""}
-            ${_isAdmin && item.gemeente ? `<span class="item-cat" style="background:#e8f0fe;border-color:#c5d2f6;">${item.gemeente}</span>` : ""}
+            ${item.category ? `<span class="item-cat">${_esc(item.category)}</span>` : ""}
+            ${_isAdmin && item.gemeente ? `<span class="item-cat" style="background:#e8f0fe;border-color:#c5d2f6;">${_esc(item.gemeente)}</span>` : ""}
             <span>${formatTime(item.timestamp)}</span>
-            ${item.aangeboden_door_naam ? `<span class="aanbieder-van">${item.aangeboden_door_naam}</span>` : ""}
+            ${item.aangeboden_door_naam ? `<span class="aanbieder-van">${_esc(item.aangeboden_door_naam)}</span>` : ""}
             ${item.aangeboden_door_naam && item.bedrijf_naam ? `<span class="aanbieder-pijl">›</span>` : ""}
-            ${item.bedrijf_naam ? `<span class="aanbieder-aan">${item.bedrijf_naam}</span>` : ""}
+            ${item.bedrijf_naam ? `<span class="aanbieder-aan">${_esc(item.bedrijf_naam)}</span>` : ""}
           </div>
         </div>
         ${item.aanbieding_id ? `<span class="item-chat-icon${_hasUnread(item) ? ' has-unread' : ''}" onclick="event.stopPropagation();openModal(${item.id},true)">${SVG.chat}</span>` : ""}
@@ -623,7 +623,7 @@ function renderStats() {
     catList.innerHTML = stats.categories.length
       ? stats.categories.map(c => `
           <div class="cat-row">
-            <span class="cat-name">${c.category}</span>
+            <span class="cat-name">${_esc(c.category)}</span>
             <span class="cat-count">${c.count}x${c.kg ? ' · ' + Math.round(c.kg) + ' kg' : ''}</span>
           </div>`).join("")
       : `<p style="color:var(--muted);font-size:0.9rem;padding:16px;">Nog geen categorieën.</p>`;
@@ -645,9 +645,9 @@ async function renderDeelnemers() {
       ${data.bedrijven.map(b => `
         <div class="deelnemer-row">
           <div>
-            <div class="deelnemer-naam">${b.naam}</div>
-            <div class="deelnemer-gem">${b.gemeente}</div>
-            <div class="deelnemer-cats">${(b.categorieen || []).map(c => `<span class="deelnemer-cat">${c}</span>`).join("")}</div>
+            <div class="deelnemer-naam">${_esc(b.naam)}</div>
+            <div class="deelnemer-gem">${_esc(b.gemeente)}</div>
+            <div class="deelnemer-cats">${(b.categorieen || []).map(c => `<span class="deelnemer-cat">${_esc(c)}</span>`).join("")}</div>
           </div>
         </div>`).join("")}
     `;
@@ -674,7 +674,7 @@ async function renderGemeenteStats() {
       return `
       <div class="gem-stat-row">
         <div class="gem-stat-top">
-          <span class="gem-stat-naam">${g.gemeente}</span>
+          <span class="gem-stat-naam">${_esc(g.gemeente)}</span>
           <span class="gem-stat-items">${g.item_count} items</span>
         </div>
         <div class="gem-stat-bars">
@@ -818,7 +818,7 @@ async function openModal(id, scrollToChat = false) {
       aList.innerHTML = aanbiedingen.map(a => `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
           <div style="flex:1;min-width:0;">
-            <div style="font-weight:600;font-size:0.86rem;">${a.bedrijf_naam || "—"}</div>
+            <div style="font-weight:600;font-size:0.86rem;">${_esc(a.bedrijf_naam || "—")}</div>
             <div style="font-size:0.75rem;${scls[a.status]||''};margin-top:2px;">${slabel[a.status]||a.status}</div>
           </div>
           <button onclick="openChatVoorAanbieding(${a.id})"
@@ -882,6 +882,7 @@ function _esc(s) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
+function escJs(s){return _esc(String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/[\r\n]/g," "));}
 
 async function laadBerichten(aanbiedingId, silent = false) {
   const res = await apiFetch(`/api/aanbiedingen/${aanbiedingId}/berichten`);
@@ -1268,7 +1269,7 @@ function _renderVolgorde() {
   lijst.innerHTML = _volgordeData.map((b, i) => `
     <div data-id="${b.id}" style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
       <span style="font-size:0.7rem;font-weight:700;color:var(--orange);min-width:18px;">${i + 1}</span>
-      <span style="flex:1;font-size:0.88rem;font-weight:600;">${b.naam}</span>
+      <span style="flex:1;font-size:0.88rem;font-weight:600;">${_esc(b.naam)}</span>
       <button onclick="_volgordeOmhoog(${i})" ${i === 0 ? "disabled" : ""} style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:0.9rem;${i === 0 ? "opacity:.3;" : ""}">↑</button>
       <button onclick="_volgordeOmlaag(${i})" ${i === _volgordeData.length - 1 ? "disabled" : ""} style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:0.9rem;${i === _volgordeData.length - 1 ? "opacity:.3;" : ""}">↓</button>
     </div>`).join("");

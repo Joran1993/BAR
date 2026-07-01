@@ -1,3 +1,6 @@
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
+function escJs(s){return esc(String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/[\r\n]/g," "));}
+
 let alleItems = [];
 let geladen = 0;
 const PER_PAGINA = 500;
@@ -45,8 +48,8 @@ function renderGrid() {
   const items = gefilterdItems();
   document.getElementById("grid").innerHTML = items.map((item, idx) => `
     <div class="cat-tegel" onclick="openLightboxIdx(${idx})" data-id="${item.id}">
-      <img src="${item.photo_url_thumb || item.photo_url}" alt="${item.ai_label || ""}" loading="lazy" onerror="this.style.opacity=0.2">
-      <div class="cat-tegel-overlay"><span>${item.ai_label || "Onbekend"}</span></div>
+      <img src="${esc(item.photo_url_thumb || item.photo_url)}" alt="${esc(item.ai_label || "")}" loading="lazy" onerror="this.style.opacity=0.2">
+      <div class="cat-tegel-overlay"><span>${esc(item.ai_label || "Onbekend")}</span></div>
     </div>`).join("");
 }
 

@@ -223,6 +223,9 @@
   </div>
 
   <script>
+    function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
+    function escJs(s){return esc(String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/[\r\n]/g," "));}
+
     // Accepteer zowel bedrijf_token (oud) als standaard token (nieuw via /login)
     let token = localStorage.getItem("bedrijf_token") || localStorage.getItem("token");
     if (token && localStorage.getItem("role") === "bedrijf" && !localStorage.getItem("bedrijf_naam")) {
@@ -430,13 +433,13 @@
           { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
         return `
           <div class="aanbieding-card ${a.status}" id="card-${a.id}">
-            ${a.photo_url ? `<img class="card-img" src="${a.photo_url}" alt="" loading="lazy">` : ""}
+            ${a.photo_url ? `<img class="card-img" src="${esc(a.photo_url)}" alt="" loading="lazy">` : ""}
             <div class="card-body">
-              <div class="card-label">${a.ai_label || "Onbekend materiaal"}</div>
+              <div class="card-label">${esc(a.ai_label || "Onbekend materiaal")}</div>
               <div class="card-meta">
-                ${a.category || ""}${a.gemeente ? ` · ${a.gemeente}` : ""} · ${datum}
+                ${esc(a.category || "")}${a.gemeente ? ` · ${esc(a.gemeente)}` : ""} · ${datum}
               </div>
-              ${a.ai_detail ? `<div class="card-detail">${a.ai_detail}</div>` : ""}
+              ${a.ai_detail ? `<div class="card-detail">${esc(a.ai_detail)}</div>` : ""}
               <span class="card-status ${statusCls[a.status] || ""}">${statusLabel[a.status] || a.status}</span>
               ${isOpen(a) ? `
                 <div class="card-actions">
@@ -497,9 +500,9 @@
         return `
           <div class="netwerk-kaart${eigen ? " eigen" : ""}">
             ${eigen ? '<span class="netwerk-eigen-badge">Jouw organisatie</span>' : ""}
-            <div class="netwerk-naam">${b.naam}</div>
-            <div class="netwerk-contact">${b.email || ""}</div>
-            ${cats.length ? `<div class="netwerk-cat">${cats.map(c => `<span class="netwerk-cat-tag">${c}</span>`).join("")}</div>` : ""}
+            <div class="netwerk-naam">${esc(b.naam)}</div>
+            <div class="netwerk-contact">${esc(b.email || "")}</div>
+            ${cats.length ? `<div class="netwerk-cat">${cats.map(c => `<span class="netwerk-cat-tag">${esc(c)}</span>`).join("")}</div>` : ""}
             ${b.aanbieding_count > 0 ? `<div class="netwerk-teller">${b.aanbieding_count} aanbieding${b.aanbieding_count !== 1 ? "en" : ""}</div>` : ""}
           </div>`;
       }).join("");

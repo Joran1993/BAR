@@ -83,6 +83,9 @@
   </div>
 
   <script>
+    function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
+    function escJs(s){return esc(String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/[\r\n]/g," "));}
+
     // Auth check
     if (!localStorage.getItem('token')) location.replace('/login?redirect=/dashboard');
 
@@ -126,15 +129,15 @@
       const max = Math.max(...cats.map(c => c.count), 1);
       document.getElementById('cat-lijst').innerHTML = cats.map(c => `
         <div class="cat-rij">
-          <div class="cat-naam">${c.category || 'Onbekend'}</div>
+          <div class="cat-naam">${esc(c.category || 'Onbekend')}</div>
           <div class="cat-balk-wrap"><div class="cat-balk" style="width:${Math.round(c.count/max*100)}%"></div></div>
           <div class="cat-n">${c.count}</div>
           <div class="cat-kg">${c.kg ? Math.round(c.kg) + ' kg' : ''}</div>
         </div>`).join('');
 
       document.getElementById('recent-grid').innerHTML = (d.recent || []).map(item => `
-        <div class="recent-tegel" title="${item.ai_label || ''}">
-          <img src="${item.photo_url_thumb || item.photo_url}" loading="lazy" onerror="this.style.opacity=0.2">
+        <div class="recent-tegel" title="${esc(item.ai_label || '')}">
+          <img src="${esc(item.photo_url_thumb || item.photo_url)}" loading="lazy" onerror="this.style.opacity=0.2">
         </div>`).join('');
 
     }
