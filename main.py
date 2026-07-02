@@ -2079,6 +2079,10 @@ async def static_files(path: str):
     ext = os.path.splitext(path)[1].lower()
     if ext in (".html",):
         cache = "no-store"
+    elif path == "manifest.json":
+        # Manifest bepaalt install-kleuren/naam/iconen: altijd hervalideren,
+        # anders installeren toestellen dagen later nog de oude huisstijl
+        cache = "no-cache"
     elif ext in (".png", ".webp", ".jpg", ".jpeg", ".svg", ".ico", ".woff2"):
         cache = "public, max-age=604800, immutable"  # 7 dagen
     else:
@@ -2359,6 +2363,9 @@ def _render_html(path: str, brand: str) -> HTMLResponse:
     # Automatische cache-busting: vers versienummer op alle /static/*.js en *.css
     # let op: (?![\w]) voorkomt dat .js binnen .json/.jsonld matcht (zou manifest.json verminken)
     html = _re.sub(r'(/static/[\w./-]+\.(?:js|css))(?![\w])(\?v=[\w.]+)?', r'\1?v=' + ASSET_VERSION, html)
+    # Manifest apart cache-busten (bewust buiten de regex hierboven): anders installeren
+    # toestellen tot een dag lang de oude huisstijl uit hun HTTP-cache
+    html = html.replace('href="/static/manifest.json"', f'href="/static/manifest.json?v={ASSET_VERSION}"')
     # Swap logo src — vervang alle bekende logo-paden
     for known_logo in ["/static/cirqo-logo.webp", "/static/bouwkringloop-logo.jpg"]:
         html = html.replace(known_logo, b["logo"])

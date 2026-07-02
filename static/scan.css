@@ -476,7 +476,18 @@ body {
   overflow: hidden;
   background: var(--surface);
 }
+/* Zachte blur van de foto zelf als achtergrond — geen kale flanken bij staande foto's */
+.modal-carousel::before {
+  content: "";
+  position: absolute; inset: 0;
+  background-image: var(--foto);
+  background-size: cover; background-position: center;
+  filter: blur(18px) brightness(1.04) saturate(1.05);
+  transform: scale(1.15);
+  opacity: 0.55;
+}
 .modal-img {
+  position: relative;
   display: block; width: 100%; max-height: 300px;
   object-fit: contain; object-position: center;
 }
@@ -502,7 +513,17 @@ body {
 }
 .carousel-dot.active { background: #fff; }
 .modal-body { padding: 20px 16px; }
-.modal-ts { font-size: 0.7rem; color: var(--muted); margin-bottom: 8px; }
+.modal-ts { font-size: 0.72rem; color: var(--muted); margin: 2px 0 8px; }
+.modal-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 12px; }
+.m-chip { font-size: 0.72rem; font-weight: 700; background: var(--surface); border: 1px solid var(--border);
+          color: #555; padding: 4px 11px; border-radius: 100px; }
+.m-chip.groen { background: #e9f3ec; border-color: #cfe5d6; color: #2c6e3f; }
+.modal-status-badge { display: inline-block; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.03em;
+                      padding: 4px 12px; border-radius: 100px; margin-bottom: 14px; }
+.msb-open       { background: #f0efeb; color: #6b6b6b; }
+.msb-ophalen    { background: #e9f3ec; color: #2c6e3f; }
+.msb-niet_nodig { background: #fdecea; color: #b71c1c; }
+.chat-wrap:empty::before { content: "Berichten laden…"; font-size: 0.78rem; color: var(--muted); }
 .modal-body h3 {
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 1.5rem; font-weight: 900; margin-bottom: 4px;

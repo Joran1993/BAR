@@ -97,8 +97,39 @@
     .ob-slide.ob-active .ob-check { animation:obDrawLine .5s cubic-bezier(.22,.8,.36,1) .95s forwards; }
     @keyframes obDrawLine { to{stroke-dashoffset:0} }
   </style>
+
+  <style>
+    /* ── Opening-animatie: woordmerk zweeft in, accentlijn tekent zich (1x per sessie) ── */
+    #intro { position: fixed; inset: 0; z-index: 9999; background: #f7f5f0;
+             display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+             pointer-events: none; animation: introWeg 240ms cubic-bezier(0.25,0.46,0.45,0.94) 750ms both; }
+    .intro-logo { width: 190px; height: auto; will-change: transform;
+                  animation: introLogo 420ms cubic-bezier(0.23,1,0.32,1) both; }
+    .intro-lijn { width: 190px; height: 3px; border-radius: 2px; background: #86bc97;
+                  transform: scaleX(0); transform-origin: center; will-change: transform;
+                  animation: introLijn 460ms cubic-bezier(0.215,0.61,0.355,1) 240ms both; }
+    @keyframes introLogo { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes introLijn { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    @keyframes introWeg  { from { opacity: 1; } to { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { #intro { display: none; } }
+  </style>
 </head>
 <body>
+  <div id="intro" aria-hidden="true">
+    <img class="intro-logo" src="/static/cirqo-logo.webp" alt="">
+    <div class="intro-lijn"></div>
+  </div>
+  <script>
+  (function () {
+    var el = document.getElementById('intro');
+    try {
+      if (window !== window.top || sessionStorage.getItem('introGezien')) { el.remove(); return; }
+      sessionStorage.setItem('introGezien', '1');
+    } catch (e) { el.remove(); return; }
+    el.addEventListener('animationend', function (e) { if (e.target === el) el.remove(); });
+    setTimeout(function () { if (el.isConnected) el.remove(); }, 1600); // vangnet
+  })();
+  </script>
 
   <header class="hdr">
     <img src="/static/bouwkringloop-logo.jpg" class="hdr-logo-img" alt="De Bouwkringloop">
@@ -222,8 +253,9 @@
         <div id="carousel-dots" class="carousel-dots"></div>
       </div>
       <div class="modal-body">
-        <p id="modal-ts" class="modal-ts"></p>
         <h3 id="modal-label"></h3>
+        <p id="modal-ts" class="modal-ts"></p>
+        <div id="modal-chips" class="modal-chips"></div>
         <p id="modal-weight" class="modal-weight"></p>
         <p id="modal-co2" class="modal-co2"></p>
         <p id="modal-detail" class="modal-detail"></p>
@@ -248,7 +280,7 @@
         <div id="modal-bedrijf-acties" style="display:none;">
           <hr class="divider">
           <p id="modal-aanbieder" style="font-size:0.78rem;font-weight:600;color:var(--muted);margin-bottom:4px;"></p>
-          <p id="modal-aanbieding-status" style="font-size:0.75rem;color:var(--orange);margin-bottom:16px;font-weight:700;"></p>
+          <p id="modal-aanbieding-status" class="modal-status-badge" style="display:none;"></p>
           <div style="display:flex;gap:8px;">
             <button id="modal-btn-ophalen" class="btn" style="flex:1;background:#4caf50;color:#fff;border-color:#4caf50;">✓ Ophalen</button>
             <button id="modal-btn-niet-nodig" class="btn btn-ghost" style="flex:1;color:var(--danger);border-color:var(--danger);">✗ Niet nodig</button>

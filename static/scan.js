@@ -830,6 +830,9 @@ function _initCarousel(item) {
 
 function _renderCarousel() {
   const img   = document.getElementById("modal-img");
+  const wrap  = document.getElementById("modal-carousel");
+  if (wrap && _carouselUrls[_carouselIdx])
+    wrap.style.setProperty("--foto", `url("${_carouselUrls[_carouselIdx]}")`);
   const prev  = document.getElementById("carousel-prev");
   const next  = document.getElementById("carousel-next");
   const dots  = document.getElementById("carousel-dots");
@@ -861,7 +864,12 @@ async function openModal(id, scrollToChat = false) {
   document.getElementById("modal-weight").textContent = "";
   document.getElementById("modal-co2").textContent = "";
   document.getElementById("modal-detail").textContent = item.ai_detail || "";
-  document.getElementById("modal-ts").textContent     = new Date(item.timestamp).toLocaleString("nl-NL");
+  document.getElementById("modal-ts").textContent = new Date(item.timestamp)
+    .toLocaleString("nl-NL", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  const chips = [];
+  if (item.category) chips.push(`<span class="m-chip">${_esc(item.category)}</span>`);
+  if (item.gemeente) chips.push(`<span class="m-chip">📍 ${_esc(item.gemeente)}</span>`);
+  document.getElementById("modal-chips").innerHTML = chips.join("");
   document.getElementById("modal-note").value  = item.manual_note || "";
   document.getElementById("modal-cat").value   = item.category || "";
 
@@ -876,8 +884,12 @@ async function openModal(id, scrollToChat = false) {
   if (isOntvanger) {
     document.getElementById("modal-aanbieder").textContent =
       `Aangeboden door: ${item.aangeboden_door_naam || "CIRQO"}`;
-    const statusLabel = { open: "In afwachting", ophalen: "Wordt opgehaald ✓", niet_nodig: "Niet nodig" };
-    document.getElementById("modal-aanbieding-status").textContent = statusLabel[item.aanbieding_status] || "";
+    const statusInfo = { open: ["In afwachting", "msb-open"], ophalen: ["Wordt opgehaald ✓", "msb-ophalen"], niet_nodig: ["Niet nodig", "msb-niet_nodig"] };
+    const si = statusInfo[item.aanbieding_status];
+    const stEl = document.getElementById("modal-aanbieding-status");
+    stEl.textContent = si ? si[0] : "";
+    stEl.className = "modal-status-badge " + (si ? si[1] : "");
+    stEl.style.display = si ? "inline-block" : "none";
     document.getElementById("modal-btn-ophalen").onclick    = () => reagerenOpAanbieding(item.aanbieding_id, "ophalen",    id);
     document.getElementById("modal-btn-niet-nodig").onclick = () => reagerenOpAanbieding(item.aanbieding_id, "niet_nodig", id);
   } else if (item.aanbieding_id && item.bedrijf_naam) {

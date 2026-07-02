@@ -1,1 +1,9 @@
 ── 2026-07-02 12:54 ──
+[main c5c206a] Automatische dagelijkse back-up 2026-07-02
+ 3 files changed, 24 insertions(+), 1 deletion(-)
+ create mode 100644 .backup.log
+ create mode 100755 backup-git.sh
+To github.com:Joran1993/BAR.git
+   fd4ce2f..c5c206a  main -> main
+gepusht naar GitHub ✓
+── 2026-07-02 18:00 ──
