@@ -61,6 +61,13 @@ if (_isAdmin) {
 }
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
+// Dashboard-tab: vooraf geladen iframe → wisselen is een pure schermwissel (instant)
+function _laadDashboardFrame() {
+  const fr = document.getElementById("dash-frame");
+  if (fr && !fr.src) fr.src = "/dashboard?embed=1";
+}
+setTimeout(_laadDashboardFrame, 1200);   // preload zodra de app tot rust is
+
 document.querySelectorAll(".tabbar-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".tabbar-btn").forEach(b => b.classList.remove("active"));
@@ -68,10 +75,16 @@ document.querySelectorAll(".tabbar-btn").forEach(btn => {
     btn.classList.add("active");
     document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
     if (btn.dataset.tab === "list") renderItems();
-    if (btn.dataset.tab === "stats") { _vulStatsGemeenteFilter(); syncStats(); if (_isAdmin) syncNetwerk(); renderDeelnemers(); }
     if (btn.dataset.tab === "scan") resetScan();
+    if (btn.dataset.tab === "stats") _laadDashboardFrame();
   });
 });
+
+// Direct een tab openen via ?tab=... (bijv. vanaf de dashboard-onderbalk)
+(function () {
+  const t = new URLSearchParams(location.search).get("tab");
+  if (t === "list") document.querySelector('[data-tab="list"]')?.click();
+})();
 
 // ── Sync ───────────────────────────────────────────────────────────────────────
 let _lastItemsJson = "";
@@ -80,6 +93,8 @@ let _syncInFlight  = false;
 function _listTabActive() {
   return document.getElementById("tab-list")?.classList.contains("active");
 }
+
+let _itemsGeladen = false;   // pas na de eerste succesvolle fetch "Geen items" tonen
 
 async function syncItems() {
   if (_syncInFlight) return;
@@ -91,8 +106,10 @@ async function syncItems() {
     const res = await apiFetch(url);
     if (!res || !res.ok) return;
     const nieuw = await res.json();
+    const eersteKeer = !_itemsGeladen;
+    _itemsGeladen = true;
     const hash = `${nieuw.length}_${nieuw[0]?.id || 0}_${nieuw[nieuw.length - 1]?.id || 0}`;
-    if (hash === _lastItemsJson) return;
+    if (hash === _lastItemsJson && !eersteKeer) return;
     _lastItemsJson = hash;
     allItems = nieuw;
     if (_isAdmin) _vulGemeenteDropdown();
@@ -140,7 +157,7 @@ async function _vulStatsGemeenteFilter() {
   if (huidig) sel.value = huidig;
   sel.onchange = () => { syncStats(); if (_isAdmin) syncNetwerk(); };
 }
-function syncAll() { syncItems(); syncStats(); if (_isAdmin) syncNetwerk(); renderDeelnemers(); }
+function syncAll() { syncItems(); }
 
 // ── Gemeenten voor kiezer ───────────────────────────────────────────────────────
 let _allGemeenten = [];
@@ -167,17 +184,8 @@ async function laadGemeenten() {
   _allGemeenten = await gemRes.json();
   if (milRes && milRes.ok) _milieustraten = await milRes.json();
 
-  // ── Scan-tab kiezer ──────────────────────────────────────────────────────
-  const sel = document.getElementById("gemeente-kiezer");
-  sel.innerHTML = '<option value="">Gemeente…</option>' +
-    _allGemeenten.map(g => `<option value="${_esc(g)}">${_esc(g)}</option>`).join("");
-
-  const milSel = document.getElementById("milieustraat-kiezer");
-  if (milSel) {
-    sel.addEventListener("change", function () {
-      _vulMilieustraatSelect(milSel, this.value, "");
-    });
-  }
+  // (De gemeente-kiezer in de scan-flow is verwijderd: bedrijven volgen de
+  //  accountscope; koppeling bedrijf↔gemeente wordt centraal beheerd.)
 
   // ── Gebruikerspaneel selects ─────────────────────────────────────────────
   const upGem = document.getElementById("up-gemeente");
@@ -260,10 +268,11 @@ function _renderBedrijvenLijst(itemId, external) {
     </div>
     ${_scanBedrijven.map((b) => `
     <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;">
-      <input type="checkbox" class="scan-bedrijf-check" value="${b.id}" ${b.categorie_match ? "checked" : ""} style="width:18px;height:18px;flex-shrink:0;accent-color:var(--orange);">
+      <input type="checkbox" class="scan-bedrijf-check" value="${b.id}" ${(b.historie_count > 0 || b.categorie_match) ? "checked" : ""} style="width:18px;height:18px;flex-shrink:0;accent-color:var(--orange);">
       <span style="flex:1;">
         <span style="font-weight:600;font-size:0.88rem;">${_esc(b.naam)}</span>
-        ${b.categorie_match ? `<span style="font-size:0.6rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;margin-left:6px;">Match</span>` : ""}
+        ${b.historie_count > 0 ? `<span style="font-size:0.6rem;font-weight:700;background:#fff3e0;color:#b4531a;padding:2px 7px;border-radius:100px;margin-left:6px;">★ haalde dit ${b.historie_count}× eerder op</span>`
+          : (b.categorie_match ? `<span style="font-size:0.6rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;margin-left:6px;">Match</span>` : "")}
         ${(b.contactpersoon || b.telefoon) ? `<span style="display:block;font-size:0.75rem;color:var(--muted);margin-top:2px;">${b.contactpersoon ? _esc(b.contactpersoon) : ""}${b.telefoon ? ` · ${_esc(b.telefoon)}` : ""}</span>` : ""}
       </span>
     </label>`).join("")}
@@ -274,10 +283,6 @@ function _renderBedrijvenLijst(itemId, external) {
   bedrijvenCard.classList.remove("hidden");
 }
 
-document.getElementById("gemeente-kiezer").addEventListener("change", e => {
-  const gemeente = e.target.value;
-  if (gemeente && _huidigItemId) laadBedrijvenVoorGemeente(gemeente, _huidigItemId, _huidigCategory);
-});
 
 // ── Camera ─────────────────────────────────────────────────────────────────────
 const cameraInput = document.getElementById("camera-input");
@@ -297,6 +302,7 @@ function _voegFotosToe(fileList) {
     pendingFiles.push(f);
   }
   if (!pendingFiles.length) return;
+  _startGemeentePrefetch();   // locatie alvast bepalen terwijl de gebruiker foto's bekijkt
   scanHero.classList.add("hidden");
   previewWrap.classList.remove("hidden");
   analyseBtn.classList.remove("hidden");
@@ -341,6 +347,7 @@ if (addPhotoInput) addPhotoInput.addEventListener("change", () => { _voegFotosTo
 
 function resetScan() {
   pendingFiles = [];
+  _gpsPrefetch = null;   // locatie opnieuw bepalen bij de volgende scan
   cameraInput.value = "";
   if (addPhotoInput) addPhotoInput.value = "";
   previewThumbs.innerHTML = "";
@@ -352,7 +359,6 @@ function resetScan() {
   locatieTxt.classList.add("hidden");
   document.getElementById("bedrijven-card").classList.add("hidden");
   _huidigItemId = null; _huidigCategory = null;
-  document.getElementById("gemeente-kiezer").value = "";
 }
 
 // ── GPS ────────────────────────────────────────────────────────────────────────
@@ -379,21 +385,71 @@ async function getGemeenteFromCoords(lat, lon) {
   } catch { return null; }
 }
 
+// ── Titel + beschrijving bewerken (AI-suggestie → eigen tekst) ─────────────────
+["result-label", "result-detail"].forEach(id =>
+  document.getElementById(id).addEventListener("input", () => {
+    document.getElementById("result-bewerk-opslaan").classList.remove("hidden");
+  }));
+document.getElementById("result-bewerk-opslaan").addEventListener("click", async () => {
+  if (!_huidigItemId) return;
+  const btn = document.getElementById("result-bewerk-opslaan");
+  btn.disabled = true; btn.textContent = "Opslaan…";
+  const fd = new FormData();
+  fd.append("ai_label", document.getElementById("result-label").value.trim());
+  fd.append("ai_detail", document.getElementById("result-detail").value.trim());
+  const res = await apiFetch(`/api/items/${_huidigItemId}`, { method: "PATCH", body: fd });
+  btn.disabled = false;
+  if (res && res.ok) {
+    btn.textContent = "✓ Opgeslagen";
+    syncItems();
+    setTimeout(() => { btn.classList.add("hidden"); btn.textContent = "✓ Aanpassing opslaan"; }, 1400);
+  } else {
+    btn.textContent = "Opslaan mislukt — probeer opnieuw";
+    setTimeout(() => { btn.textContent = "✓ Aanpassing opslaan"; }, 2200);
+  }
+});
+
+// ── Foto's comprimeren vóór upload (grote winst op mobiel netwerk) ─────────────
+async function _comprimeer(file, maxPx = 1280, kwaliteit = 0.8) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const schaal = Math.min(1, maxPx / Math.max(bmp.width, bmp.height));
+    if (schaal === 1 && file.size < 400 * 1024) return file;   // al klein genoeg
+    const cvs = document.createElement("canvas");
+    cvs.width = Math.round(bmp.width * schaal);
+    cvs.height = Math.round(bmp.height * schaal);
+    cvs.getContext("2d").drawImage(bmp, 0, 0, cvs.width, cvs.height);
+    const blob = await new Promise(r => cvs.toBlob(r, "image/jpeg", kwaliteit));
+    return blob && blob.size < file.size ? new File([blob], file.name || "foto.jpg", { type: "image/jpeg" }) : file;
+  } catch (e) { return file; }   // compressie is best-effort
+}
+
 // ── Analyseren ─────────────────────────────────────────────────────────────────
+// GPS + gemeente alvast bepalen zodra er foto's zijn — dan is dat klaar
+// tegen de tijd dat de gebruiker op Analyseren tikt
+let _gpsPrefetch = null;
+function _startGemeentePrefetch() {
+  if (_gpsPrefetch) return;
+  _gpsPrefetch = (async () => {
+    const gps = await getGPSLocation();
+    return gps ? await getGemeenteFromCoords(gps.lat, gps.lon) : null;
+  })();
+}
+
 analyseBtn.addEventListener("click", async () => {
   if (!pendingFiles.length) return;
   analyseBtn.disabled = true;
   const analyseTxt = document.getElementById("analyse-txt");
-  analyseTxt.textContent = "Locatie bepalen…";
+  analyseTxt.textContent = "Voorbereiden…";
   resultCard.classList.add("hidden");
   scanError.classList.add("hidden");
 
-  const gps = await getGPSLocation();
-  let detectedGemeente = null;
-  if (gps) {
-    analyseTxt.textContent = "Gemeente bepalen…";
-    detectedGemeente = await getGemeenteFromCoords(gps.lat, gps.lon);
-  }
+  // Compressie en locatiebepaling parallel (locatie is meestal al voorgeladen)
+  _startGemeentePrefetch();
+  const [gecomprimeerd, detectedGemeente] = await Promise.all([
+    Promise.all(pendingFiles.map(f => _comprimeer(f))),
+    _gpsPrefetch,
+  ]);
   analyseTxt.textContent = "AI analyseert…";
 
   if (detectedGemeente) {
@@ -405,7 +461,7 @@ analyseBtn.addEventListener("click", async () => {
 
   try {
     const fd = new FormData();
-    pendingFiles.forEach(f => fd.append("files", f));
+    gecomprimeerd.forEach(f => fd.append("files", f));
     if (detectedGemeente) fd.append("gemeente_override", detectedGemeente);
     const res = await apiFetch("/api/upload", { method: "POST", body: fd });
     if (!res || !res.ok) {
@@ -413,7 +469,8 @@ analyseBtn.addEventListener("click", async () => {
       throw new Error(err.detail || res?.statusText);
     }
     const item = await res.json();
-    document.getElementById("result-label").textContent  = item.ai_label || "Niet herkend";
+    document.getElementById("result-label").value = item.ai_label || "";
+    document.getElementById("result-bewerk-opslaan").classList.add("hidden");
     document.getElementById("result-weight").textContent = "";
     const co2El = document.getElementById("result-co2");
     if (false && item.gewicht_kg != null) {
@@ -422,31 +479,17 @@ analyseBtn.addEventListener("click", async () => {
     } else {
       co2El.classList.add("hidden");
     }
-    document.getElementById("result-detail").textContent = item.ai_detail || "";
+    // Beschrijving als AI-suggestie in een bewerkbaar veld
+    document.getElementById("result-detail").value = item.ai_detail || "";
 
     const acceptatieBadge = document.getElementById("result-acceptatie");
     acceptatieBadge.className = "result-acceptatie hidden";
 
     resultCard.classList.remove("hidden");
 
-    // Toon gekoppelde bedrijven met aanbieden-knop
+    // Toon gekoppelde bedrijven met aanbieden-knop (scope = account/organisatie)
     _huidigItemId   = item.id;
     _huidigCategory = item.category || "";
-    const sel = document.getElementById("gemeente-kiezer");
-    // Als _allGemeenten geladen is en item.gemeente er niet in zit, gebruik gebruikers-gemeente
-    const rawGem = item.gemeente || _gemeente || "";
-    const detectedGem = (_allGemeenten.length && rawGem && !_allGemeenten.includes(rawGem))
-      ? (_gemeente || _allGemeenten[0] || rawGem)
-      : rawGem;
-    if (detectedGem) {
-      sel.value = detectedGem;
-      if (!sel.querySelector(`option[value="${detectedGem}"]`)) {
-        const opt = document.createElement("option");
-        opt.value = detectedGem; opt.textContent = detectedGem;
-        sel.appendChild(opt);
-        sel.value = detectedGem;
-      }
-    }
     if (item.bedrijven && item.bedrijven.length) {
       _renderBedrijvenLijst(item.id, item.bedrijven);
     } else {
@@ -586,7 +629,12 @@ function renderItems() {
         (i.gemeente || "").toLowerCase().includes(q))
     : source;
   if (!filtered.length) {
-    list.innerHTML = `<p style="padding:24px 16px;color:var(--muted);">Geen items gevonden.</p>`;
+    // Nog aan het laden? Dan een laadindicatie i.p.v. verwarrend "geen items"
+    list.innerHTML = _itemsGeladen
+      ? `<p style="padding:24px 16px;color:var(--muted);">Geen items gevonden.</p>`
+      : `<div style="display:flex;align-items:center;gap:10px;padding:24px 16px;color:var(--muted);">
+           <span class="laad-spinner"></span> Items laden…
+         </div>`;
     return;
   }
   const totalPages = Math.ceil(filtered.length / _PAGE_SIZE);
@@ -596,7 +644,7 @@ function renderItems() {
   list.innerHTML = pagina.map(item => {
     const rij = `
       <div class="item-row" onclick="openModal(${item.id})">
-        <img class="item-thumb" src="${_esc(item.photo_url)}" alt="" onerror="this.style.opacity=0" loading="lazy">
+        <img class="item-thumb" src="${_esc(item.photo_url_thumb || item.photo_url)}" alt="" onerror="this.style.opacity=0" loading="lazy" decoding="async">
         <div class="item-info">
           <div class="item-name">${_esc(item.ai_label || "Niet herkend")}</div>
           <div class="item-meta">
@@ -614,7 +662,7 @@ function renderItems() {
     if (!kanVerwijderen) return rij;
     return `
     <div class="swipe-wrap" data-id="${item.id}">
-      <button class="swipe-del-btn" onclick="deleteItemById(${item.id})">${SVG.trash}</button>
+      <button class="swipe-del-btn" onclick="vraagVerwijderen(${item.id}, this)">${SVG.trash}</button>
       ${rij}
     </div>`;
   }).join("");
@@ -737,13 +785,19 @@ async function renderGemeenteStats() {
 
 // ── Netwerk visualisatie ───────────────────────────────────────────────────────
 const CAT_COLORS = {
-  "Hout":            "#8B5E3C",
-  "Metaal":          "#607D8B",
-  "Beton / steen":   "#9E9E9E",
-  "Glas":            "#4FC3F7",
-  "Kunststof":       "#81C784",
-  "Gevaarlijk afval":"#E57373",
-  "Overig":          "#FFB74D",
+  "Bouwmateriaal":          "#b5562e",
+  "Gereedschap & machines": "#607D8B",
+  "Meubels":                "#8B5E3C",
+  "Sanitair & keuken":      "#4FC3F7",
+  "Elektronica":            "#5C6BC0",
+  "Verlichting":            "#c9a227",
+  "Tuin & buiten":          "#4c9f70",
+  "Huishoud & servies":     "#81C784",
+  "Kleding & textiel":      "#8a6fb0",
+  "Fietsen & vervoer":      "#e67026",
+  "Speelgoed & spel":       "#d1495b",
+  "Gemengde partij":        "#9E9E9E",
+  "Overig":                 "#FFB74D",
 };
 
 async function syncNetwerk() {
@@ -1048,11 +1102,25 @@ async function deleteItemById(id) {
   apiFetch(`/api/items/${id}`, { method: "DELETE" });
 }
 
+// Tweetraps verwijderen: eerste tik vraagt bevestiging, tweede tik (binnen 3,5s) verwijdert
+function vraagVerwijderen(id, btn) {
+  if (btn.dataset.bevestig === "1") { deleteItemById(id); return; }
+  btn.dataset.bevestig = "1";
+  btn.classList.add("confirm");
+  btn.textContent = "Zeker?";
+  setTimeout(() => {
+    if (btn.isConnected && btn.dataset.bevestig === "1") {
+      btn.dataset.bevestig = "";
+      btn.classList.remove("confirm");
+      btn.innerHTML = SVG.trash;
+    }
+  }, 3500);
+}
+
 function _initSwipe() {
   const list = document.getElementById("items-list");
   let startX = 0, startY = 0, activeWrap = null, dragging = false, didSwipe = false;
-  const THRESHOLD = 72; // px om delete te tonen
-  const AUTO_DEL  = 220; // px voor auto-verwijderen
+  const THRESHOLD = 72; // px om delete-knop te tonen (verwijderen kan nooit direct via swipe)
 
   list.addEventListener("touchstart", e => {
     const wrap = e.target.closest(".swipe-wrap");
@@ -1072,7 +1140,7 @@ function _initSwipe() {
     if (!dragging && Math.abs(dy) > Math.abs(dx)) { activeWrap = null; return; }
     if (dx > 0) { _resetSwipe(activeWrap); return; }
     dragging = true; didSwipe = true;
-    const offset = Math.min(Math.abs(dx), AUTO_DEL + 20);
+    const offset = Math.min(Math.abs(dx), THRESHOLD + 28);
     const row = activeWrap.querySelector(".item-row");
     row.style.transform = `translateX(-${offset}px)`;
     row.style.transition = "none";
@@ -1085,13 +1153,9 @@ function _initSwipe() {
     const dx = startX - e.changedTouches[0].clientX;
     const row = activeWrap.querySelector(".item-row");
     row.style.transition = "transform 0.25s ease";
-    if (dx > AUTO_DEL) {
-      // volledig geswiped → verwijder
-      row.style.transform = `translateX(-100%)`;
-      const id = parseInt(activeWrap.dataset.id);
-      setTimeout(() => deleteItemById(id), 220);
-    } else if (dx > THRESHOLD) {
-      // genoeg geswiped → toon delete knop
+    if (dx > THRESHOLD) {
+      // genoeg geswiped → toon alleen de verwijderknop (verwijderen gaat via
+      // de knop zelf, met bevestigingsstap — nooit direct door de swipe)
       row.style.transform = `translateX(-${THRESHOLD}px)`;
     } else {
       _resetSwipe(activeWrap);
@@ -1477,19 +1541,33 @@ window.openInstallPopup = function () {
 };
 window.closeInstallPopup = function () { document.getElementById("install-pop").style.display = "none"; };
 
-// Toon de zwevende knop alleen als de app nog NIET als PWA is geïnstalleerd
-if (_installPlatform() === "installed") {
-  const _f = document.getElementById("app-install-field");
-  if (_f) _f.style.display = "none";
-} else {
+// Verberg alle install-suggesties als de app al geïnstalleerd is
+function _verbergInstallUI() {
+  ["install-fab", "app-install-field", "install-pop"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = "none";
+  });
+}
+// Detecteer installatie — ook wanneer de site in de browser wordt bekeken (niet standalone)
+async function _appReedsGeinstalleerd() {
+  if (_installPlatform() === "installed") return true;
+  if (navigator.getInstalledRelatedApps) {
+    try {
+      const apps = await navigator.getInstalledRelatedApps();
+      if (apps && apps.some(a => a.platform === "webapp")) return true;
+    } catch (e) {}
+  }
+  return false;
+}
+window.addEventListener("appinstalled", _verbergInstallUI);
+_appReedsGeinstalleerd().then(installed => {
+  if (installed) { _verbergInstallUI(); return; }
   const _fab = document.getElementById("install-fab");
   if (_fab) _fab.style.display = "flex";
-}
+});
 
 laadGemeenten().then(() => syncAll());
 _ensurePushRegistered();
 setInterval(syncItems, 30000);
-setInterval(syncStats, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) syncItems(); });
 
 // ── Auto-update: herlaad zodra er een nieuwe versie live staat ──────────────────

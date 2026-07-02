@@ -6,11 +6,16 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="CIRQO">
-  <meta name="theme-color" content="#e67026">
+  <meta name="theme-color" content="#86bc97">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icon-cirqo-192.png">
   <link rel="apple-touch-icon" href="/static/icon-cirqo-192.png">
   <title>CIRQO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap"></noscript>
   <link rel="preload" href="/static/bouwkringloop-logo.jpg" as="image">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -117,7 +122,7 @@
     </button>
     <button class="tabbar-btn" data-tab="stats">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-      <small>Overzicht</small>
+      <small>Dashboard</small>
     </button>
   </nav>
 
@@ -148,24 +153,28 @@
     </button>
     <div id="result-card" class="result-card hidden">
       <div id="result-acceptatie" class="result-acceptatie hidden"></div>
-      <div id="result-label" class="result-label"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="font-size:1rem;">✏️</span>
+        <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">AI-suggestie — controleer en pas aan waar nodig</span>
+      </div>
+      <div class="field" style="margin-bottom:10px;">
+        <label style="font-size:0.7rem;">Titel</label>
+        <input id="result-label" type="text" placeholder="Bijv. 12 fietsen" autocomplete="off"
+          style="width:100%;font-family:inherit;font-weight:800;font-size:1.02rem;padding:11px 12px;border:1.5px dashed var(--orange);border-radius:12px;background:#fff;">
+      </div>
       <div id="result-weight" class="result-weight"></div>
       <div id="result-co2" class="result-co2 hidden"></div>
-      <div id="result-detail" class="result-detail"></div>
+      <div class="field" style="margin-top:10px;">
+        <label style="font-size:0.7rem;">Beschrijving</label>
+        <textarea id="result-detail" class="result-detail" rows="3"
+          style="width:100%;font-family:inherit;font-size:0.86rem;line-height:1.5;padding:10px 12px;border:1.5px dashed var(--orange);border-radius:12px;background:#fff;resize:vertical;"></textarea>
+      </div>
+      <button id="result-bewerk-opslaan" class="btn btn-primary hidden" style="width:100%;margin-top:10px;">✓ Aanpassing opslaan</button>
+      <p style="font-size:0.72rem;color:var(--muted);margin-top:8px;text-align:center;">Tik op een veld om de tekst te verbeteren — de stippellijn betekent: bewerkbaar.</p>
     </div>
     <div id="scan-error" class="scan-error hidden"></div>
     <div id="bedrijven-card" class="result-card hidden" style="border-top-color: #6DC4CE;">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;">
-        <div class="result-label" style="font-size:1rem;margin:0;padding-top:6px;">Aanbieden aan</div>
-        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
-          <select id="gemeente-kiezer" style="font-size:0.78rem;font-family:'Space Grotesk',sans-serif;border:1px solid var(--border);border-radius:8px;padding:4px 8px;background:var(--surface);color:var(--ink);max-width:150px;">
-            <option value="">Gemeente…</option>
-          </select>
-          <select id="milieustraat-kiezer" style="font-size:0.78rem;font-family:'Space Grotesk',sans-serif;border:1px solid var(--border);border-radius:8px;padding:4px 8px;background:var(--surface);color:var(--ink);max-width:150px;display:none;">
-            <option value="">Milieustraat…</option>
-          </select>
-        </div>
-      </div>
+      <div class="result-label" style="font-size:1rem;margin:0 0 10px;">Aanbieden aan</div>
       <div id="bedrijven-lijst"></div>
     </div>
   </section>
@@ -197,22 +206,9 @@
     <div id="items-list"></div>
   </section>
 
-  <!-- Overzicht -->
+  <!-- Dashboard als tabblad: vooraf geladen iframe → wisselen is instant -->
   <section class="tab" id="tab-stats">
-    <div id="stats-gemeente-filter" style="display:none;padding:12px 16px 0;">
-      <select id="stats-gemeente-sel" class="stats-gemeente-sel">
-        <option value="">Alle gemeenten</option>
-      </select>
-    </div>
-    <div class="stats-grid">
-      <div class="stat-box"><span id="s-total">–</span><small>Totaal items</small></div>
-      <div class="stat-box"><span id="s-today">–</span><small>Vandaag</small></div>
-      <div class="stat-box wide"><span id="s-kg">–</span><small>Totaal gewicht (kg)</small></div>
-      <div class="stat-box wide co2-box"><span id="s-co2">–</span><small>CO₂ bespaard (kg)</small></div>
-    </div>
-    <div id="gemeente-stats-list"></div>
-    <div id="deelnemers-list"></div>
-    <div id="netwerk-wrap" style="display:none;"></div>
+    <iframe id="dash-frame" title="Dashboard" style="border:0;width:100%;flex:1;display:block;background:#f8f4ef;"></iframe>
   </section>
 
   <!-- Modal -->
@@ -238,9 +234,12 @@
             <label>Categorie</label>
             <select id="modal-cat">
               <option value="">Geen</option>
-              <option>Hout</option><option>Metaal</option>
-              <option>Beton / steen</option><option>Glas</option>
-              <option>Kunststof</option><option>Gevaarlijk afval</option>
+              <option>Bouwmateriaal</option><option>Gereedschap &amp; machines</option>
+              <option>Meubels</option><option>Sanitair &amp; keuken</option>
+              <option>Elektronica</option><option>Verlichting</option>
+              <option>Tuin &amp; buiten</option><option>Huishoud &amp; servies</option>
+              <option>Kleding &amp; textiel</option><option>Fietsen &amp; vervoer</option>
+              <option>Speelgoed &amp; spel</option><option>Gemengde partij</option>
               <option>Overig</option>
             </select>
           </div>
@@ -495,5 +494,6 @@
     window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); });
   </script>
   <script src="/static/ux.js"></script>
+  <script src="/static/install-gids.js"></script>
 </body>
 </html>

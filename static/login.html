@@ -8,7 +8,12 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icon-cirqo-192.png">
   <link rel="apple-touch-icon" href="/static/icon-cirqo-192.png">
-  <title>Inloggen — CIRQO</title>
+  <title>CIRQO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap"></noscript>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/base.css?v=5">
@@ -92,7 +97,7 @@
       </form>
       <button id="reset-link" style="display:block;width:100%;margin-top:12px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--muted);padding:6px;text-align:center;">Wachtwoord vergeten?</button>
       <button onclick="onboardingOpen()" style="display:block;width:100%;margin-top:2px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--muted);padding:6px;text-align:center;">Hoe werkt de app? →</button>
-      <button onclick="toonInstallInstructie()" style="display:block;width:100%;margin-top:2px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--orange);font-weight:600;padding:6px;text-align:center;">📲 Op beginscherm zetten (app installeren)</button>
+      <button id="install-link-btn" onclick="toonInstallInstructie()" style="display:block;width:100%;margin-top:2px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--orange);font-weight:600;padding:6px;text-align:center;">📲 Op beginscherm zetten (app installeren)</button>
     </div>
 
     <!-- Installatie-instructie (per browser) -->
@@ -274,6 +279,14 @@
     var deferred = null;
     window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferred = e; });
 
+    // Service worker registreren zodat de login-pagina als PWA installeerbaar is
+    // (anders biedt Android alleen een bladwijzer-snelkoppeling aan → letter-icoon + paginatitel).
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/sw.js').catch(function () {});
+      });
+    }
+
     function platform() {
       var ua = navigator.userAgent || '';
       var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
@@ -362,11 +375,27 @@
     };
     window.closeInstallPopup = function () { document.getElementById('install-pop').style.display = 'none'; };
 
-    // Toon de zwevende install-knop alleen als de app nog niet geïnstalleerd is
-    if (platform() !== 'installed') {
+    // Verberg alle install-suggesties als de app al geïnstalleerd is
+    function verbergInstallUI() {
+      ['install-fab', 'install-link-btn', 'install-pop', 'install-panel'].forEach(function (id) {
+        var el = document.getElementById(id); if (el) el.style.display = 'none';
+      });
+    }
+    // Detecteer installatie — ook wanneer de site in de browser wordt bekeken (niet standalone)
+    function appReedsGeinstalleerd(cb) {
+      if (platform() === 'installed') { cb(true); return; }
+      if (navigator.getInstalledRelatedApps) {
+        navigator.getInstalledRelatedApps().then(function (apps) {
+          cb(!!(apps && apps.some(function (a) { return a.platform === 'webapp'; })));
+        }).catch(function () { cb(false); });
+      } else { cb(false); }
+    }
+    window.addEventListener('appinstalled', verbergInstallUI);
+    appReedsGeinstalleerd(function (installed) {
+      if (installed) { verbergInstallUI(); return; }
       var fab = document.getElementById('install-fab');
       if (fab) fab.style.display = 'flex';
-    }
+    });
   })();
   </script>
 
@@ -541,5 +570,6 @@
     window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); });
   </script>
   <script src="/static/ux.js"></script>
+  <script src="/static/install-gids.js"></script>
 </body>
 </html>

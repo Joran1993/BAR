@@ -2,6 +2,33 @@
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", event => event.waitUntil(self.clients.claim()));
 
+// Fetch-handler: nodig zodat Chrome de site als installeerbare PWA ziet, én
+// cache-first voor foto's (Firebase/Supabase Storage) — herhaald laden is dan instant.
+const FOTO_CACHE = "cirqo-fotos-v1";
+const FOTO_MAX = 600;   // maximaal aantal gecachete foto's (oudste eruit)
+
+self.addEventListener("fetch", event => {
+  const url = event.request.url;
+  const isFoto = event.request.method === "GET" &&
+    (url.startsWith("https://firebasestorage.googleapis.com/") ||
+     (url.includes(".supabase.co/storage/") ));
+  if (!isFoto) return;   // al het andere: gewoon netwerk
+  event.respondWith((async () => {
+    const cache = await caches.open(FOTO_CACHE);
+    const hit = await cache.match(event.request);
+    if (hit) return hit;
+    const res = await fetch(event.request);
+    if (res.ok || res.type === "opaque") {
+      cache.put(event.request, res.clone());
+      // Cache begrensd houden (best-effort, niet blokkerend)
+      cache.keys().then(keys => {
+        if (keys.length > FOTO_MAX) keys.slice(0, keys.length - FOTO_MAX).forEach(k => cache.delete(k));
+      });
+    }
+    return res;
+  })());
+});
+
 self.addEventListener("push", event => {
   let data = {};
   try { data = event.data.json(); } catch {}
@@ -11,8 +38,8 @@ self.addEventListener("push", event => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: "/static/icon-192.png",
-      badge: "/static/icon-192.png",
+      icon: "/static/icon-cirqo-192.png",
+      badge: "/static/icon-cirqo-192.png",
       data: { url },
     })
   );

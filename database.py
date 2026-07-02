@@ -139,6 +139,8 @@ def init_db():
         cur.execute("""
             ALTER TABLE bedrijven ADD COLUMN IF NOT EXISTS meld_token TEXT
         """)
+        # sector (type organisatie: Kringloop, Onderwijs, Sociaal & zorg, Bouw & techniek, Retail, Overig)
+        cur.execute("ALTER TABLE bedrijven ADD COLUMN IF NOT EXISTS sector TEXT")
         # tokens genereren voor bestaande bedrijven zonder token
         cur.execute("SELECT id FROM bedrijven WHERE meld_token IS NULL")
         for row in cur.fetchall():
@@ -209,7 +211,6 @@ def init_db():
             END $$;
         """)
     _create_default_admin()
-    _create_waardlanden_accounts()
     print("[db] PostgreSQL tabellen gereed")
 
 
@@ -229,25 +230,8 @@ def _create_default_admin():
             )
 
 
-def _create_waardlanden_accounts():
-    """Maak Waardlanden admin-accounts aan als ze nog niet bestaan."""
-    from auth import hash_password
-    accounts = [
-        ("gittaspruit@waardlanden.nl", "Gitta Spruit", "admin", "waardlanden", "Waardlanden2025!"),
-        ("waardlanden-test",           "Waardlanden Test", "admin", "waardlanden", "test-waardlanden"),
-    ]
-    with get_cursor() as cur:
-        for username, naam, role, gemeente, password in accounts:
-            cur.execute("SELECT 1 FROM users WHERE username = %s OR email = %s", (username, username))
-            if cur.fetchone():
-                continue
-            cur.execute(
-                """INSERT INTO users (username, password, role, gemeente, organisatie, email, created_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                (username, hash_password(password), role, gemeente, naam, username,
-                 datetime.now(timezone.utc).isoformat(timespec="seconds"))
-            )
-            print(f"[db] Account aangemaakt: {username} (role={role}, gemeente={gemeente})")
+# Waardlanden-accounts bestaan in de database; seeds met wachtwoorden horen niet
+# in de code (git-historie!). Nieuwe accounts: via /beheer of ADMIN_* env-vars.
 
 
 # ── Gebruikers ────────────────────────────────────────────────────────────────
@@ -524,17 +508,27 @@ def insert_item(photo_url: Optional[str], ai_label: Optional[str],
         return cur.fetchone()["id"]
 
 
-def update_item(item_id: int, manual_note: Optional[str], category: Optional[str]):
+def update_item(item_id: int, manual_note: Optional[str], category: Optional[str],
+                ai_detail: Optional[str] = None, ai_label: Optional[str] = None):
+    """Werk alleen meegegeven velden bij (None = niet aanraken, '' = leegmaken)."""
+    velden, params = [], []
+    if manual_note is not None:
+        velden.append("manual_note = %s"); params.append(manual_note)
+    if category is not None:
+        velden.append("category = %s"); params.append(category)
+    if ai_detail is not None:
+        velden.append("ai_detail = %s"); params.append(ai_detail)
+    if ai_label is not None:
+        velden.append("ai_label = %s"); params.append(ai_label)
+    if not velden:
+        return
     with get_cursor() as cur:
-        cur.execute(
-            "UPDATE items SET manual_note = %s, category = %s WHERE id = %s",
-            (manual_note, category, item_id),
-        )
+        cur.execute(f"UPDATE items SET {', '.join(velden)} WHERE id = %s", (*params, item_id))
 
 
 def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None, own_user_id: Optional[int] = None, all_aanbiedingen: bool = False):
     with get_cursor() as cur:
-        base = "SELECT id, timestamp, photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items"
+        base = "SELECT id, timestamp, photo_url, photo_url_thumb, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items"
         if gemeenten:
             if own_user_id:
                 cur.execute(
@@ -630,7 +624,7 @@ def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, 
 def get_item(item_id: int, include_photo: bool = False):
     with get_cursor() as cur:
         cur.execute(
-            "SELECT id, timestamp, photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items WHERE id = %s",
+            "SELECT id, timestamp, photo_url, photo_url_thumb, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items WHERE id = %s",
             (item_id,),
         )
         row = cur.fetchone()
@@ -736,17 +730,51 @@ def get_bedrijven(gemeente: Optional[str] = None, gemeenten: Optional[list] = No
         return [dict(r) for r in cur.fetchall()]
 
 
-def get_netwerk_data(gemeente: Optional[str] = None) -> dict:
+def get_bedrijf_dashboard(bedrijf_id: int) -> dict:
+    """Dashboard voor een bedrijfsaccount: alleen de eigen stromen."""
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT COUNT(*) FILTER (WHERE a.status != 'niet_nodig') AS total,
+                   COUNT(*) FILTER (WHERE a.status = 'ophalen') AS matches,
+                   COUNT(*) FILTER (WHERE a.status IN ('open', 'beschikbaar')) AS openstaand,
+                   COALESCE(SUM(i.gewicht_kg) FILTER (WHERE a.status = 'ophalen'), 0) AS totaal_kg
+            FROM aanbiedingen a JOIN items i ON i.id = a.item_id
+            WHERE a.bedrijf_id = %s
+        """, (bedrijf_id,))
+        stats = dict(cur.fetchone())
+        cur.execute("""
+            SELECT i.category, COUNT(*) AS count, COALESCE(SUM(i.gewicht_kg), 0) AS kg
+            FROM aanbiedingen a JOIN items i ON i.id = a.item_id
+            WHERE a.bedrijf_id = %s AND a.status != 'niet_nodig' AND i.category IS NOT NULL
+            GROUP BY i.category ORDER BY count DESC
+        """, (bedrijf_id,))
+        stats["categories"] = [dict(r) for r in cur.fetchall()]
+        cur.execute("""
+            SELECT i.id, i.ai_label, i.photo_url, i.photo_url_thumb
+            FROM aanbiedingen a JOIN items i ON i.id = a.item_id
+            WHERE a.bedrijf_id = %s AND a.status != 'niet_nodig'
+            ORDER BY a.created_at DESC LIMIT 6
+        """, (bedrijf_id,))
+        recent = [dict(r) for r in cur.fetchall()]
+    return {"bedrijf": True, "stats": stats, "recent": recent}
+
+
+def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] = None) -> dict:
+    """Netwerkdata: bedrijven mét aanbiedingen (op items in scope) én lokale
+    bedrijven zonder aanbiedingen (b.gemeente in scope) — het hele netwerk in beeld.
+    gemeenten = uitgeklapte scope (bv. waardlanden → 9 gemeenten)."""
+    if gemeenten is None and gemeente:
+        gemeenten = [gemeente]
     with get_cursor() as cur:
         # Filter op gemeente van de items, niet het bedrijf
-        item_where = "WHERE i.gemeente = %s" if gemeente else ""
-        item_params = (gemeente,) if gemeente else ()
+        item_where = "WHERE i.gemeente = ANY(%s)" if gemeenten else ""
+        item_params = (gemeenten,) if gemeenten else ()
 
-        # Bedrijven die gereageerd hebben op items uit deze gemeente
-        niet_nodig_filter = "AND a.status != 'niet_nodig'"
+        # Bedrijven die gereageerd hebben op items uit deze gemeente(n)
         cur.execute(f"""
-            SELECT b.id, b.naam, b.gemeente,
+            SELECT b.id, b.naam, b.gemeente, b.email, b.sector,
                    COUNT(a.id) as aanbieding_count,
+                   COUNT(a.id) FILTER (WHERE a.status = 'ophalen') as match_count,
                    COALESCE(array_agg(bc.category ORDER BY bc.category)
                      FILTER (WHERE bc.category IS NOT NULL), '{{}}') as categorieen
             FROM bedrijven b
@@ -758,12 +786,44 @@ def get_netwerk_data(gemeente: Optional[str] = None) -> dict:
         """, item_params)
         bedrijven = [dict(r) for r in cur.fetchall()]
 
+        # Ook lokale bedrijven zonder aanbiedingen (koppeling zichtbaar, nog geen verkeer)
+        actieve_ids = [b["id"] for b in bedrijven]
+        rest_where = "WHERE NOT (b.id = ANY(%s))" + (" AND b.gemeente = ANY(%s)" if gemeenten else "")
+        rest_params = (actieve_ids, gemeenten) if gemeenten else (actieve_ids,)
+        cur.execute(f"""
+            SELECT b.id, b.naam, b.gemeente, b.email, b.sector,
+                   0 AS aanbieding_count, 0 AS match_count,
+                   COALESCE(array_agg(bc.category ORDER BY bc.category)
+                     FILTER (WHERE bc.category IS NOT NULL), '{{}}') AS categorieen
+            FROM bedrijven b
+            LEFT JOIN bedrijf_categorieen bc ON bc.bedrijf_id = b.id
+            {rest_where}
+            GROUP BY b.id ORDER BY b.naam
+        """, rest_params)
+        bedrijven += [dict(r) for r in cur.fetchall()]
+
+        # Afgewezen aanbiedingen ('niet_nodig') apart tellen — "benaderd maar niet nodig"
+        # is iets anders dan "nog nooit iets aangeboden gekregen"
+        cur.execute(f"""
+            SELECT a.bedrijf_id, COUNT(*) AS n
+            FROM aanbiedingen a JOIN items i ON i.id = a.item_id
+            {item_where + (" AND" if item_where else "WHERE") + " a.status = 'niet_nodig'"}
+            GROUP BY a.bedrijf_id
+        """, item_params)
+        niet_nodig = {r["bedrijf_id"]: r["n"] for r in cur.fetchall()}
+
+        # Domein afleiden uit e-mail (voor logo-ophalen in de frontend); e-mail zelf niet lekken
+        for b in bedrijven:
+            b["niet_nodig_count"] = niet_nodig.get(b["id"], 0)
+            email = (b.pop("email", None) or "").strip().lower()
+            b["domain"] = email.split("@")[-1] if "@" in email else ""
+
         # Aanbiedingen per categorie per bedrijf (exclusief niet_nodig)
         cur.execute(f"""
             SELECT a.bedrijf_id, i.category, COUNT(*) as count
             FROM aanbiedingen a
             JOIN items i ON i.id = a.item_id
-            {"WHERE i.gemeente = %s AND" if gemeente else "WHERE"} i.category IS NOT NULL
+            {"WHERE i.gemeente = ANY(%s) AND" if gemeenten else "WHERE"} i.category IS NOT NULL
             AND a.status != 'niet_nodig'
             GROUP BY a.bedrijf_id, i.category
         """, item_params)
@@ -773,11 +833,29 @@ def get_netwerk_data(gemeente: Optional[str] = None) -> dict:
 
         for b in bedrijven:
             cats = cat_per_bedrijf.get(b["id"], [])
-            b["dominant_category"] = cats[0]["category"] if cats else None
-            b["categorie_counts"] = cats
+            # dominante categorie = categorie met de meeste aanbiedingen
+            cats_sorted = sorted(cats, key=lambda c: c["count"], reverse=True)
+            b["dominant_category"] = cats_sorted[0]["category"] if cats_sorted else None
+            b["categorie_counts"] = cats_sorted
+
+        # Aantal items dat vanuit de milieustraat is aangeboden (de 'hub')
+        cur.execute(f"""
+            SELECT COUNT(*) AS n FROM items i {item_where}
+        """, item_params)
+        items_totaal = cur.fetchone()["n"]
+
+        hub = {
+            "naam": gemeente or "Alle gemeenten",
+            "deelnemers": len(bedrijven),
+            "verbindingen": sum(1 for b in bedrijven if b["aanbieding_count"] > 0),
+            "aanbiedingen_totaal": sum(b["aanbieding_count"] for b in bedrijven),
+            "matches_totaal": sum(b.get("match_count") or 0 for b in bedrijven),
+            "items_totaal": items_totaal,
+        }
 
         return {
             "gemeente": gemeente or "Alle gemeenten",
+            "hub": hub,
             "bedrijven": bedrijven,
         }
 
@@ -863,7 +941,7 @@ def get_aanbiedingen_voor_bedrijf(bedrijf_id: int, limit: int = 15, offset: int 
 
         cur.execute(f"""
             SELECT a.id, a.status, a.created_at, a.updated_at,
-                   i.ai_label, i.ai_detail, i.gewicht_kg, i.category, i.photo_url, i.gemeente
+                   i.ai_label, i.ai_detail, i.gewicht_kg, i.category, i.photo_url, i.photo_url_thumb, i.gemeente
             FROM aanbiedingen a
             JOIN items i ON i.id = a.item_id
             WHERE a.bedrijf_id = %s{status_clause}
@@ -1024,7 +1102,7 @@ def get_items_voor_bedrijf(bedrijf_id: int) -> list:
     """Geeft items met aanbieding-info terug voor dit bedrijf."""
     with get_cursor() as cur:
         cur.execute("""
-            SELECT i.id, i.timestamp, i.photo_url, i.ai_label, i.ai_detail,
+            SELECT i.id, i.timestamp, i.photo_url, i.photo_url_thumb, i.ai_label, i.ai_detail,
                    i.gewicht_kg, i.manual_note, i.category, i.gemeente, i.geaccepteerd,
                    a.id as aanbieding_id, a.status as aanbieding_status,
                    COALESCE(u.organisatie, u.username) as aangeboden_door_naam, a.aangeboden_door as aangeboden_door_id,
@@ -1053,7 +1131,7 @@ def get_aanbiedingen_door_user(user_id: int) -> list:
             SELECT a.id as aanbieding_id, a.status as aanbieding_status,
                    a.created_at as aanbieding_created_at,
                    b.naam as bedrijf_naam,
-                   i.id, i.timestamp, i.photo_url, i.ai_label, i.ai_detail,
+                   i.id, i.timestamp, i.photo_url, i.photo_url_thumb, i.ai_label, i.ai_detail,
                    i.gewicht_kg, i.manual_note, i.category, i.gemeente
             FROM aanbiedingen a
             JOIN items i ON i.id = a.item_id

@@ -74,6 +74,18 @@ body {
   justify-content: center;
   transition: opacity 0.15s;
 }
+.swipe-del-btn.confirm {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  animation: confirmPulse 0.35s ease;
+}
+@keyframes confirmPulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.07); }
+  100% { transform: scale(1); }
+}
 .swipe-wrap .item-row {
   background: #fff;
   position: relative;
@@ -644,3 +656,13 @@ body {
 }
 .netwerk-partner-naam { font-size: 0.9rem; font-weight: 600; }
 .netwerk-partner-count { font-size: 0.72rem; color: var(--muted); }
+
+/* Laadspinner (itemlijst e.d.) */
+.laad-spinner {
+  width: 18px; height: 18px; flex-shrink: 0;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--orange);
+  border-radius: 50%;
+  animation: laadDraai 0.8s linear infinite;
+}
+@keyframes laadDraai { to { transform: rotate(360deg); } }

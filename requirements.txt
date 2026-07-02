@@ -6,6 +6,7 @@ python-multipart
 aiofiles
 Pillow
 PyJWT
+bcrypt
 httpx
 redis
 pywebpush

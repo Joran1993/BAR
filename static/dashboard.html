@@ -2,21 +2,48 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <link rel="icon" href="/static/icon-cirqo-192.png">
   <link rel="apple-touch-icon" href="/static/icon-cirqo-192.png">
   <title>Dashboard — CIRQO</title>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap&family=Space+Grotesk:wght@700">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap&family=Space+Grotesk:wght@700" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap&family=Space+Grotesk:wght@700"></noscript>
   <link rel="stylesheet" href="/brand.css">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { background: #fff; }   /* rand onder de onderbalk (gesture-zone) wit, zoals in de app */
     body { font-family: 'Inter', sans-serif; background: #f8f4ef; color: #1a1a1a; min-height: 100vh; }
 
-    .hdr { display: flex; flex-direction: column; align-items: center; padding: 20px 16px 14px; background: #fff; border-bottom: 1px solid #e0ddd8; }
+    .hdr { display: flex; flex-direction: column; align-items: center; padding: 16px 16px 12px; background: #fff; border-bottom: 1px solid #e0ddd8; }
     .hdr img { height: 30px; }
-    .hdr-sub { font-size: 0.7rem; color: #888; margin-top: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+    .hdr-sub { font-size: 0.7rem; color: #888; margin-top: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+               max-width: calc(100vw - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+    .gem-switch { margin-top: 8px; padding: 7px 14px; border: 1px solid #e0ddd8; border-radius: 100px; background: #fff;
+                  font-family: 'Inter', sans-serif; font-size: 0.78rem; font-weight: 600; color: #4a4038; cursor: pointer; outline: none; }
+    .gem-switch:focus { border-color: var(--orange, #e67026); }
 
-    .dash { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; }
+    .dash { max-width: 900px; margin: 0 auto; padding: 24px 16px 110px; }
+
+    /* Onderbalk — zelfde navigatie als de scan-app, zodat je altijd terug kunt */
+    .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: flex;
+              background: #fff; border-top: 1px solid #e0ddd8; padding-bottom: env(safe-area-inset-bottom, 0); }
+    /* Exact dezelfde maten/typografie als de tabbar in de scan-app (scan.css/base.css) */
+    .tabbar-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+                  padding: 10px 0; background: none; border: none; border-top: 3px solid transparent; color: #67676e;
+                  font-family: 'Space Grotesk', sans-serif; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em;
+                  text-transform: uppercase; cursor: pointer; }
+    .tabbar-btn small { font-size: inherit; }
+    .tabbar-btn.active { color: var(--orange, #86bc97); border-top-color: var(--orange, #86bc97); }
+
+    /* Embed-modus: dashboard draait als tabblad ín de app (iframe) — eigen
+       navigatie/logo verbergen, de app eromheen levert die al */
+    html.embed .tabbar { display: none; }
+    html.embed .hdr img { display: none; }
+    html.embed .hdr { padding-top: 10px; }
+    html.embed .dash { padding-bottom: 32px; }
 
     .dash-titel { font-family: 'Outfit', sans-serif; font-size: 1.6rem; font-weight: 900; margin-bottom: 20px; }
 
@@ -25,9 +52,27 @@
 
     .stat-kaart { background: #fff; border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
     .stat-waarde { font-family: 'Outfit', sans-serif; font-size: 2.2rem; font-weight: 900; color: var(--orange, #e67026); line-height: 1; }
+
+    /* Laad-indicatie: dunne lopende balk bovenin + shimmer op de cijfers */
+    .laadbalk { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 60;
+                background: linear-gradient(90deg, transparent, var(--orange, #86bc97), transparent);
+                background-size: 40% 100%; background-repeat: no-repeat; animation: laadbalk 1s linear infinite; }
+    @keyframes laadbalk { from { background-position: -60% 0; } to { background-position: 160% 0; } }
+    .stat-waarde.skel { color: transparent; border-radius: 10px; min-width: 64px;
+                        background: linear-gradient(90deg, #eee8e0 25%, #f7f2eb 50%, #eee8e0 75%);
+                        background-size: 200% 100%; animation: skel 1.1s ease infinite; }
+    @keyframes skel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
     .stat-label { font-size: 0.72rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
 
     .sectie-titel { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin-bottom: 12px; }
+
+    .impact-banner { display: none; align-items: center; gap: 14px; background: linear-gradient(135deg, #eaf4ec 0%, #f2f8ee 100%);
+                     border: 1px solid #d3e6d7; border-radius: 16px; padding: 16px 18px; margin-bottom: 24px; }
+    .impact-banner.show { display: flex; }
+    .impact-ico { font-size: 1.8rem; flex-shrink: 0; }
+    .impact-cijfer { font-family: 'Outfit', sans-serif; font-size: 1.5rem; font-weight: 900; color: #2c6e3f; line-height: 1.15; }
+    .impact-sub { font-size: 0.78rem; color: #557a5f; margin-top: 2px; line-height: 1.45; }
+    .impact-note { font-size: 0.66rem; color: #8fa895; margin-top: 4px; }
 
     .cat-lijst { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.07); margin-bottom: 24px; }
     .cat-rij { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid #f0efeb; gap: 12px; }
@@ -54,32 +99,109 @@
     .bedrijf-cat { font-size: 0.68rem; font-weight: 600; background: #f0efeb; color: #555; padding: 2px 8px; border-radius: 100px; }
 
     .dash-link { display: inline-block; margin-top: 16px; padding: 10px 24px; border-radius: 100px; background: var(--orange, #e67026); color: #fff; font-weight: 700; font-size: 0.85rem; text-decoration: none; }
+
+    /* Netwerk & verbindingen */
+    .netwerk-wrap { position: relative; background: linear-gradient(180deg,#ffffff 0%, #fdfaf6 100%); border-radius: 18px; padding: 20px 16px 14px; box-shadow: 0 4px 20px rgba(60,40,20,0.07); border: 1px solid #f0ebe4; margin-bottom: 24px; }
+    .nw-tools { display: flex; gap: 8px; margin: 10px 0 2px; }
+    .nw-zoek { flex: 1; max-width: 280px; padding: 8px 14px; border: 1px solid #eee7de; border-radius: 100px; background: #fff;
+               font-family: 'Inter', sans-serif; font-size: 0.8rem; color: #4a4038; outline: none; }
+    .nw-zoek:focus { border-color: var(--orange, #e67026); }
+    .nw-zoek::placeholder { color: #b4aca2; }
+    .nw-dl { padding: 8px 16px; border: 1px solid #eee7de; border-radius: 100px; background: #fff; cursor: pointer;
+             font-family: 'Inter', sans-serif; font-size: 0.76rem; font-weight: 700; color: #7a726a; white-space: nowrap; transition: background .2s; }
+    .nw-dl:hover { background: #f5efe7; }
+    .nw-tip { position: absolute; pointer-events: none; background: #211c15; color: #fff; padding: 8px 13px; border-radius: 10px;
+              font-size: 0.76rem; line-height: 1.5; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; transition: opacity .15s; z-index: 5; max-width: 240px; }
+    .nw-tip.show { opacity: 1; }
+    .nw-tip b { color: #ffb066; }
+    .nw-aanb { margin-top: 10px; border-top: 1px solid #f0ebe4; padding-top: 8px; }
+    .nw-aanb-rij { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 0.78rem; }
+    .nw-aanb-rij .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nw-aanb-rij .dat { color: #b4aca2; font-size: 0.7rem; }
+    .nw-aanb-st { font-size: 0.66rem; font-weight: 700; padding: 2px 9px; border-radius: 100px; white-space: nowrap; }
+    .st-ophalen { background: #fbe8da; color: #b4531a; }
+    .st-open { background: #f0efeb; color: #777; }
+    .st-beschikbaar { background: #e3efe8; color: #3d7a58; }
+    .st-niet_nodig { background: #f0efeb; color: #aaa; text-decoration: line-through; }
+    .netwerk-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+    .netwerk-chip { background: #fff; border: 1px solid #eee7de; border-radius: 100px; padding: 7px 15px; font-size: 0.74rem; font-weight: 600; color: #8a8178; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+    .netwerk-chip b { color: var(--orange, #e67026); font-size: 1rem; font-weight: 900; margin-left: 2px; }
+    .netwerk-svg-wrap { width: 100%; overflow: visible; margin: 4px 0; animation: nwFadeIn .6s ease; }
+    .netwerk-svg-wrap svg { width: 100%; height: auto; display: block; overflow: visible; }
+    @keyframes nwFadeIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+    .nw-node { cursor: pointer; transition: opacity .25s; animation: nwNodeIn .5s ease backwards; }
+    @keyframes nwNodeIn { from { opacity: 0; } to { opacity: 1; } }
+    .nw-lbl { font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 600; fill: #4a4038; pointer-events: none;
+              paint-order: stroke; stroke: #fdfaf6; stroke-width: 3.5px; stroke-linejoin: round; }
+    .nw-sector-lbl { font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 800; letter-spacing: 0.13em;
+                     opacity: 0.8; pointer-events: none; paint-order: stroke; stroke: #fdfaf6; stroke-width: 4px; stroke-linejoin: round; }
+    .nw-count { font-weight: 800; fill: #fff; pointer-events: none; }
+    .nw-edge { transition: opacity .25s; }
+    .nw-edge.match { stroke-dasharray: 2 7; animation: nwFlow 1.1s linear infinite; }
+    @keyframes nwFlow { to { stroke-dashoffset: -18; } }
+    .nw-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; padding-top: 10px; border-top: 1px solid #f0ebe4; }
+    .nw-legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.73rem; color: #7a726a; font-weight: 600; }
+    .nw-legend-item.klikbaar { cursor: pointer; padding: 3px 9px; margin: -3px -3px; border-radius: 100px; transition: background .2s, color .2s; user-select: none; }
+    .nw-legend-item.klikbaar:hover { background: #f5efe7; }
+    .nw-legend-item.actief { background: #fbe8da; color: #b4531a; }
+    .nw-legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
+    .nw-detail { position: relative; margin-top: 12px; padding: 14px 38px 14px 16px; background: #fff; border: 1px solid #eee7de; border-left: 3px solid var(--orange,#e67026); border-radius: 12px; font-size: 0.83rem; display: none; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .nw-detail-x { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border: none; background: none; font-size: 1rem; line-height: 1; color: #b4aca2; cursor: pointer; border-radius: 50%; }
+    .nw-detail-x:hover { background: #f5efe7; color: #7a726a; }
+    .nw-detail.show { display: block; animation: nwFadeIn .3s ease; }
+    .nw-detail h4 { font-family: 'Outfit', sans-serif; font-size: 1.05rem; margin-bottom: 2px; }
+    .nw-hint { font-size: 0.71rem; color: #b4aca2; margin-top: 8px; text-align: center; }
   </style>
   <link rel="stylesheet" href="/static/ux.css">
 </head>
 <body>
+  <div class="laadbalk" id="laadbalk"></div>
   <header class="hdr">
     <img src="/static/cirqo-logo.webp" alt="CIRQO" id="hdr-logo">
     <p class="hdr-sub" id="hdr-sub">Dashboard</p>
+    <select class="gem-switch" id="gem-switch" style="display:none" aria-label="Kies gemeente"></select>
   </header>
 
   <div class="dash">
     <div class="dash-titel">Overzicht ingezameld materiaal</div>
 
     <div class="stat-rij">
-      <div class="stat-kaart"><div class="stat-waarde" id="s-items">—</div><div class="stat-label">Items ingezameld</div></div>
-      <div class="stat-kaart"><div class="stat-waarde" id="s-kg">—</div><div class="stat-label">Totaal gewicht (kg)</div></div>
-      <div class="stat-kaart"><div class="stat-waarde" id="s-cats">—</div><div class="stat-label">Categorieën</div></div>
-      <div class="stat-kaart"><div class="stat-waarde" id="s-gem">—</div><div class="stat-label">Gem. gewicht (kg)</div></div>
+      <div class="stat-kaart"><div class="stat-waarde skel" id="s-items">—</div><div class="stat-label" id="l-items">Items ingezameld</div></div>
+      <div class="stat-kaart"><div class="stat-waarde skel" id="s-kg">—</div><div class="stat-label" id="l-kg">Totaal gewicht (kg)</div></div>
+      <div class="stat-kaart"><div class="stat-waarde skel" id="s-cats">—</div><div class="stat-label" id="l-cats">Categorieën</div></div>
+      <div class="stat-kaart"><div class="stat-waarde skel" id="s-gem">—</div><div class="stat-label" id="l-gem">Gem. gewicht (kg)</div></div>
+    </div>
+
+    <div class="impact-banner" id="impact-banner">
+      <span class="impact-ico">🌱</span>
+      <div>
+        <div class="impact-cijfer">~<span id="imp-co2">0</span> kg CO₂ bespaard</div>
+        <div class="impact-sub">door hergebruik i.p.v. nieuw — vergelijkbaar met <b id="imp-km">0</b> autokilometers of de jaarlijkse opname van <b id="imp-bomen">0</b> bomen</div>
+        <div class="impact-note">Indicatief: 3,5 kg CO₂ per kg hergebruikt materiaal.</div>
+      </div>
+    </div>
+
+    <div class="sectie-titel" id="nw-sectie-titel" style="display:none">Netwerk &amp; verbindingen</div>
+    <div class="netwerk-wrap" id="netwerk-wrap" style="display:none">
+      <div class="netwerk-chips" id="nw-chips"></div>
+      <div class="nw-tools">
+        <input class="nw-zoek" id="nw-zoek" type="search" placeholder="Zoek deelnemer…" autocomplete="off">
+        <button class="nw-dl" onclick="nwDownload()" title="Download het diagram als afbeelding">&#8595; PNG</button>
+      </div>
+      <div class="netwerk-svg-wrap" id="nw-svg"></div>
+      <div class="nw-tip" id="nw-tip"></div>
+      <div class="nw-legend" id="nw-legend"></div>
+      <div class="nw-detail" id="nw-detail"></div>
+      <div class="nw-hint">Taartpunt = sector (scholen, kringloop, …) · tik op een deelnemer voor details (nogmaals tikken sluit) · legenda = uitlichten per categorie · ring om een deelnemer = categorieverdeling · lijndikte = aantal aanbiedingen · bewegende oranje stip = actieve match.</div>
     </div>
 
     <div class="sectie-titel">Per categorie</div>
     <div class="cat-lijst" id="cat-lijst"></div>
 
-    <div class="sectie-titel" style="margin-top:24px">Meest recent ingezameld</div>
+    <div class="sectie-titel" style="margin-top:24px" id="recent-titel">Meest recent ingezameld</div>
     <div class="recent-grid" id="recent-grid"></div>
 
-    <a href="/catalogus" class="dash-link">Bekijk alle items →</a>
+    <a href="/catalogus" class="dash-link" id="dash-catalogus-link">Bekijk alle items →</a>
   </div>
 
   <script>
@@ -89,10 +211,54 @@
     // Auth check
     if (!localStorage.getItem('token')) location.replace('/login?redirect=/dashboard');
 
-    const gemeente = localStorage.getItem('gemeente') || '';
-    const organisatie = localStorage.getItem('organisatie') || gemeente || 'Mijn gemeente';
-    document.getElementById('hdr-sub').textContent = 'Dashboard · ' + organisatie;
+    // Embed-modus: als tabblad binnen de app (iframe)
+    const EMBED = new URLSearchParams(location.search).get('embed') === '1' || window !== window.top;
+    if (EMBED) document.documentElement.classList.add('embed');
+
+    // ?gemeente=... in de URL overschrijft de eigen scope (backend staat dit alleen toe voor admins)
+    const urlGemeente = new URLSearchParams(location.search).get('gemeente') || '';
+    const gemeente = urlGemeente || localStorage.getItem('gemeente') || '';
+    const organisatie = urlGemeente || localStorage.getItem('organisatie') || gemeente || 'Mijn gemeente';
+    // Kort houden: de onderbalk zegt al "Dashboard" — hier alleen de scope
+    document.getElementById('hdr-sub').textContent = organisatie;
     document.title = 'Dashboard — ' + organisatie;
+    // Catalogus-link binnen dezelfde gemeente-scope houden
+    if (gemeente) document.getElementById('dash-catalogus-link').href = '/catalogus?gemeente=' + encodeURIComponent(gemeente);
+    if (EMBED) document.getElementById('dash-catalogus-link').target = '_top';
+
+    // Cijfer telt op van 0 naar de eindwaarde (ease-out)
+    function countUp(el, val) {
+      const dec = val % 1 ? 1 : 0, dur = 900, t0 = performance.now();
+      (function stap(t) {
+        const f = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - f, 3);
+        el.textContent = (val * e).toFixed(dec);
+        if (f < 1) requestAnimationFrame(stap);
+      })(t0);
+    }
+
+    // Gemeente-switcher voor (super)admins met meerdere gemeenten in hun scope
+    async function laadGemeenteSwitch() {
+      const role = localStorage.getItem('role');
+      if (role !== 'admin' && role !== 'superadmin') return;
+      try {
+        const res = await fetch('/api/mijn-gemeenten', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } });
+        if (!res.ok) return;
+        const lijst = await res.json();
+        if (!Array.isArray(lijst) || lijst.length < 2) return;
+        const sel = document.getElementById('gem-switch');
+        sel.innerHTML = '<option value="">Alle gemeenten</option>' +
+          lijst.map(g => `<option value="${esc(g)}"${g === urlGemeente ? ' selected' : ''}>${esc(g)}</option>`).join('');
+        sel.style.display = '';
+        sel.onchange = () => location.href = '/dashboard' + (sel.value ? '?gemeente=' + encodeURIComponent(sel.value) : '');
+      } catch (e) {}
+    }
+    laadGemeenteSwitch();
+
+    function _laadIndicatieWeg() {
+      const b = document.getElementById('laadbalk');
+      if (b) b.remove();
+      document.querySelectorAll('.stat-waarde.skel').forEach(e => e.classList.remove('skel'));
+    }
 
     async function laad() {
       const token = localStorage.getItem('token');
@@ -104,6 +270,7 @@
         res = await fetch('/api/dashboard' + params, { headers });
         d   = await res.json();
       } catch (e) {
+        _laadIndicatieWeg();
         document.getElementById('s-kg').textContent = 'fout';
         return;
       }
@@ -121,10 +288,39 @@
       const cats  = s.categories || [];
       console.log('[dashboard] stats:', s);
 
-      document.getElementById('s-items').textContent = total;
-      document.getElementById('s-kg').textContent = kg ? Math.round(kg) : '—';
-      document.getElementById('s-cats').textContent = cats.filter(c => c.category && c.category !== 'Onbekend').length;
-      document.getElementById('s-gem').textContent = total && kg ? Math.round(kg / total * 10) / 10 : '—';
+      _laadIndicatieWeg();
+
+      if (d.bedrijf) {
+        // Bedrijfsaccount: alleen de eigen stromen
+        document.querySelector('.dash-titel').textContent = 'Jouw materiaalstromen';
+        document.getElementById('l-items').textContent = 'Aangeboden aan jou';
+        document.getElementById('l-kg').textContent = 'Matches';
+        document.getElementById('l-cats').textContent = 'Nog openstaand';
+        document.getElementById('l-gem').textContent = 'Kg opgehaald';
+        countUp(document.getElementById('s-items'), s.total || 0);
+        countUp(document.getElementById('s-kg'), s.matches || 0);
+        countUp(document.getElementById('s-cats'), s.openstaand || 0);
+        countUp(document.getElementById('s-gem'), Math.round(s.totaal_kg || 0));
+        document.getElementById('dash-catalogus-link').style.display = 'none';
+        document.getElementById('recent-titel').textContent = 'Recent aan jou aangeboden';
+        const impSub = document.querySelector('.impact-sub');
+        if (impSub) impSub.innerHTML = impSub.innerHTML.replace('door hergebruik', 'door materiaal dat jij hergebruikt');
+      } else {
+      countUp(document.getElementById('s-items'), total);
+      if (kg) countUp(document.getElementById('s-kg'), Math.round(kg)); else document.getElementById('s-kg').textContent = '—';
+      countUp(document.getElementById('s-cats'), cats.filter(c => c.category && c.category !== 'Onbekend').length);
+      if (total && kg) countUp(document.getElementById('s-gem'), Math.round(kg / total * 10) / 10);
+      else document.getElementById('s-gem').textContent = '—';
+      }
+
+      // CO₂-impact: vaste factor 3,5 kg CO₂ per kg materiaal (zelfde formule als de scankaart)
+      const co2 = (kg || 0) * 3.5;
+      if (co2 > 0) {
+        document.getElementById('impact-banner').classList.add('show');
+        countUp(document.getElementById('imp-co2'), Math.round(co2));
+        countUp(document.getElementById('imp-km'), Math.round(co2 / 0.17));   // ≈0,17 kg CO₂ per autokm
+        countUp(document.getElementById('imp-bomen'), Math.max(1, Math.round(co2 / 25)));  // ≈25 kg CO₂ per boom per jaar
+      }
 
       const max = Math.max(...cats.map(c => c.count), 1);
       document.getElementById('cat-lijst').innerHTML = cats.map(c => `
@@ -137,12 +333,445 @@
 
       document.getElementById('recent-grid').innerHTML = (d.recent || []).map(item => `
         <div class="recent-tegel" title="${esc(item.ai_label || '')}">
-          <img src="${esc(item.photo_url_thumb || item.photo_url)}" loading="lazy" onerror="this.style.opacity=0.2">
+          <img src="${esc(item.photo_url_thumb || item.photo_url)}" loading="lazy" decoding="async" onerror="this.style.opacity=0.2">
         </div>`).join('');
 
     }
+
+    // ── Netwerk & verbindingen (radiaal diagram) ──────────────────────────
+    const NW_PALETTE = ['#e67026','#5b8c6c','#3b7ea1','#b5562e','#8a6fb0','#c9a227','#4c9f70','#d1495b','#6b8e9e','#9b7d5a'];
+    // Sectoren: vaste volgorde rond de cirkel + eigen kleur (taartpunt-achtergrond)
+    const SECTOR_VOLGORDE = ['Kringloop', 'Sociaal & zorg', 'Onderwijs', 'Bouw & techniek', 'Retail', 'Overig'];
+    const SECTOR_KLEUR = { 'Kringloop': '#4c9f70', 'Sociaal & zorg': '#d1495b', 'Onderwijs': '#3b7ea1',
+                           'Bouw & techniek': '#b5562e', 'Retail': '#c9a227', 'Overig': '#8a8178' };
+    const sectorVan = b => (b.sector && SECTOR_KLEUR[b.sector]) ? b.sector : 'Overig';
+    // Handmatige logo-overrides per domein (voor bedrijven met een generieke/ontbrekende favicon).
+    // Krijgen voorrang op de automatische favicon.
+    const NW_LOGO_OVERRIDES = {
+      'kringloopgorinchem.nl': '/static/logos/kringloopgorinchem.png',
+      'degezel.nl':            '/static/logos/degezel.png',
+      'behoudenvaart.net':     '/static/logos/behoudenvaart.jpg',
+      'opnieuwenco.nl':        '/static/logos/opnieuwenco.png',
+      'aafje.nl':              '/static/logos/aafje.png',
+      'buva.nl':               '/static/logos/buva.png',
+      'den-otter.nl':          '/static/logos/denotter.png',
+      'gkbgroep.nl':           '/static/logos/gkbgroep.png',
+      'humanitas-dmh.nl':      '/static/logos/humanitasdmh.png',
+      'ingka.ikea.com':        '/static/logos/ikea.png',
+      'makro.nl':              '/static/logos/makro.png',
+      'opwaarts.nu':           '/static/logos/opwaarts.jpg',
+      'oxin-growers.nl':       '/static/logos/oxingrowers.png',
+    };
+    // Overrides voor bedrijven zonder e-mail/domein in de database (op naam)
+    const NW_LOGO_OVERRIDES_NAME = {
+      '2ekans bouwmaterialen':           '/static/logos/2ekans.png',
+      'bouw mensen (vakschool)':         '/static/logos/bouwmensen.png',
+      'calvijn middelbare school':       '/static/logos/calvijn.png',
+      'de driemaster':                   '/static/logos/driemaster.png',
+      'dorcas':                          '/static/logos/dorcas.png',
+      'kringloop giessenlanden arkel':   '/static/logos/kringloopgiessenlanden.png',
+      'kringloop graafstroom goudriaan': '/static/logos/kringloopgoudriaan.png',
+      'stichting vluchtelingenwerk':     '/static/logos/vluchtelingenwerk.png',
+      'terugwinning':                    '/static/logos/waardlanden.png',
+    };
+    let _nwB = [], _nwCats = [], _nwSel = null, _nwCat = null;
+
+    // idxs = array van uitgelichte indexen, of null = alles normaal
+    function nwHighlight(idxs) {
+      document.querySelectorAll('.nw-edge, .nw-flow').forEach(e =>
+        e.style.opacity = (idxs == null || idxs.includes(+e.getAttribute('data-i'))) ? '' : '0.1');
+      document.querySelectorAll('.nw-node').forEach(n =>
+        n.style.opacity = (idxs == null || idxs.includes(+n.getAttribute('data-i'))) ? '' : '0.25');
+    }
+
+    function nwReset() {
+      _nwSel = null; _nwCat = null;
+      nwHighlight(null);
+      nwTipUit();
+      document.getElementById('nw-detail').classList.remove('show');
+      document.querySelectorAll('.nw-legend-item').forEach(el => el.classList.remove('actief'));
+      const z = document.getElementById('nw-zoek');
+      if (z) z.value = '';
+    }
+
+    function nwHover(i, aan) {
+      if (_nwSel != null || _nwCat != null) return;   // vastgeklikte selectie wint
+      nwHighlight(aan ? [i] : null);
+    }
+
+    // Zwevende tooltip bij mouseover (desktop)
+    function nwTip(i, ev) {
+      const b = _nwB[i];
+      if (!b || _nwSel != null) return;               // bij open detailpaneel geen tooltip
+      const tip = document.getElementById('nw-tip');
+      tip.innerHTML = `<b>${esc(b.naam)}</b>` +
+        (b.sector ? ` <span style="color:#c9bfb2">· ${esc(b.sector)}</span>` : '') + '<br>' +
+        (b.aanbieding_count > 0
+          ? `${b.aanbieding_count} aanbiedingen · ${b.match_count || 0} matches` +
+            (b.dominant_category ? `<br><span style="color:#c9bfb2">${esc(b.dominant_category)}</span>` : '')
+          : (b.niet_nodig_count > 0
+              ? `<span style="color:#c9bfb2">${b.niet_nodig_count} aanbieding${b.niet_nodig_count > 1 ? 'en' : ''} ontvangen · niet nodig</span>`
+              : `<span style="color:#c9bfb2">Nog geen aanbiedingen</span>`));
+      const wr = document.getElementById('netwerk-wrap').getBoundingClientRect();
+      tip.classList.add('show');
+      let tx = ev.clientX - wr.left + 16, ty = ev.clientY - wr.top + 16;
+      if (tx + tip.offsetWidth > wr.width - 10) tx = ev.clientX - wr.left - tip.offsetWidth - 16;
+      tip.style.left = tx + 'px'; tip.style.top = ty + 'px';
+    }
+    function nwTipUit() { document.getElementById('nw-tip').classList.remove('show'); }
+
+    // Zoekveld: matchende deelnemers lichten op tijdens het typen
+    document.getElementById('nw-zoek').addEventListener('input', e => {
+      const q = e.target.value.toLowerCase().trim();
+      _nwSel = null; _nwCat = null;
+      document.querySelectorAll('.nw-legend-item').forEach(el => el.classList.remove('actief'));
+      document.getElementById('nw-detail').classList.remove('show');
+      if (!q) { nwHighlight(null); return; }
+      nwHighlight(_nwB.map((b, i) => (b.naam || '').toLowerCase().includes(q) ? i : -1).filter(i => i >= 0));
+    });
+
+    // ci = index in _nwCats, of -1 voor 'Overig'
+    function nwLegendKlik(ci, ev) {
+      if (ev) ev.stopPropagation();
+      if (_nwCat === ci) { nwReset(); return; }       // nogmaals tikken = uit
+      _nwSel = null; _nwCat = ci;
+      const cat = ci >= 0 ? _nwCats[ci] : null;
+      const heeft = b =>
+        ci === -2 ? !(b.aanbieding_count > 0) :                                  // nog geen aanbiedingen
+        ci === -1 ? (b.aanbieding_count > 0 && !b.dominant_category) :           // Overig
+        (b.dominant_category === cat || (b.categorie_counts || []).some(c => c.category === cat));
+      nwHighlight(_nwB.map((b, i) => heeft(b) ? i : -1).filter(i => i >= 0));
+      document.getElementById('nw-detail').classList.remove('show');
+      document.querySelectorAll('.nw-legend-item[data-ci]').forEach(el =>
+        el.classList.toggle('actief', +el.getAttribute('data-ci') === ci));
+    }
+
+    function nwSelect(i, ev) {
+      if (ev) ev.stopPropagation();
+      if (_nwSel === i) { nwReset(); return; }        // nogmaals tikken = sluiten
+      const b = _nwB[i];
+      if (!b) return;
+      _nwSel = i; _nwCat = null;
+      nwTipUit();
+      document.querySelectorAll('.nw-legend-item').forEach(el => el.classList.remove('actief'));
+      nwHighlight([i]);
+      const actief = b.aanbieding_count > 0;
+      const cats = (b.categorie_counts || []).map(c => `${esc(c.category)} (${c.count})`).join(', ') || '—';
+      const interesses = (b.categorieen || []).map(esc).join(', ');
+      const logoImg = b._logo ? `<img src="${esc(b._logo)}" alt="" style="width:22px;height:22px;border-radius:6px;object-fit:contain;vertical-align:-4px;margin-right:7px;background:#fff" onerror="this.remove()">` : '';
+      const det = document.getElementById('nw-detail');
+      det.innerHTML = `<button class="nw-detail-x" onclick="nwReset()" aria-label="Sluiten">✕</button>
+        <h4>${logoImg}${esc(b.naam)}</h4>
+        <div style="color:#999;margin-bottom:6px">${esc(b.gemeente || '')}${b.sector ? ' · ' + esc(b.sector) : ''}</div>` +
+        (actief
+          ? `<div><b style="color:var(--orange,#e67026)">${b.aanbieding_count}</b> aanbiedingen ·
+               <b style="color:var(--orange,#e67026)">${b.match_count || 0}</b> matches</div>
+             <div style="margin-top:4px">Categorieën: ${cats}</div>
+             <button class="nw-dl" style="margin-top:10px" onclick="nwAanbiedingen(${i},event)">Bekijk aanbiedingen →</button>
+             <div class="nw-aanb" id="nw-aanb" style="display:none"></div>`
+          : `<div style="color:#8a8178">${b.niet_nodig_count > 0
+                ? `Aangesloten op het netwerk — ${b.niet_nodig_count} aanbieding${b.niet_nodig_count > 1 ? 'en' : ''} ontvangen, maar (nog) niets nodig gehad.`
+                : 'Aangesloten op het netwerk — nog geen aanbiedingen ontvangen.'}</div>` +
+            (interesses ? `<div style="margin-top:4px">Interesses: ${interesses}</div>` : ''));
+      det.classList.add('show');
+    }
+
+    // Doorklik: recente aanbiedingen van dit bedrijf in het detailpaneel (toggle)
+    let _nwAanbCache = null;
+    async function nwAanbiedingen(i, ev) {
+      if (ev) ev.stopPropagation();
+      const b = _nwB[i];
+      const box = document.getElementById('nw-aanb');
+      if (!b || !box) return;
+      if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+      box.style.display = '';
+      box.innerHTML = '<span style="color:#b4aca2">Laden…</span>';
+      if (!_nwAanbCache) {
+        try {
+          const params = gemeente ? '?gemeente=' + encodeURIComponent(gemeente) : '';
+          const res = await fetch('/api/aanbiedingen' + params, { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } });
+          if (!res.ok) throw 0;
+          _nwAanbCache = await res.json();
+        } catch (e) { box.innerHTML = '<span style="color:#b4aca2">Kon aanbiedingen niet laden.</span>'; return; }
+      }
+      const ST = { ophalen: 'Match', open: 'Open', beschikbaar: 'Beschikbaar', niet_nodig: 'Niet nodig' };
+      const rijen = _nwAanbCache.filter(a => a.bedrijf_naam === b.naam).slice(0, 8);
+      box.innerHTML = rijen.length ? rijen.map(a =>
+        `<div class="nw-aanb-rij"><span class="lbl">${esc(a.ai_label || a.category || 'Item')}</span>` +
+        `<span class="nw-aanb-st st-${esc(a.status)}">${esc(ST[a.status] || a.status)}</span>` +
+        `<span class="dat">${esc((a.created_at || '').slice(0, 10))}</span></div>`).join('')
+        : '<span style="color:#b4aca2">Geen aanbiedingen gevonden.</span>';
+    }
+
+    async function laadNetwerk() {
+      if (localStorage.getItem('role') === 'bedrijf') return;   // niet voor bedrijven (server blokkeert ook)
+      const token = localStorage.getItem('token');
+      const params = gemeente ? '?gemeente=' + encodeURIComponent(gemeente) : '';
+      let res;
+      try {
+        res = await fetch('/api/netwerk' + params, { headers: { 'Authorization': 'Bearer ' + token } });
+      } catch (e) { return; }
+      if (!res.ok) return;   // geen admin-rechten → sectie blijft verborgen
+      const d = await res.json();
+      const hub = d.hub || {};
+      const bedrijven = (d.bedrijven || []);   // alle deelnemers, ook zonder aanbiedingen
+      if (!bedrijven.length) return;
+      // Groepeer op sector (taartpunten), daarbinnen actief eerst, dan grootste, dan naam
+      const secIdx = s => { const ix = SECTOR_VOLGORDE.indexOf(s); return ix < 0 ? SECTOR_VOLGORDE.length : ix; };
+      bedrijven.sort((a, b) =>
+        secIdx(sectorVan(a)) - secIdx(sectorVan(b)) ||
+        (b.aanbieding_count > 0) - (a.aanbieding_count > 0) ||
+        b.aanbieding_count - a.aanbieding_count ||
+        String(a.naam).localeCompare(String(b.naam), 'nl'));
+      _nwB = bedrijven;
+
+      document.getElementById('nw-sectie-titel').style.display = '';
+      document.getElementById('netwerk-wrap').style.display = '';
+
+      document.getElementById('nw-chips').innerHTML = [
+        ['Deelnemers', hub.deelnemers], ['Verbindingen', hub.verbindingen],
+        ['Aanbiedingen', hub.aanbiedingen_totaal], ['Matches', hub.matches_totaal],
+        ['Items aangeboden', hub.items_totaal],
+      ].map(([l, v]) => `<span class="netwerk-chip">${esc(l)} <b data-val="${v || 0}">0</b></span>`).join('');
+      document.querySelectorAll('#nw-chips b[data-val]').forEach(el => countUp(el, +el.getAttribute('data-val')));
+
+      // categorie → kleurindex ('' / null = Overig); unie van dominante + ring-categorieën
+      const OVERIG = '#b0a89e';
+      const cats = [...new Set(bedrijven.flatMap(b =>
+        [b.dominant_category, ...(b.categorie_counts || []).map(c => c.category)]).filter(Boolean))];
+      _nwCats = cats;
+      const catIdx = {}; cats.forEach((c, i) => catIdx[c] = i);
+      const colOf = c => (c && catIdx[c] != null) ? NW_PALETTE[catIdx[c] % NW_PALETTE.length] : OVERIG;
+      const heeftOverig = bedrijven.some(b => b.aanbieding_count > 0 && !b.dominant_category);
+      const heeftPassief = bedrijven.some(b => !(b.aanbieding_count > 0));
+
+      const W = 960, H = 860, cx = 480, cy = 415, R = 285;
+      const maxC = Math.max(...bedrijven.map(b => b.aanbieding_count), 1);
+      const hubR = 52;
+
+      // defs: gradient hub + zachte slagschaduw
+      const defs = `<defs>
+        <radialGradient id="nwHub" cx="34%" cy="28%" r="85%">
+          <stop offset="0%" stop-color="#3d382f"/><stop offset="100%" stop-color="#17130d"/>
+        </radialGradient>
+        <filter id="nwSh" x="-60%" y="-60%" width="220%" height="220%">
+          <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#3a2a12" flood-opacity="0.22"/>
+        </filter>
+      </defs>`;
+
+      // concentrische hulpringen (achtergrond)
+      let rings = '';
+      [0.42, 0.71, 1].forEach(f => {
+        rings += `<circle cx="${cx}" cy="${cy}" r="${(R * f).toFixed(0)}" fill="none" stroke="#efe8df" stroke-width="1"${f === 1 ? ' stroke-dasharray="3 6"' : ''}/>`;
+      });
+
+      // Sector-taartpunten: zachte achtergrondvlakken + label per groep
+      let wedges = '', sectorLabels = '';
+      const stap = 2 * Math.PI / bedrijven.length;
+      const groepen = [];
+      bedrijven.forEach((b, i) => {
+        const s = sectorVan(b);
+        if (groepen.length && groepen[groepen.length - 1].sector === s) groepen[groepen.length - 1].tot = i;
+        else groepen.push({ sector: s, van: i, tot: i });
+      });
+      if (groepen.length > 1) {
+        const r0 = hubR + 16, r1 = R + 64;
+        const pt = (r, a) => `${(cx + r * Math.cos(a)).toFixed(1)} ${(cy + r * Math.sin(a)).toFixed(1)}`;
+        groepen.forEach(g => {
+          const a0 = -Math.PI / 2 + g.van * stap - stap / 2 + 0.015;
+          const a1 = -Math.PI / 2 + g.tot * stap + stap / 2 - 0.015;
+          const kleur = SECTOR_KLEUR[g.sector];
+          const large = (a1 - a0) > Math.PI ? 1 : 0;
+          wedges += `<path d="M${pt(r0, a0)} L${pt(r1, a0)} A${r1} ${r1} 0 ${large} 1 ${pt(r1, a1)} L${pt(r0, a1)} A${r0} ${r0} 0 ${large} 0 ${pt(r0, a0)} Z" ` +
+            `fill="${kleur}" fill-opacity="0.055" stroke="${kleur}" stroke-opacity="0.15" stroke-width="1"/>`;
+          const am = (a0 + a1) / 2, rl = r0 + (R - r0) * 0.42;
+          sectorLabels += `<text class="nw-sector-lbl" x="${(cx + rl * Math.cos(am)).toFixed(1)}" y="${(cy + rl * Math.sin(am)).toFixed(1)}" ` +
+            `text-anchor="middle" fill="${kleur}">${esc(g.sector.toUpperCase())}</text>`;
+        });
+      }
+
+      const PASSIEF = '#d8d2c8';
+      let edges = '', nodes = '', clips = '', flows = '';
+      bedrijven.forEach((b, i) => {
+        const actief = b.aanbieding_count > 0;
+        const ang = -Math.PI / 2 + i * 2 * Math.PI / bedrijven.length;
+        const ca = Math.cos(ang), sa = Math.sin(ang);
+        const x = cx + R * ca, y = cy + R * sa;
+        const frac = b.aanbieding_count / maxC;
+        const nr = actief ? 18 + 20 * Math.sqrt(frac) : 15;
+        const ew = actief ? 2 + 8 * frac : 1.5;
+        const isMatch = (b.match_count || 0) > 0;
+        const op = isMatch ? 0.9 : (actief ? 0.5 : 0.35);
+        const delay = (i * 0.05).toFixed(2);
+        const ringCol = actief ? colOf(b.dominant_category) : PASSIEF;
+        // gebogen lijn van rand hub naar rand knoop (lichte swirl, allemaal dezelfde draairichting)
+        const hx = cx + hubR * ca, hy = cy + hubR * sa;
+        const ex = x - nr * ca, ey = y - nr * sa;
+        const mx = (hx + ex) / 2, my = (hy + ey) / 2;
+        const dxq = ex - hx, dyq = ey - hy, ln = Math.hypot(dxq, dyq) || 1;
+        const qx = mx - dyq / ln * 16, qy = my + dxq / ln * 16;
+        edges += `<path class="nw-edge${isMatch ? ' match' : ''}" d="M${hx.toFixed(1)} ${hy.toFixed(1)} Q${qx.toFixed(1)} ${qy.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}" ` +
+          `fill="none" stroke="${isMatch ? '#e67026' : '#d8cfc2'}" stroke-width="${ew.toFixed(1)}" ` +
+          `stroke-opacity="${op}" stroke-linecap="round" data-i="${i}"${actief ? '' : ' stroke-dasharray="3 8"'}>` +
+          `<animate attributeName="stroke-opacity" from="0" to="${op}" dur="0.5s" begin="${delay}s" fill="freeze"/></path>`;
+
+        // Stromend stipje over actieve matchlijnen: materiaal beweegt van hub naar bedrijf
+        if (isMatch) {
+          const fr2 = Math.min(6, 2.5 + ew * 0.4).toFixed(1);
+          flows += `<g class="nw-flow" data-i="${i}"><circle r="${fr2}" fill="#e67026" opacity="0.9" stroke="#fff" stroke-width="1">` +
+            `<animateMotion dur="${(2.4 + (i % 5) * 0.35).toFixed(2)}s" begin="${delay}s" repeatCount="indefinite" ` +
+            `path="M${hx.toFixed(1)} ${hy.toFixed(1)} Q${qx.toFixed(1)} ${qy.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}"/></circle></g>`;
+        }
+
+        const lx = cx + (R + nr + 16) * ca, ly = cy + (R + nr + 16) * sa;
+        const anchor = ca >= 0.2 ? 'start' : (ca <= -0.2 ? 'end' : 'middle');
+        const nm = b.naam.length > 22 ? b.naam.slice(0, 21) + '…' : b.naam;
+
+        // Binnenkant: logo (via favicon van het domein) of initialen als fallback
+        const ir = nr - 4;                       // straal binnencirkel
+        const ix = (x - ir).toFixed(1), iy = (y - ir).toFixed(1), id2 = (ir * 2).toFixed(1);
+        let inner;
+        const nmeKey = (b.naam || '').toLowerCase().trim();
+        const logo = NW_LOGO_OVERRIDES[b.domain] || NW_LOGO_OVERRIDES_NAME[nmeKey] ||
+          (b.domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(b.domain)}&sz=128` : '');
+        b._logo = logo;                          // ook tonen in detailpaneel
+        if (logo) {
+          const pad = ir * 0.2;                  // marge zodat het hele logo past
+          const lw = (ir * 2 - pad * 2).toFixed(1);
+          const lox = (x - ir + pad).toFixed(1), loy = (y - ir + pad).toFixed(1);
+          clips += `<clipPath id="nwc${i}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${ir.toFixed(1)}"/></clipPath>`;
+          inner = `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${ir.toFixed(1)}" fill="#fff"/>` +
+            `<image href="${logo}" x="${lox}" y="${loy}" width="${lw}" height="${lw}" clip-path="url(#nwc${i})" preserveAspectRatio="xMidYMid meet" style="pointer-events:none"/>`;
+        } else {
+          const initials = ((b.naam || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()) || '?';
+          inner = `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${ir.toFixed(1)}" fill="${actief ? ringCol : '#f2eee7'}"/>` +
+            `<text x="${x.toFixed(1)}" y="${(y + ir * 0.34).toFixed(1)}" text-anchor="middle" fill="${actief ? '#fff' : '#8a8178'}" font-weight="800" font-size="${(ir * 0.85).toFixed(0)}" style="pointer-events:none;font-family:'Outfit',sans-serif">${esc(initials)}</text>`;
+        }
+
+        // Categorie-ring: donut-segmenten met de categorieverdeling van dit bedrijf
+        let catRing = '';
+        const cc = (b.categorie_counts || []).filter(c => c.count > 0 && c.category);
+        const ccTot = cc.reduce((s, c) => s + c.count, 0);
+        if (cc.length > 1 && ccTot > 0) {
+          const rr = nr + 4.5;
+          let a0 = -Math.PI / 2;
+          cc.forEach(c => {
+            const sweep = (c.count / ccTot) * 2 * Math.PI;
+            const a1 = a0 + sweep;
+            const gap = Math.min(0.09, sweep * 0.25);   // klein gaatje tussen segmenten
+            const sx2 = x + rr * Math.cos(a0 + gap / 2), sy2 = y + rr * Math.sin(a0 + gap / 2);
+            const ex2 = x + rr * Math.cos(a1 - gap / 2), ey2 = y + rr * Math.sin(a1 - gap / 2);
+            const large = (sweep - gap) > Math.PI ? 1 : 0;
+            catRing += `<path d="M${sx2.toFixed(1)} ${sy2.toFixed(1)} A${rr.toFixed(1)} ${rr.toFixed(1)} 0 ${large} 1 ${ex2.toFixed(1)} ${ey2.toFixed(1)}" ` +
+              `fill="none" stroke="${colOf(c.category)}" stroke-width="4" stroke-linecap="round" style="pointer-events:none"/>`;
+            a0 = a1;
+          });
+        }
+
+        // Aantal-badge rechtsboven op de knoop (alleen bij aanbiedingen)
+        const badgeR = Math.max(10, nr * 0.34);
+        const bx = x + nr * 0.72, by = y - nr * 0.72;
+        const badge = !actief ? '' : `<g style="pointer-events:none">` +
+          `<circle cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" r="${badgeR.toFixed(1)}" fill="#e67026" stroke="#fff" stroke-width="1.5"/>` +
+          `<text x="${bx.toFixed(1)}" y="${(by + badgeR * 0.36).toFixed(1)}" text-anchor="middle" fill="#fff" font-weight="800" font-size="${(badgeR * 1.05).toFixed(0)}">${b.aanbieding_count}</text></g>`;
+
+        nodes += `<g class="nw-node" data-i="${i}" onclick="nwSelect(${i},event)" onmouseenter="nwHover(${i},true)" onmousemove="nwTip(${i},event)" onmouseleave="nwHover(${i},false);nwTipUit()" style="animation-delay:${delay}s">` +
+          `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${nr.toFixed(1)}" fill="${ringCol}" filter="url(#nwSh)"/>` +
+          catRing + inner + badge +
+          `<text class="nw-lbl" x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" text-anchor="${anchor}">${esc(nm)}</text>` +
+          `</g>`;
+      });
+
+      const hubNaam = (hub.naam || '').length > 24 ? hub.naam.slice(0, 23) + '…' : (hub.naam || '');
+      const hubNode = `<g class="nw-hub">` +
+        `<circle cx="${cx}" cy="${cy}" r="${hubR + 6}" fill="none" stroke="#e67026" stroke-width="1.5" stroke-opacity="0.35">` +
+          `<animate attributeName="r" values="${hubR + 6};${hubR + 13};${hubR + 6}" dur="3.2s" repeatCount="indefinite"/>` +
+          `<animate attributeName="stroke-opacity" values="0.35;0.06;0.35" dur="3.2s" repeatCount="indefinite"/></circle>` +
+        `<circle cx="${cx}" cy="${cy}" r="${hubR}" fill="url(#nwHub)" filter="url(#nwSh)"/>` +
+        `<text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="#fff" font-size="15" font-weight="800" style="pointer-events:none;font-family:'Outfit',sans-serif">Milieustraat</text>` +
+        `<text x="${cx}" y="${cy + 15}" text-anchor="middle" fill="#d8cdbf" font-size="12" style="pointer-events:none">${esc(hubNaam)}</text>` +
+        `</g>`;
+
+      // klik naast een knoop (op de svg-achtergrond) = selectie sluiten
+      document.getElementById('nw-svg').innerHTML =
+        `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" onclick="nwReset()">${defs}<defs>${clips}</defs>${wedges}${rings}${edges}${flows}${sectorLabels}${nodes}${hubNode}</svg>`;
+
+      document.getElementById('nw-legend').innerHTML =
+        cats.map((c, ci) => `<span class="nw-legend-item klikbaar" data-ci="${ci}" onclick="nwLegendKlik(${ci},event)"><span class="nw-legend-dot" style="background:${colOf(c)}"></span>${esc(c)}</span>`).join('') +
+        (heeftOverig ? `<span class="nw-legend-item klikbaar" data-ci="-1" onclick="nwLegendKlik(-1,event)"><span class="nw-legend-dot" style="background:${OVERIG}"></span>Overig</span>` : '') +
+        (heeftPassief ? `<span class="nw-legend-item klikbaar" data-ci="-2" onclick="nwLegendKlik(-2,event)"><span class="nw-legend-dot" style="background:${PASSIEF}"></span>nog geen aanbiedingen</span>` : '') +
+        `<span class="nw-legend-item"><span class="nw-legend-dot" style="background:#e67026"></span>actieve match</span>`;
+    }
+
+    // ── Download diagram als PNG ──────────────────────────────────────────
+    async function nwDownload() {
+      const svgEl = document.querySelector('#nw-svg svg');
+      if (!svgEl) return;
+      const clone = svgEl.cloneNode(true);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      clone.removeAttribute('onclick');
+      // animaties strippen (anders rendert de export op t=0, met onzichtbare lijnen)
+      clone.querySelectorAll('.nw-flow').forEach(n => n.remove());
+      clone.querySelectorAll('animate, animateMotion').forEach(n => n.remove());
+      // externe logo's inline zetten; lukt dat niet (CORS), dan logo weglaten
+      await Promise.all([...clone.querySelectorAll('image')].map(async im => {
+        const href = im.getAttribute('href') || '';
+        if (!href || href.startsWith('data:')) return;
+        try {
+          const r = await fetch(href, { mode: 'cors' });
+          if (!r.ok) throw 0;
+          const bl = await r.blob();
+          im.setAttribute('href', await new Promise(res => {
+            const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(bl);
+          }));
+        } catch (e) { im.remove(); }
+      }));
+      // pagina-CSS geldt niet binnen een losse SVG → labelstijl inline meegeven
+      const st = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+      st.textContent = ".nw-lbl{font-family:sans-serif;font-size:16px;font-weight:600;fill:#4a4038;paint-order:stroke;stroke:#fdfaf6;stroke-width:3.5px;stroke-linejoin:round}" +
+        ".nw-sector-lbl{font-family:sans-serif;font-size:12.5px;font-weight:800;letter-spacing:.13em;opacity:.8;paint-order:stroke;stroke:#fdfaf6;stroke-width:4px;stroke-linejoin:round}";
+      clone.insertBefore(st, clone.firstChild);
+
+      const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' }));
+      try {
+        const img = new Image();
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+        const vb = svgEl.viewBox.baseVal, scale = 2;
+        const cvs = document.createElement('canvas');
+        cvs.width = vb.width * scale; cvs.height = vb.height * scale;
+        const ctx = cvs.getContext('2d');
+        ctx.fillStyle = '#fdfaf6'; ctx.fillRect(0, 0, cvs.width, cvs.height);
+        ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
+        const a = document.createElement('a');
+        a.download = 'cirqo-netwerk-' + (gemeente || 'alle-gemeenten').toLowerCase().replace(/\s+/g, '-') + '.png';
+        a.href = cvs.toDataURL('image/png');
+        a.click();
+      } catch (e) {
+        alert('Downloaden mislukt — probeer het opnieuw.');
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    // Parallel laden: statistieken en netwerk wachten niet op elkaar
     laad();
+    laadNetwerk();
   </script>
   <script src="/static/ux.js"></script>
+  <nav class="tabbar">
+    <button class="tabbar-btn" onclick="location.href='/'">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <small>Scannen</small>
+    </button>
+    <button class="tabbar-btn" onclick="location.href='/?tab=list'">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      <small>Aanbod</small>
+    </button>
+    <button class="tabbar-btn active">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <small>Dashboard</small>
+    </button>
+  </nav>
+  <script src="/static/install-gids.js"></script>
 </body>
 </html>

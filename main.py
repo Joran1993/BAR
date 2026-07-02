@@ -45,6 +45,22 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     }
 
 
+def get_optional_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Als get_current_user, maar geeft None terug i.p.v. 401 zonder (geldige) token."""
+    if not credentials:
+        return None
+    payload = auth_module.decode_token(credentials.credentials)
+    if not payload:
+        return None
+    return {
+        "id": int(payload["sub"]),
+        "username": payload.get("username", ""),
+        "role": payload.get("role", "user"),
+        "gemeente": payload.get("gemeente", "") or "",
+        "bedrijf_id": payload.get("bedrijf_id"),
+    }
+
+
 def require_superadmin(user=Depends(get_current_user)):
     if user["role"] != "superadmin":
         raise HTTPException(status_code=403, detail="Alleen platform-beheerders hebben toegang")
@@ -102,13 +118,20 @@ ORGANISATIE_GEMEENTEN = {
 def _gemeente_filter(user: dict, gemeente: Optional[str] = None) -> Optional[str]:
     """
     superadmin:  mag alles zien (None = geen filter)
-    admin:       valt terug op eigen gemeente als geen param opgegeven
+    admin:       mag alleen een gemeente kiezen BINNEN de eigen (organisatie)scope;
+                 daarbuiten of zonder keuze → eigen scope
     user:        altijd eigen gemeente
     """
     if user["role"] == "superadmin":
         return gemeente or None
     if user["role"] == "admin":
-        return gemeente or user.get("gemeente") or None
+        eigen = user.get("gemeente") or None
+        if gemeente and eigen:
+            scope = _gemeenten_expand(eigen) or [eigen]
+            if gemeente == eigen or gemeente in scope:
+                return gemeente
+            return eigen        # buiten scope aangevraagd → terug naar eigen scope
+        return gemeente or eigen
     return user.get("gemeente") or None
 
 
@@ -135,6 +158,7 @@ async def lifespan(app: FastAPI):
         print(f"[main] Firebase init mislukt (niet fataal): {e}")
     print(f"[main] gestart — DEFAULT_BRAND={DEFAULT_BRAND!r}, BRAND_ENV={os.getenv('BRAND')!r}")
     asyncio.create_task(_firestore_sync_loop())
+    asyncio.create_task(_prewarm_cache_loop())
     yield
 
 
@@ -452,6 +476,153 @@ def _sync_single_doc(doc):
         print(f"[firestore-listener] Fout bij verwerken doc {doc.id}: {e}")
 
 
+_AANB_STATUS_MAP = {
+    "Ik wil dit ophalen": "ophalen",
+    "Kom het mij brengen": "ophalen",
+    "Niet nodig": "niet_nodig",
+}
+
+
+def _verwerk_ophaalverzoek_doc(d: dict) -> str:
+    """Verwerk één Firestore ophaalverzoek-doc → aanbieding-status in Postgres.
+    Geeft 'updated' | 'inserted' | 'unchanged' | 'skipped' terug."""
+    status = _AANB_STATUS_MAP.get(d.get("Verzoek") or d.get("verzoek") or "")
+    if not status:
+        return "skipped"
+    verzender = d.get("verzender") or ""
+    bedrijf_naam_fs = (d.get("Bedrijfsnaam") or d.get("bedrijfsnaam") or "").lower()
+    with db.get_cursor() as cur:
+        bedrijf_id = None
+        if verzender:
+            cur.execute("SELECT b.id FROM bedrijven b JOIN users u ON u.bedrijf_id = b.id WHERE u.email = %s LIMIT 1", (verzender,))
+            row = cur.fetchone()
+            bedrijf_id = row["id"] if row else None
+        if not bedrijf_id and bedrijf_naam_fs:
+            cur.execute("SELECT id FROM bedrijven WHERE lower(naam) = %s LIMIT 1", (bedrijf_naam_fs,))
+            row = cur.fetchone()
+            bedrijf_id = row["id"] if row else None
+        if not bedrijf_id:
+            return "skipped"
+
+        # Item vinden: Aanbodref → foto-URL → omschrijving+ontvanger
+        item_id = None
+        aanbodref = d.get("Aanbodref") or d.get("aanbodref")
+        doc_id = aanbodref.id if aanbodref is not None and hasattr(aanbodref, "id") else None
+        if doc_id:
+            cur.execute("SELECT id FROM items WHERE firestore_doc_id = %s", (doc_id,))
+            row = cur.fetchone()
+            item_id = row["id"] if row else None
+        if not item_id:
+            foto = (d.get("foto") or d.get("foto_url") or "").split("?")[0]
+            if foto:
+                cur.execute("SELECT id FROM items WHERE split_part(photo_url,'?',1) = %s LIMIT 1", (foto,))
+                row = cur.fetchone()
+                item_id = row["id"] if row else None
+        if not item_id:
+            omschrijving = d.get("Omschrijving") or d.get("omschrijving") or ""
+            ontvanger = d.get("ontvanger") or ""
+            if omschrijving and ontvanger:
+                cur.execute("""
+                    SELECT i.id FROM items i
+                    JOIN users u ON u.id = i.uploaded_by
+                    WHERE i.ai_label ILIKE %s AND u.email = %s
+                    LIMIT 1
+                """, (omschrijving, ontvanger))
+                row = cur.fetchone()
+                item_id = row["id"] if row else None
+        if not item_id:
+            return "skipped"
+
+        cur.execute("SELECT id, status FROM aanbiedingen WHERE item_id=%s AND bedrijf_id=%s", (item_id, bedrijf_id))
+        existing = cur.fetchone()
+        if existing:
+            if existing["status"] == status:
+                return "unchanged"
+            cur.execute("UPDATE aanbiedingen SET status=%s WHERE id=%s", (status, existing["id"]))
+            return "updated"
+        aangemaakt = d.get("Datumaangemaakt") or d.get("datumaangemaakt")
+        ts = aangemaakt.isoformat() if hasattr(aangemaakt, "isoformat") else None
+        cur.execute(
+            "INSERT INTO aanbiedingen (item_id, bedrijf_id, status, created_at) VALUES (%s,%s,%s,%s)",
+            (item_id, bedrijf_id, status, ts)
+        )
+        return "inserted"
+
+
+def _start_ophaalverzoeken_listener():
+    """Realtime listener: reacties uit de FlutterFlow-app (ophaalverzoeken) direct naar Postgres.
+    De eerste snapshot levert álle documenten → werkt meteen als inhaalslag na downtime."""
+    try:
+        fsdb = fs._get_db()
+        if not fsdb:
+            return
+
+        def _on_snapshot(col_snapshot, changes, read_time):
+            tellers = {"updated": 0, "inserted": 0, "unchanged": 0, "skipped": 0}
+            for change in changes:
+                if change.type.name not in ("ADDED", "MODIFIED"):
+                    continue
+                try:
+                    tellers[_verwerk_ophaalverzoek_doc(change.document.to_dict() or {})] += 1
+                except Exception as e:
+                    print(f"[ophaalverzoek-listener] Fout bij doc {change.document.id}: {e}")
+            if tellers["updated"] or tellers["inserted"]:
+                print(f"[ophaalverzoek-listener] {tellers['updated']} statussen bijgewerkt, {tellers['inserted']} aanbiedingen toegevoegd")
+
+        fsdb.collection("ophaalverzoeken").on_snapshot(_on_snapshot)
+        print("[ophaalverzoek-listener] Realtime listener gestart op ophaalverzoeken")
+    except Exception as e:
+        print(f"[ophaalverzoek-listener] Start mislukt: {e}")
+
+
+def _backfill_thumb_urls() -> int:
+    """Vul photo_url_thumb voor items zonder thumbnail: Firebase via de 1024x1024-variant
+    van de resize-extensie, Supabase via de render-API. Draait periodiek (thumb-sweep)."""
+    import re
+    import urllib.parse as _up
+    try:
+        with db.get_cursor() as cur:
+            cur.execute("""
+                SELECT id, photo_url FROM items
+                WHERE photo_url IS NOT NULL AND photo_url != ''
+                  AND (photo_url_thumb IS NULL OR photo_url_thumb = '')
+            """)
+            items = cur.fetchall()
+        if not items:
+            return 0
+        from firebase_admin import storage as _storage
+        gedaan = 0
+        for item in items:
+            url = item["photo_url"]
+            thumb_url = None
+            m = re.match(r'https://firebasestorage\.googleapis\.com/v0/b/([^/]+)/o/([^?]+)', url)
+            if m:
+                bucket_name, pad = m.group(1), _up.unquote(m.group(2))
+                if pad.lower().endswith(('.jpg', '.jpeg', '.png')):
+                    stam, ext = pad.rsplit('.', 1)
+                    tpad = f"{stam}_1024x1024.{ext}"
+                    try:
+                        blob = _storage.bucket(bucket_name).blob(tpad)
+                        blob.reload()
+                        token = (blob.metadata or {}).get('firebaseStorageDownloadTokens', '')
+                        if token:
+                            thumb_url = (f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}"
+                                         f"/o/{_up.quote(tpad, safe='')}?alt=media&token={token}")
+                    except Exception:
+                        pass   # variant (nog) niet gemaakt — volgende ronde opnieuw
+            elif '.supabase.co/storage/v1/object/public/' in url:
+                thumb_url = (url.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') +
+                             '?width=1024&height=1024&resize=contain')
+            if thumb_url:
+                with db.get_cursor() as cur:
+                    cur.execute("UPDATE items SET photo_url_thumb = %s WHERE id = %s", (thumb_url, item["id"]))
+                gedaan += 1
+        return gedaan
+    except Exception as e:
+        print(f"[thumb-sweep] Fout: {e}")
+        return 0
+
+
 async def _firestore_sync_loop():
     """Eenmalige initiële sync bij startup, daarna houdt de realtime listener het bij."""
     import asyncio as _asyncio
@@ -460,9 +631,16 @@ async def _firestore_sync_loop():
     n = await _asyncio.get_event_loop().run_in_executor(None, _sync_firestore_items_now)
     if n:
         print(f"[firestore-sync] {n} nieuwe items geïmporteerd bij startup")
-    # Start realtime listener in achtergrond-thread
+    # Start realtime listeners in achtergrond-threads
     import threading
     threading.Thread(target=_start_firestore_listener, daemon=True).start()
+    threading.Thread(target=_start_ophaalverzoeken_listener, daemon=True).start()
+    # Thumb-sweep: direct én daarna elk uur ontbrekende thumbnails koppelen
+    while True:
+        n = await _asyncio.get_event_loop().run_in_executor(None, _backfill_thumb_urls)
+        if n:
+            print(f"[thumb-sweep] {n} thumbnails gekoppeld")
+        await _asyncio.sleep(3600)
 
 
 app = FastAPI(title="De Bouwkringloop", lifespan=lifespan)
@@ -541,11 +719,50 @@ async def login_met_token(token: str):
     }
 
 
+# Brute-force-rem op inloggen: max 8 mislukte pogingen per kwartier per gebruikersnaam+IP
+_LOGIN_POGINGEN: dict = {}
+_LOGIN_MAX = 8
+_LOGIN_VENSTER = 15 * 60  # seconden
+
+
+def _login_key(request: Request, username: str) -> str:
+    # Achter de Railway-proxy staat het echte IP in X-Forwarded-For
+    ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() \
+         or (request.client.host if request.client else "?")
+    return f"{username.strip().lower()}|{ip}"
+
+
+def _login_geblokkeerd(key: str) -> bool:
+    import time as _t
+    nu = _t.time()
+    recent = [t for t in _LOGIN_POGINGEN.get(key, []) if nu - t < _LOGIN_VENSTER]
+    if recent:
+        _LOGIN_POGINGEN[key] = recent
+    else:
+        _LOGIN_POGINGEN.pop(key, None)
+    if len(_LOGIN_POGINGEN) > 10000:   # geheugen begrensd houden
+        _LOGIN_POGINGEN.clear()
+    return len(recent) >= _LOGIN_MAX
+
+
 @app.post("/api/auth/login")
-async def login(username: str = Form(...), password: str = Form(...)):
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    import time as _t
+    key = _login_key(request, username)
+    if _login_geblokkeerd(key):
+        raise HTTPException(status_code=429, detail="Te veel mislukte pogingen — probeer het over 15 minuten opnieuw")
     user = db.get_user_by_username(username)
     if not user or not auth_module.verify_password(password, user["password"]):
+        _LOGIN_POGINGEN.setdefault(key, []).append(_t.time())
         raise HTTPException(status_code=401, detail="Onjuiste gebruikersnaam of wachtwoord")
+    _LOGIN_POGINGEN.pop(key, None)   # gelukt → teller wissen
+    # Stilzwijgende migratie: oude HMAC-hashes worden bij succesvolle login
+    # omgezet naar bcrypt — de gebruiker merkt hier niets van
+    if auth_module.needs_rehash(user["password"]):
+        try:
+            db.update_user_password(user["id"], password)
+        except Exception as e:
+            print(f"[auth] bcrypt-migratie mislukt voor user {user['id']}: {e}")
     token = auth_module.create_token(
         user["id"], user["username"], user["role"],
         user.get("gemeente") or "", user.get("bedrijf_id")
@@ -730,100 +947,10 @@ async def fix_aanbieding_statussen(user=Depends(require_superadmin)):
     if not fsdb:
         raise HTTPException(status_code=503, detail="Firestore niet beschikbaar")
 
-    STATUS_MAP = {
-        "Ik wil dit ophalen": "ophalen",
-        "Kom het mij brengen": "ophalen",
-        "Niet nodig": "niet_nodig",
-    }
-
-    # Bouw lookup: firestore_doc_id → item_id
-    with db.get_cursor() as cur:
-        cur.execute("SELECT id, firestore_doc_id FROM items WHERE firestore_doc_id IS NOT NULL")
-        doc_to_item = {r["firestore_doc_id"]: r["id"] for r in cur.fetchall()}
-
-    # Bouw lookup: email → bedrijf_id en naam → bedrijf_id
-    with db.get_cursor() as cur:
-        cur.execute("SELECT b.id, b.naam, u.email FROM bedrijven b LEFT JOIN users u ON u.bedrijf_id = b.id")
-        email_to_bedrijf = {}
-        naam_to_bedrijf = {}
-        for r in cur.fetchall():
-            if r["email"]:
-                email_to_bedrijf[r["email"]] = r["id"]
-            naam_to_bedrijf[r["naam"].lower()] = r["id"]
-
-    updated = 0
-    skipped = 0
-
-    docs = fsdb.collection("ophaalverzoeken").stream()
-    for doc in docs:
-        d = doc.to_dict() or {}
-        verzoek_status = d.get("Verzoek") or d.get("verzoek") or ""
-        status = STATUS_MAP.get(verzoek_status)
-        if not status:
-            skipped += 1
-            continue
-
-        verzender = d.get("verzender") or ""
-        bedrijf_naam_fs = (d.get("Bedrijfsnaam") or d.get("bedrijfsnaam") or "").lower()
-        bedrijf_id = email_to_bedrijf.get(verzender) or naam_to_bedrijf.get(bedrijf_naam_fs)
-        if not bedrijf_id:
-            skipped += 1
-            continue
-
-        aanbodref = d.get("Aanbodref") or d.get("aanbodref")
-        doc_id = aanbodref.id if aanbodref and hasattr(aanbodref, "id") else None
-        item_id = doc_to_item.get(doc_id) if doc_id else None
-
-        # Fallback: match op foto URL (zonder token-parameter)
-        if not item_id:
-            foto = d.get("foto") or d.get("foto_url") or ""
-            if foto:
-                foto_pad = foto.split("?")[0]  # strip token
-                with db.get_cursor() as cur:
-                    cur.execute("SELECT id FROM items WHERE split_part(photo_url,'?',1) = %s LIMIT 1", (foto_pad,))
-                    row = cur.fetchone()
-                    item_id = row["id"] if row else None
-
-        # Tweede fallback: match op Omschrijving + ontvanger
-        if not item_id:
-            omschrijving = d.get("Omschrijving") or d.get("omschrijving") or ""
-            ontvanger = d.get("ontvanger") or ""
-            if omschrijving and ontvanger:
-                with db.get_cursor() as cur:
-                    cur.execute("""
-                        SELECT i.id FROM items i
-                        JOIN users u ON u.id = i.uploaded_by
-                        WHERE i.ai_label ILIKE %s AND u.email = %s
-                        LIMIT 1
-                    """, (omschrijving, ontvanger))
-                    row = cur.fetchone()
-                    item_id = row["id"] if row else None
-
-        if not item_id:
-            skipped += 1
-            continue
-
-        with db.get_cursor() as cur:
-            cur.execute(
-                "SELECT id FROM aanbiedingen WHERE item_id=%s AND bedrijf_id=%s",
-                (item_id, bedrijf_id)
-            )
-            existing = cur.fetchone()
-            if existing:
-                cur.execute(
-                    "UPDATE aanbiedingen SET status=%s WHERE id=%s",
-                    (status, existing["id"])
-                )
-            else:
-                aangemaakt = d.get("Datumaangemaakt") or d.get("datumaangemaakt")
-                ts = aangemaakt.isoformat() if hasattr(aangemaakt, "isoformat") else None
-                cur.execute(
-                    "INSERT INTO aanbiedingen (item_id, bedrijf_id, status, created_at) VALUES (%s,%s,%s,%s)",
-                    (item_id, bedrijf_id, status, ts)
-                )
-            updated += 1
-
-    return {"ok": True, "updated": updated, "inserted": inserted, "skipped": skipped}
+    tellers = {"updated": 0, "inserted": 0, "unchanged": 0, "skipped": 0}
+    for doc in fsdb.collection("ophaalverzoeken").stream():
+        tellers[_verwerk_ophaalverzoek_doc(doc.to_dict() or {})] += 1
+    return {"ok": True, **tellers}
 
 
 def _has_firestore_col():
@@ -955,6 +1082,17 @@ async def list_gemeenten(user=Depends(get_current_user)):
     if DEFAULT_BRAND == "rwm":
         return RWM_GEMEENTEN
     return db.get_gemeenten()
+
+
+@app.get("/api/mijn-gemeenten")
+async def mijn_gemeenten(user=Depends(get_current_user)):
+    """Gemeenten binnen de scope van de ingelogde gebruiker (voor de dashboard-switcher)."""
+    g = user.get("gemeente") or ""
+    if g in ORGANISATIE_GEMEENTEN:
+        return ORGANISATIE_GEMEENTEN[g]
+    if user["role"] == "superadmin":
+        return db.get_gemeenten()
+    return [g] if g else []
 
 
 @app.get("/api/milieustraten")
@@ -1135,10 +1273,23 @@ async def bedrijven_voor_scan(
         with db.get_cursor() as cur:
             cur.execute("SELECT bedrijf_id FROM aanbiedingen WHERE item_id = %s", (item_id,))
             already_offered = {r["bedrijf_id"] for r in cur.fetchall()}
+    # Historie: hoe vaak haalde dit bedrijf eerder deze categorie op? (sterkste matchsignaal)
+    historie = {}
+    if category:
+        with db.get_cursor() as cur:
+            cur.execute("""
+                SELECT a.bedrijf_id, COUNT(*) AS n
+                FROM aanbiedingen a JOIN items i ON i.id = a.item_id
+                WHERE a.status = 'ophalen' AND i.category = %s
+                GROUP BY a.bedrijf_id
+            """, (category,))
+            historie = {r["bedrijf_id"]: r["n"] for r in cur.fetchall()}
     for b in alle:
         b["categorie_match"] = b["id"] in match_ids
+        b["historie_count"]  = historie.get(b["id"], 0)
         b["al_aangeboden"]   = b["id"] in already_offered
-    alle.sort(key=lambda b: (b["al_aangeboden"], not b["categorie_match"], b["naam"]))
+    # Volgorde: eerder-opgehaald eerst (vaakst bovenaan), dan interesse-match, dan naam
+    alle.sort(key=lambda b: (b["al_aangeboden"], -b["historie_count"], not b["categorie_match"], b["naam"]))
     return alle
 
 
@@ -1290,6 +1441,30 @@ async def push_subscribe(request: Request, user=Depends(get_current_user)):
     db.save_push_subscription(_json.dumps(subscription), bedrijf_id=bedrijf_id, user_id=user_id)
     print(f"[push] Subscription opgeslagen voor user {user_id} (bedrijf_id={bedrijf_id})")
     return {"ok": True}
+
+
+@app.post("/api/push/test")
+async def push_test(user=Depends(get_current_user)):
+    """Stuurt een test-pushmelding naar de eigen toestellen van de ingelogde gebruiker."""
+    subs = db.get_push_subscriptions_voor_user(user["id"])
+    if user.get("bedrijf_id"):
+        seen = {s["id"] for s in subs}
+        for s in db.get_push_subscriptions_for_bedrijf(user["bedrijf_id"]):
+            if s["id"] not in seen:
+                subs.append(s); seen.add(s["id"])
+    verstuurd = 0
+    for s in subs:
+        try:
+            if push_module.send_push(
+                s["subscription"],
+                "CIRQO testmelding",
+                "Gelukt! Pushmeldingen werken op dit toestel. 🎉",
+                "/check",
+            ):
+                verstuurd += 1
+        except Exception as e:
+            print(f"[push-test] {e}")
+    return {"subscriptions": len(subs), "verstuurd": verstuurd}
 
 
 @app.get("/api/push/debug")
@@ -1675,6 +1850,8 @@ async def update_item(
     item_id: int,
     manual_note: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
+    ai_detail: Optional[str] = Form(None),
+    ai_label: Optional[str] = Form(None),
     user=Depends(get_current_user),
 ):
     item = db.get_item(item_id)
@@ -1682,7 +1859,8 @@ async def update_item(
         raise HTTPException(status_code=404)
     if not _mag_item_beheren(user, item):
         raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
-    db.update_item(item_id, manual_note, category)
+    db.update_item(item_id, manual_note, category, ai_detail=ai_detail, ai_label=ai_label)
+    fs.sync_item(db.get_item(item_id))   # aangepaste titel/beschrijving ook naar de app-kant
     return {"ok": True}
 
 
@@ -1702,24 +1880,63 @@ async def delete_item(item_id: int, user=Depends(get_current_user)):
 
 # ── Dashboard (gecombineerd endpoint) ────────────────────────────────────────
 
-@app.get("/api/dashboard")
-async def get_dashboard(days: int = 7, gemeente: Optional[str] = None, user=Depends(get_current_user)):
-    gemeente = _gemeente_filter(user, gemeente)
-    gemeenten = _gemeenten_expand(gemeente)
-    cache_key = f"dashboard:{gemeenten or gemeente}:{days}"
-    cached = cache_module.get(cache_key)
-    if cached is not None:
-        return cached
-
+async def _bouw_dashboard_data(gemeente, gemeenten, days: int = 7):
     g = None if gemeenten else gemeente
+    loop = asyncio.get_event_loop()
     stats, charts, recent = await asyncio.gather(
-        asyncio.get_event_loop().run_in_executor(None, lambda: db.get_stats(g, gemeenten=gemeenten)),
-        asyncio.get_event_loop().run_in_executor(None, lambda: db.get_chart_data(days, g, gemeenten=gemeenten)),
-        asyncio.get_event_loop().run_in_executor(None, lambda: db.get_items(6, 0, g, gemeenten=gemeenten)),
+        loop.run_in_executor(None, lambda: db.get_stats(g, gemeenten=gemeenten)),
+        loop.run_in_executor(None, lambda: db.get_chart_data(days, g, gemeenten=gemeenten)),
+        loop.run_in_executor(None, lambda: db.get_items(6, 0, g, gemeenten=gemeenten)),
     )
     result = {"stats": stats, "charts": charts, "recent": recent}
-    cache_module.set(cache_key, result, ttl=30)
+    cache_module.set(f"dashboard:{gemeenten or gemeente}:{days}", result, ttl=150)
     return result
+
+
+async def _bouw_netwerk_data(g, gemeenten):
+    data = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_netwerk_data(g, gemeenten))
+    cache_module.set(f"netwerk:{gemeenten or g}", data, ttl=150)
+    return data
+
+
+async def _prewarm_cache_loop():
+    """Houd dashboard- en netwerkcaches proactief warm (elke 60s, TTL 150s),
+    zodat gebruikers nooit de koude 2-3s-route voelen."""
+    await asyncio.sleep(5)
+    while True:
+        try:
+            scopes = set()
+            with db.get_cursor() as cur:
+                cur.execute("SELECT DISTINCT gemeente FROM items WHERE gemeente IS NOT NULL AND gemeente != ''")
+                scopes.update(r["gemeente"] for r in cur.fetchall())
+            scopes.update(ORGANISATIE_GEMEENTEN.keys())
+            scopes.add(None)   # superadmin zonder filter
+            for g in scopes:
+                await _bouw_dashboard_data(g, _gemeenten_expand(g))
+                await _bouw_netwerk_data(g, _gemeenten_expand(g) or ([g] if g else None))
+        except Exception as e:
+            print(f"[prewarm] Fout: {e}")
+        await asyncio.sleep(60)
+
+
+@app.get("/api/dashboard")
+async def get_dashboard(days: int = 7, gemeente: Optional[str] = None, user=Depends(get_current_user)):
+    # Bedrijfsaccounts zien alleen hun eigen stromen (geen gemeente-totalen)
+    if user.get("bedrijf_id"):
+        cache_key = f"dashboard-bedrijf:{user['bedrijf_id']}"
+        cached = cache_module.get(cache_key)
+        if cached is not None:
+            return cached
+        data = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: db.get_bedrijf_dashboard(user["bedrijf_id"]))
+        cache_module.set(cache_key, data, ttl=60)
+        return data
+    gemeente = _gemeente_filter(user, gemeente)
+    gemeenten = _gemeenten_expand(gemeente)
+    cached = cache_module.get(f"dashboard:{gemeenten or gemeente}:{days}")
+    if cached is not None:
+        return cached
+    return await _bouw_dashboard_data(gemeente, gemeenten, days)
 
 
 # ── Statistieken & export ─────────────────────────────────────────────────────
@@ -1739,9 +1956,18 @@ async def sla_mijn_volgorde(request: Request, user=Depends(get_current_user)):
 
 
 @app.get("/api/netwerk")
-async def get_netwerk(gemeente: Optional[str] = None, user=Depends(require_admin)):
+async def get_netwerk(gemeente: Optional[str] = None, user=Depends(get_current_user)):
+    # Zichtbaar voor gemeente-/milieustraat-accounts; NIET voor bedrijven
+    # (matchgegevens van andere bedrijven zijn niet hun zaak)
+    if user.get("bedrijf_id") or user["role"] == "bedrijf":
+        raise HTTPException(status_code=403, detail="Niet beschikbaar voor bedrijfsaccounts")
     g = _gemeente_filter(user, gemeente)
-    return db.get_netwerk_data(g)
+    # Organisatie-scope (bv. 'waardlanden') uitklappen naar de losse gemeenten
+    gemeenten = _gemeenten_expand(g) or ([g] if g else None)
+    cached = cache_module.get(f"netwerk:{gemeenten or g}")
+    if cached is not None:
+        return cached
+    return await _bouw_netwerk_data(g, gemeenten)
 
 
 @app.get("/api/deelnemers")
@@ -2131,7 +2357,8 @@ def _render_html(path: str, brand: str) -> HTMLResponse:
     head_inject = f'<style>{_brand_css(brand)}</style>\n<script>window._APP_VERSION="{ASSET_VERSION}";</script>'
     html = html.replace("</head>", f"{head_inject}\n</head>", 1)
     # Automatische cache-busting: vers versienummer op alle /static/*.js en *.css
-    html = _re.sub(r'(/static/[\w./-]+\.(?:js|css))(\?v=[\w.]+)?', r'\1?v=' + ASSET_VERSION, html)
+    # let op: (?![\w]) voorkomt dat .js binnen .json/.jsonld matcht (zou manifest.json verminken)
+    html = _re.sub(r'(/static/[\w./-]+\.(?:js|css))(?![\w])(\?v=[\w.]+)?', r'\1?v=' + ASSET_VERSION, html)
     # Swap logo src — vervang alle bekende logo-paden
     for known_logo in ["/static/cirqo-logo.webp", "/static/bouwkringloop-logo.jpg"]:
         html = html.replace(known_logo, b["logo"])
@@ -2185,6 +2412,11 @@ async def dashboard_page():
     return _render_html("static/dashboard.html", DEFAULT_BRAND)
 
 
+@app.get("/check", response_class=HTMLResponse)
+async def check_page():
+    return _render_html("static/check.html", DEFAULT_BRAND)
+
+
 @app.get("/catalogus", response_class=HTMLResponse)
 @app.get("/pilotalmere", response_class=HTMLResponse)
 @app.get("/pilotalmere/", response_class=HTMLResponse)
@@ -2195,10 +2427,22 @@ async def catalogus_page():
 
 
 @app.get("/api/catalogus")
-async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int = 0):
-    gemeenten = _gemeenten_expand(gemeente)
-    gem_filter = "gemeente = ANY(%s)" if gemeenten else "gemeente = %s"
-    gem_param = gemeenten if gemeenten else gemeente
+async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int = 0,
+                        user=Depends(get_optional_user)):
+    if user:
+        # Ingelogd: gemeente wordt geklemd op de eigen scope (admin: organisatie)
+        gemeente = _gemeente_filter(user, gemeente)
+    elif gemeente != "Almere":
+        # Zonder login is alleen de publieke Almere-pilotcatalogus zichtbaar
+        raise HTTPException(status_code=401, detail="Log in om deze catalogus te bekijken")
+
+    if gemeente:
+        gemeenten = _gemeenten_expand(gemeente)
+        gem_filter = "gemeente = ANY(%s)" if gemeenten else "gemeente = %s"
+        gem_params = [gemeenten if gemeenten else gemeente]
+    else:
+        gem_filter = "TRUE"    # superadmin zonder filter: alles
+        gem_params = []
     with db.get_cursor() as cur:
         cur.execute(f"""
             SELECT id, ai_label, ai_detail, photo_url, photo_url_thumb, gewicht_kg, category
@@ -2206,9 +2450,9 @@ async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int =
             WHERE {gem_filter} AND photo_url IS NOT NULL AND photo_url != ''
             ORDER BY timestamp DESC
             LIMIT %s OFFSET %s
-        """, (gem_param, limit, offset))
+        """, (*gem_params, limit, offset))
         rows = [dict(r) for r in cur.fetchall()]
-        cur.execute(f"SELECT COUNT(*) AS cnt FROM items WHERE {gem_filter} AND photo_url IS NOT NULL AND photo_url != ''", (gem_param,))
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM items WHERE {gem_filter} AND photo_url IS NOT NULL AND photo_url != ''", gem_params)
         total = cur.fetchone()["cnt"]
         return {"items": rows, "total": total, "offset": offset, "limit": limit}
 

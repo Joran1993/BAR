@@ -12,13 +12,24 @@ ALGORITHM = "HS256"
 TOKEN_EXPIRE_DAYS = 365
 
 
-def _hash_password(password: str) -> str:
-    salt = os.urandom(16).hex()
-    h = hmac.new(salt.encode(), password.encode(), hashlib.sha256).hexdigest()
-    return f"{salt}${h}"
+def hash_password(password: str) -> str:
+    """Nieuwe hashes altijd met bcrypt (adaptief, traag voor brute force)."""
+    import bcrypt
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(password: str, hashed: str) -> bool:
+    if not hashed:
+        return False
+    if hashed.startswith("$2"):
+        # bcrypt
+        import bcrypt
+        try:
+            return bcrypt.checkpw(password.encode(), hashed.encode())
+        except Exception:
+            return False
+    # Legacy: HMAC-SHA256 als "salt$hash" — wordt bij succesvolle login
+    # stilzwijgend gemigreerd naar bcrypt (zie login-endpoint)
     try:
         salt, h = hashed.split("$")
         expected = hmac.new(salt.encode(), password.encode(), hashlib.sha256).hexdigest()
@@ -27,8 +38,9 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
-def hash_password(password: str) -> str:
-    return _hash_password(password)
+def needs_rehash(hashed: str) -> bool:
+    """True als de opgeslagen hash nog het oude (snelle) formaat heeft."""
+    return not (hashed or "").startswith("$2")
 
 
 def create_token(user_id: int, username: str, role: str = "user",

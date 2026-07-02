@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="apple-mobile-web-app-title" content="CIRQO">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icon-cirqo-192.png">
+  <link rel="apple-touch-icon" href="/static/icon-cirqo-192.png">
+  <title>Zelftest — CIRQO</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: #f8f4ef; color: #1a1a1a; min-height: 100vh; }
+    .hdr { display: flex; flex-direction: column; align-items: center; padding: 20px 16px 14px; background: #fff; border-bottom: 1px solid #e0ddd8; }
+    .hdr img { height: 28px; }
+    .hdr-sub { font-size: 0.7rem; color: #888; margin-top: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+    .wrap { max-width: 520px; margin: 0 auto; padding: 22px 16px 60px; }
+    h1 { font-family: 'Outfit', sans-serif; font-size: 1.5rem; font-weight: 900; margin-bottom: 4px; }
+    .lead { font-size: 0.86rem; color: #6b675f; margin-bottom: 20px; line-height: 1.45; }
+    .card { background: #fff; border-radius: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); overflow: hidden; margin-bottom: 18px; }
+    .row { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #f0efeb; }
+    .row:last-child { border-bottom: none; }
+    .ic { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; color: #fff; background: #c9c4bc; }
+    .ic.ok { background: #2e9e5b; } .ic.bad { background: #d1495b; } .ic.warn { background: #e0a72c; } .ic.busy { background: #b7b1a8; }
+    .rc-t { font-size: 0.9rem; font-weight: 700; }
+    .rc-d { font-size: 0.78rem; color: #8a847b; margin-top: 2px; line-height: 1.35; }
+    .btns { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+    button { font-family: inherit; font-weight: 700; font-size: 0.9rem; border: none; border-radius: 100px; padding: 14px 20px; cursor: pointer; }
+    .b-primary { background: var(--orange, #e67026); color: #fff; }
+    .b-primary:disabled { background: #d9cfc4; color: #fff; cursor: not-allowed; }
+    .b-ghost { background: #fff; color: #1a1a1a; border: 1.5px solid #e0ddd8; }
+    .note { font-size: 0.75rem; color: #a49d93; margin-top: 14px; line-height: 1.45; }
+    .log { font-family: ui-monospace, monospace; font-size: 0.72rem; color: #6b675f; background: #fff; border-radius: 10px; padding: 10px 12px; margin-top: 12px; white-space: pre-wrap; display: none; }
+    .log.show { display: block; }
+    a.link { color: var(--orange,#e67026); font-weight: 700; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <header class="hdr">
+    <img src="/static/cirqo-logo.webp" alt="CIRQO" id="hdr-logo">
+    <p class="hdr-sub">Zelftest</p>
+  </header>
+
+  <div class="wrap">
+    <h1>Werkt de app op dit toestel?</h1>
+    <p class="lead">Open deze pagina op het Android-toestel dat je wilt testen. Hij controleert automatisch of alles klopt en je kunt een échte testmelding naar dit toestel sturen.</p>
+
+    <div id="auth-warn" style="display:none" class="card"><div class="row"><div class="ic bad">!</div>
+      <div><div class="rc-t">Nog niet ingelogd</div><div class="rc-d">Log eerst in, kom daarna terug. <a class="link" id="login-link" href="/login?redirect=/check">Inloggen →</a></div></div></div></div>
+
+    <div class="card" id="checks">
+      <div class="row" data-k="device"><div class="ic busy">…</div><div><div class="rc-t">Toestel &amp; browser</div><div class="rc-d">Controleren…</div></div></div>
+      <div class="row" data-k="installed"><div class="ic busy">…</div><div><div class="rc-t">Als app geïnstalleerd</div><div class="rc-d">Controleren…</div></div></div>
+      <div class="row" data-k="sw"><div class="ic busy">…</div><div><div class="rc-t">Service worker actief</div><div class="rc-d">Controleren…</div></div></div>
+      <div class="row" data-k="perm"><div class="ic busy">…</div><div><div class="rc-t">Meldingen toegestaan</div><div class="rc-d">Controleren…</div></div></div>
+      <div class="row" data-k="push"><div class="ic busy">…</div><div><div class="rc-t">Push-abonnement actief</div><div class="rc-d">Controleren…</div></div></div>
+    </div>
+
+    <div class="btns">
+      <button class="b-primary" id="btn-enable">Meldingen aanzetten</button>
+      <button class="b-primary" id="btn-test" disabled>Stuur test-melding naar dit toestel</button>
+      <button class="b-ghost" id="btn-recheck">Opnieuw controleren</button>
+    </div>
+
+    <div class="log" id="log"></div>
+    <p class="note">Tip: op iPhone/iPad werken pushmeldingen alleen als de app éérst via Safari → Deel → "Zet op beginscherm" is geïnstalleerd. Op Android werkt het ook in Chrome zonder installatie, maar geïnstalleerd is het betrouwbaarst.</p>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    function logln(m){ const el=document.getElementById('log'); el.classList.add('show'); el.textContent += m + "\n"; }
+
+    function setRow(k, state, title, desc){
+      const row = document.querySelector(`.row[data-k="${k}"]`);
+      if(!row) return;
+      const ic = row.querySelector('.ic');
+      ic.className = 'ic ' + state;
+      ic.textContent = state==='ok' ? '✓' : state==='bad' ? '✗' : state==='warn' ? '!' : '…';
+      if(title) row.querySelector('.rc-t').textContent = title;
+      if(desc!=null) row.querySelector('.rc-d').textContent = desc;
+    }
+
+    if(!token){
+      document.getElementById('auth-warn').style.display='';
+      document.getElementById('btn-enable').disabled = true;
+    }
+
+    function deviceInfo(){
+      const ua = navigator.userAgent || '';
+      const isAndroid = /android/i.test(ua);
+      const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+      const isChrome = /chrome|crios/i.test(ua) && !/edg|opr/i.test(ua);
+      let os = isAndroid ? 'Android' : isIOS ? 'iOS' : 'Desktop/overig';
+      let browser = /crios/i.test(ua) ? 'Chrome (iOS)' : isChrome ? 'Chrome' : /safari/i.test(ua) ? 'Safari' : /firefox/i.test(ua) ? 'Firefox' : 'onbekend';
+      return { isAndroid, isIOS, isChrome, os, browser };
+    }
+
+    function urlB64ToUint8(base64){
+      const pad = '='.repeat((4 - base64.length % 4) % 4);
+      const b64 = (base64 + pad).replace(/-/g,'+').replace(/_/g,'/');
+      const raw = atob(b64); const arr = new Uint8Array(raw.length);
+      for(let i=0;i<raw.length;i++) arr[i]=raw.charCodeAt(i);
+      return arr;
+    }
+
+    async function getReg(){
+      if(!('serviceWorker' in navigator)) return null;
+      try{
+        let reg = await navigator.serviceWorker.getRegistration();
+        if(!reg) reg = await navigator.serviceWorker.register('/sw.js');
+        await navigator.serviceWorker.ready;
+        return reg;
+      }catch(e){ return null; }
+    }
+
+    async function runChecks(){
+      const d = deviceInfo();
+      setRow('device','ok','Toestel & browser', `${d.os} · ${d.browser}`);
+
+      const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone===true;
+      setRow('installed', standalone?'ok':'warn', 'Als app geïnstalleerd',
+        standalone ? 'Ja — draait als geïnstalleerde app.' : 'Nog niet als app geïnstalleerd (mag, maar geïnstalleerd is betrouwbaarst voor push).');
+
+      if(!('serviceWorker' in navigator)){ setRow('sw','bad','Service worker actief','Deze browser ondersteunt geen service workers.'); }
+      const reg = await getReg();
+      setRow('sw', reg?'ok':'bad', 'Service worker actief', reg? 'Geregistreerd en actief.' : 'Geen service worker — melding kan niet werken.');
+
+      const perm = ('Notification' in window) ? Notification.permission : 'unsupported';
+      setRow('perm', perm==='granted'?'ok':perm==='denied'?'bad':'warn', 'Meldingen toegestaan',
+        perm==='granted'?'Toegestaan.':perm==='denied'?'Geweigerd — zet in de browserinstellingen meldingen voor deze site aan.':'Nog niet gevraagd. Tik op "Meldingen aanzetten".');
+
+      let sub = null;
+      if(reg && reg.pushManager){ try{ sub = await reg.pushManager.getSubscription(); }catch(e){} }
+      setRow('push', sub?'ok':'warn', 'Push-abonnement actief', sub?'Dit toestel is aangemeld voor meldingen.':'Nog geen abonnement. Tik op "Meldingen aanzetten".');
+
+      document.getElementById('btn-test').disabled = !(sub && perm==='granted' && token);
+      return { reg, perm, sub };
+    }
+
+    async function enablePush(){
+      if(!token){ logln('Log eerst in.'); return; }
+      const btn = document.getElementById('btn-enable'); btn.disabled = true; btn.textContent = 'Bezig…';
+      try{
+        if(!('Notification' in window)) throw new Error('Meldingen niet ondersteund');
+        const perm = await Notification.requestPermission();
+        if(perm !== 'granted'){ logln('Meldingen niet toegestaan ('+perm+').'); await runChecks(); return; }
+        const reg = await getReg();
+        if(!reg) throw new Error('Service worker registreren mislukt');
+        const keyRes = await fetch('/api/push/vapid-key');
+        const { public_key } = await keyRes.json();
+        let sub = await reg.pushManager.getSubscription();
+        if(!sub){
+          sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: urlB64ToUint8(public_key) });
+        }
+        const r = await fetch('/api/push/subscribe', {
+          method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+          body: JSON.stringify({ subscription: sub })
+        });
+        if(!r.ok) throw new Error('Opslaan abonnement mislukt ('+r.status+')');
+        logln('✓ Meldingen aangezet en abonnement opgeslagen.');
+      }catch(e){ logln('Fout: '+e.message); }
+      btn.textContent = 'Meldingen aanzetten'; btn.disabled = false;
+      await runChecks();
+    }
+
+    async function sendTest(){
+      const btn = document.getElementById('btn-test'); btn.disabled = true; btn.textContent = 'Versturen…';
+      try{
+        const r = await fetch('/api/push/test', { method:'POST', headers:{'Authorization':'Bearer '+token} });
+        const d = await r.json();
+        if(!r.ok) throw new Error('status '+r.status);
+        if(d.verstuurd > 0) logln(`✓ Testmelding verstuurd naar ${d.verstuurd} toestel(len). Hij zou nu moeten binnenkomen.`);
+        else logln(`Geen melding verstuurd (${d.subscriptions} abonnement(en) gevonden). Zet meldingen opnieuw aan.`);
+      }catch(e){ logln('Fout bij versturen: '+e.message); }
+      btn.textContent = 'Stuur test-melding naar dit toestel'; btn.disabled = false;
+    }
+
+    document.getElementById('btn-enable').addEventListener('click', enablePush);
+    document.getElementById('btn-test').addEventListener('click', sendTest);
+    document.getElementById('btn-recheck').addEventListener('click', runChecks);
+    runChecks();
+  </script>
+</body>
+</html>

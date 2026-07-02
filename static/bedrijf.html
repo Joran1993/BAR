@@ -10,6 +10,11 @@
   <title>Aanbiedingen — De Bouwkringloop</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap"></noscript>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/base.css?v=5">
   <style>
     body { display: flex; flex-direction: column; min-height: 100dvh; }
@@ -433,7 +438,7 @@
           { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
         return `
           <div class="aanbieding-card ${a.status}" id="card-${a.id}">
-            ${a.photo_url ? `<img class="card-img" src="${esc(a.photo_url)}" alt="" loading="lazy">` : ""}
+            ${a.photo_url ? `<img class="card-img" src="${esc(a.photo_url_thumb || a.photo_url)}" alt="" loading="lazy" decoding="async">` : ""}
             <div class="card-body">
               <div class="card-label">${esc(a.ai_label || "Onbekend materiaal")}</div>
               <div class="card-meta">
@@ -512,5 +517,6 @@
     setInterval(() => { if (token) laadAanbiedingen(); }, 5000);
   </script>
   <script src="/static/ux.js"></script>
+  <script src="/static/install-gids.js"></script>
 </body>
 </html>

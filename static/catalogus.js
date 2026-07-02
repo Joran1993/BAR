@@ -9,14 +9,28 @@ let bezig = false;
 let zoekterm = "";
 let huidigLightboxIdx = -1;
 
+// Gemeente-scope: /pilotalmere is de publieke Almere-pilot; verder URL-param of eigen scope.
+// De backend klemt dit sowieso op de scope van de ingelogde gebruiker.
+const CAT_PILOT = location.pathname.indexOf("/pilotalmere") === 0;
+const CAT_GEMEENTE = CAT_PILOT ? "Almere"
+  : (new URLSearchParams(location.search).get("gemeente") || localStorage.getItem("gemeente") || "Almere");
+const CAT_TOKEN = CAT_PILOT ? null : localStorage.getItem("token");
+(function () {
+  const sub = document.querySelector(".cat-hdr-sub");
+  if (sub && !CAT_PILOT && CAT_GEMEENTE !== "Almere")
+    sub.textContent = "Ingezameld materiaal · " + CAT_GEMEENTE;
+})();
+
 async function laadItems() {
   if (bezig || (geladen >= totaal && totaal > 0)) return;
   bezig = true;
   document.getElementById("loading").style.display = "";
 
-  const res = await fetch(`/api/catalogus?gemeente=Almere&limit=${PER_PAGINA}&offset=${geladen}`);
+  const res = await fetch(`/api/catalogus?gemeente=${encodeURIComponent(CAT_GEMEENTE)}&limit=${PER_PAGINA}&offset=${geladen}`,
+    CAT_TOKEN ? { headers: { "Authorization": "Bearer " + CAT_TOKEN } } : {});
   bezig = false;
 
+  if (res.status === 401) { location.replace("/login?redirect=" + encodeURIComponent(location.pathname + location.search)); return; }
   if (!res.ok) { document.getElementById("loading").textContent = "Laden mislukt."; return; }
   const data = await res.json();
 
@@ -48,14 +62,20 @@ function renderGrid() {
   const items = gefilterdItems();
   document.getElementById("grid").innerHTML = items.map((item, idx) => `
     <div class="cat-tegel" onclick="openLightboxIdx(${idx})" data-id="${item.id}">
-      <img src="${esc(item.photo_url_thumb || item.photo_url)}" alt="${esc(item.ai_label || "")}" loading="lazy" onerror="this.style.opacity=0.2">
+      <img src="${esc(item.photo_url_thumb || item.photo_url)}" alt="${esc(item.ai_label || "")}" loading="lazy" decoding="async" onerror="this.style.opacity=0.2">
       <div class="cat-tegel-overlay"><span>${esc(item.ai_label || "Onbekend")}</span></div>
     </div>`).join("");
 }
 
+// CO₂-impact: vaste factor 3,5 kg CO₂ per kg materiaal (zelfde formule als de rest van de app)
+const CO2_PER_KG = 3.5;
+
 function updateTeller() {
-  const n = gefilterdItems().length;
-  document.getElementById("teller").textContent = `${n} item${n !== 1 ? "s" : ""}`;
+  const items = gefilterdItems();
+  const co2 = items.reduce((s, i) => s + (i.gewicht_kg || 0) * CO2_PER_KG, 0);
+  document.getElementById("teller").textContent =
+    `${items.length} item${items.length !== 1 ? "s" : ""}` +
+    (co2 > 0 ? ` · 🌱 ~${Math.round(co2)} kg CO₂ bespaard door hergebruik` : "");
 }
 
 function updateLaadMeerKnop() {

@@ -3,11 +3,13 @@
    ────────────────────────────────────────────────────────────────────────── */
 
 /* ── 1. Page load fade-in ────────────────────────────────────────────────── */
+/* LET OP: geen transform op body — een (rest)transform maakt body de containing
+   block voor position:fixed, waardoor vaste balken/knoppen buiten beeld vallen. */
 @keyframes pageIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
-body { animation: pageIn 0.28s cubic-bezier(.22,.68,0,1.1) both; }
+body { animation: pageIn 0.14s ease-out both; }
 
 /* ── 2. Tab content fade + slide op activatie ────────────────────────────── */
 @keyframes tabIn {

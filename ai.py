@@ -3,7 +3,12 @@ import json
 import os
 from typing import Optional
 
-CATEGORIES = ["Hout", "Metaal", "Beton / steen", "Glas", "Kunststof", "Gevaarlijk afval", "Overig"]
+CATEGORIES = [
+    "Bouwmateriaal", "Gereedschap & machines", "Meubels", "Sanitair & keuken",
+    "Elektronica", "Verlichting", "Tuin & buiten", "Huishoud & servies",
+    "Kleding & textiel", "Fietsen & vervoer", "Speelgoed & spel",
+    "Gemengde partij", "Overig",
+]
 
 GEWICHT_INSTRUCTIE = """
 - gewicht_kg: schat het gewicht zo nauwkeurig mogelijk op basis van wat je ziet.
@@ -20,7 +25,7 @@ Analyseer de foto en geef:
 - label: korte naam van het product/materiaal (max 4 woorden)
 - detail: beknopte beschrijving van het materiaal en staat
 - gewicht_kg: {GEWICHT_INSTRUCTIE}
-- category: kies exact één van: {", ".join(CATEGORIES)}
+- category: de productcategorie; kies exact één van: {", ".join(CATEGORIES)}. Bij meerdere producten op één foto: kies de DOMINANTE categorie (meeste stuks, volume of herbruikwaarde). Gebruik "Gemengde partij" alleen als er 3 of meer duidelijk verschillende categorieën zijn en geen enkele domineert.
 
 Reageer uitsluitend in dit JSON-formaat (geen extra tekst):
 {{"label": "...", "detail": "...", "gewicht_kg": 0.0, "category": "..."}}"""
@@ -30,7 +35,7 @@ Analyseer de foto en geef:
 - label: korte naam van het product/materiaal (max 4 woorden)
 - detail: beknopte beschrijving van het materiaal en staat
 - gewicht_kg: {GEWICHT_INSTRUCTIE}
-- category: kies exact één van: {", ".join(CATEGORIES)}
+- category: de productcategorie; kies exact één van: {", ".join(CATEGORIES)}. Bij meerdere producten op één foto: kies de DOMINANTE categorie (meeste stuks, volume of herbruikwaarde). Gebruik "Gemengde partij" alleen als er 3 of meer duidelijk verschillende categorieën zijn en geen enkele domineert.
 - geaccepteerd: true als het herkende product overeenkomt met een product op de inzamellijst, anders false
 
 Reageer uitsluitend in dit JSON-formaat (geen extra tekst):
