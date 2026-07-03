@@ -12,7 +12,9 @@ from typing import Optional
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 _pool: psycopg2.pool.ThreadedConnectionPool = None
-_POOL_MIN = 2
+# min=6: de app-start vuurt ~5 API-calls tegelijk af; met een te kleine pool
+# betaalt elke extra verbinding ~300ms+ TLS-handshake naar Supabase (Ierland)
+_POOL_MIN = int(os.environ.get("DB_POOL_MIN", "6"))
 _POOL_MAX = int(os.environ.get("DB_POOL_MAX", "20"))
 
 _CONNECT_KWARGS = dict(
@@ -141,6 +143,8 @@ def init_db():
         """)
         # sector (type organisatie: Kringloop, Onderwijs, Sociaal & zorg, Bouw & techniek, Retail, Overig)
         cur.execute("ALTER TABLE bedrijven ADD COLUMN IF NOT EXISTS sector TEXT")
+        # optionele reden bij afwijzing van een aanbieding
+        cur.execute("ALTER TABLE aanbiedingen ADD COLUMN IF NOT EXISTS niet_nodig_reden TEXT")
         # tokens genereren voor bestaande bedrijven zonder token
         cur.execute("SELECT id FROM bedrijven WHERE meld_token IS NULL")
         for row in cur.fetchall():
@@ -157,6 +161,18 @@ def init_db():
             )
         """)
         cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS geaccepteerd BOOLEAN")
+        # Zacht verwijderen: item verdwijnt uit lijsten/catalogus maar blijft
+        # meetellen in dashboard, statistieken en netwerk (historie blijft intact)
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS verwijderd BOOLEAN DEFAULT FALSE")
+        # Koppeltabel: een bedrijf kan aan meerdere gemeenten/milieustraten hangen
+        # (bedrijven.gemeente blijft de thuisbasis; dit zijn extra werkgebieden)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bedrijf_gemeenten (
+                bedrijf_id INTEGER NOT NULL REFERENCES bedrijven(id) ON DELETE CASCADE,
+                gemeente   TEXT NOT NULL,
+                PRIMARY KEY (bedrijf_id, gemeente)
+            )
+        """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS push_subscriptions (
                 id           SERIAL PRIMARY KEY,
@@ -526,34 +542,42 @@ def update_item(item_id: int, manual_note: Optional[str], category: Optional[str
         cur.execute(f"UPDATE items SET {', '.join(velden)} WHERE id = %s", (*params, item_id))
 
 
-def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None, own_user_id: Optional[int] = None, all_aanbiedingen: bool = False):
+def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None, own_user_id: Optional[int] = None, all_aanbiedingen: bool = False, alleen_eigen: bool = False):
     with get_cursor() as cur:
+        # NB: lijsten tonen geen zacht-verwijderde items; stats/dashboard tellen ze wél mee
         base = "SELECT id, timestamp, photo_url, photo_url_thumb, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items"
-        if gemeenten:
+        actief = "NOT COALESCE(verwijderd, FALSE)"
+        if alleen_eigen and own_user_id:
+            # Strikt eigen uploads — bedrijfsaccounts mogen niet gemeente-breed meekijken
+            cur.execute(
+                f"{base} WHERE uploaded_by = %s AND {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                (own_user_id, limit, offset),
+            )
+        elif gemeenten:
             if own_user_id:
                 cur.execute(
-                    f"{base} WHERE (gemeente = ANY(%s) OR uploaded_by = %s) ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                    f"{base} WHERE (gemeente = ANY(%s) OR uploaded_by = %s) AND {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
                     (gemeenten, own_user_id, limit, offset),
                 )
             else:
                 cur.execute(
-                    f"{base} WHERE gemeente = ANY(%s) ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                    f"{base} WHERE gemeente = ANY(%s) AND {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
                     (gemeenten, limit, offset),
                 )
         elif gemeente:
             if own_user_id:
                 cur.execute(
-                    f"{base} WHERE (gemeente = %s OR uploaded_by = %s) ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                    f"{base} WHERE (gemeente = %s OR uploaded_by = %s) AND {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
                     (gemeente, own_user_id, limit, offset),
                 )
             else:
                 cur.execute(
-                    f"{base} WHERE gemeente = %s ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                    f"{base} WHERE gemeente = %s AND {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
                     (gemeente, limit, offset),
                 )
         else:
             cur.execute(
-                f"{base} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                f"{base} WHERE {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
                 (limit, offset),
             )
         items = [dict(r) for r in cur.fetchall()]
@@ -564,6 +588,7 @@ def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, 
             cur.execute(
                 f"""SELECT DISTINCT ON (a.item_id) a.item_id, a.id as aanbieding_id,
                        a.status as aanbieding_status, a.created_at as aanbieding_created_at,
+                       a.niet_nodig_reden,
                        COALESCE(u.organisatie, u.username) as aangeboden_door_naam,
                        bdr.naam as bedrijf_naam
                     FROM aanbiedingen a
@@ -580,13 +605,14 @@ def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, 
                     item["aanbieding_id"] = a["aanbieding_id"]
                     item["aanbieding_status"] = a["aanbieding_status"]
                     item["aanbieding_created_at"] = a["aanbieding_created_at"]
+                    item["niet_nodig_reden"] = a.get("niet_nodig_reden")
                     item["aangeboden_door_naam"] = a["aangeboden_door_naam"]
                     item["bedrijf_naam"] = a["bedrijf_naam"]
         elif user_id and items:
             item_ids = [i["id"] for i in items]
             placeholders = ",".join(["%s"] * len(item_ids))
             cur.execute(
-                f"SELECT DISTINCT ON (item_id) item_id, id as aanbieding_id, status as aanbieding_status, created_at as aanbieding_created_at, bedrijf_id FROM aanbiedingen WHERE item_id IN ({placeholders}) AND aangeboden_door = %s ORDER BY item_id, created_at DESC",
+                f"SELECT DISTINCT ON (item_id) item_id, id as aanbieding_id, status as aanbieding_status, created_at as aanbieding_created_at, niet_nodig_reden, bedrijf_id FROM aanbiedingen WHERE item_id IN ({placeholders}) AND aangeboden_door = %s ORDER BY item_id, created_at DESC",
                 item_ids + [user_id],
             )
             aanbiedingen_map = {r["item_id"]: dict(r) for r in cur.fetchall()}
@@ -612,6 +638,7 @@ def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, 
                         item["aanbieding_id"] = a["aanbieding_id"]
                         item["aanbieding_status"] = a["aanbieding_status"]
                         item["aanbieding_created_at"] = a["aanbieding_created_at"]
+                        item["niet_nodig_reden"] = a.get("niet_nodig_reden")
                         item["bedrijf_naam"] = bedrijven_map.get(a["bedrijf_id"])
                         b = bericht_map.get(a["aanbieding_id"])
                         if b:
@@ -632,8 +659,10 @@ def get_item(item_id: int, include_photo: bool = False):
 
 
 def delete_item(item_id: int):
+    # Zacht verwijderen: weg uit lijsten, maar dashboard/stats/netwerk en de
+    # bijbehorende aanbiedingen blijven bestaan (geen cascade meer)
     with get_cursor() as cur:
-        cur.execute("DELETE FROM items WHERE id = %s", (item_id,))
+        cur.execute("UPDATE items SET verwijderd = TRUE WHERE id = %s", (item_id,))
 
 
 def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None):
@@ -708,8 +737,10 @@ def get_bedrijven(gemeente: Optional[str] = None, gemeenten: Optional[list] = No
                 FROM bedrijven b
                 LEFT JOIN bedrijf_categorieen bc ON bc.bedrijf_id = b.id
                 WHERE b.gemeente = ANY(%s)
+                   OR EXISTS (SELECT 1 FROM bedrijf_gemeenten bg
+                              WHERE bg.bedrijf_id = b.id AND bg.gemeente = ANY(%s))
                 GROUP BY b.id ORDER BY b.naam
-            """, (gemeenten,))
+            """, (gemeenten, gemeenten))
         elif gemeente:
             cur.execute("""
                 SELECT b.id, b.naam, b.gemeente, b.contactpersoon, b.email, b.telefoon,
@@ -717,8 +748,10 @@ def get_bedrijven(gemeente: Optional[str] = None, gemeenten: Optional[list] = No
                 FROM bedrijven b
                 LEFT JOIN bedrijf_categorieen bc ON bc.bedrijf_id = b.id
                 WHERE b.gemeente = %s
+                   OR EXISTS (SELECT 1 FROM bedrijf_gemeenten bg
+                              WHERE bg.bedrijf_id = b.id AND bg.gemeente = %s)
                 GROUP BY b.id ORDER BY b.naam
-            """, (gemeente,))
+            """, (gemeente, gemeente))
         else:
             cur.execute("""
                 SELECT b.id, b.naam, b.gemeente, b.contactpersoon, b.email, b.telefoon,
@@ -733,8 +766,11 @@ def get_bedrijven(gemeente: Optional[str] = None, gemeenten: Optional[list] = No
 def get_bedrijf_dashboard(bedrijf_id: int) -> dict:
     """Dashboard voor een bedrijfsaccount: alleen de eigen stromen."""
     with get_cursor() as cur:
+        # 'total' = álles wat aan dit bedrijf is aangeboden (ook geweigerd én
+        #  zacht-verwijderde bron-items) — een item is nu eenmaal aan je aangeboden,
+        #  los van je reactie. matches/openstaand/kg tellen wél op status.
         cur.execute("""
-            SELECT COUNT(*) FILTER (WHERE a.status != 'niet_nodig') AS total,
+            SELECT COUNT(*) AS total,
                    COUNT(*) FILTER (WHERE a.status = 'ophalen') AS matches,
                    COUNT(*) FILTER (WHERE a.status IN ('open', 'beschikbaar')) AS openstaand,
                    COALESCE(SUM(i.gewicht_kg) FILTER (WHERE a.status = 'ophalen'), 0) AS totaal_kg
@@ -745,14 +781,14 @@ def get_bedrijf_dashboard(bedrijf_id: int) -> dict:
         cur.execute("""
             SELECT i.category, COUNT(*) AS count, COALESCE(SUM(i.gewicht_kg), 0) AS kg
             FROM aanbiedingen a JOIN items i ON i.id = a.item_id
-            WHERE a.bedrijf_id = %s AND a.status != 'niet_nodig' AND i.category IS NOT NULL
+            WHERE a.bedrijf_id = %s AND i.category IS NOT NULL
             GROUP BY i.category ORDER BY count DESC
         """, (bedrijf_id,))
         stats["categories"] = [dict(r) for r in cur.fetchall()]
         cur.execute("""
             SELECT i.id, i.ai_label, i.photo_url, i.photo_url_thumb
             FROM aanbiedingen a JOIN items i ON i.id = a.item_id
-            WHERE a.bedrijf_id = %s AND a.status != 'niet_nodig'
+            WHERE a.bedrijf_id = %s
             ORDER BY a.created_at DESC LIMIT 6
         """, (bedrijf_id,))
         recent = [dict(r) for r in cur.fetchall()]
@@ -788,8 +824,9 @@ def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] =
 
         # Ook lokale bedrijven zonder aanbiedingen (koppeling zichtbaar, nog geen verkeer)
         actieve_ids = [b["id"] for b in bedrijven]
-        rest_where = "WHERE NOT (b.id = ANY(%s))" + (" AND b.gemeente = ANY(%s)" if gemeenten else "")
-        rest_params = (actieve_ids, gemeenten) if gemeenten else (actieve_ids,)
+        rest_where = "WHERE NOT (b.id = ANY(%s))" + ((" AND (b.gemeente = ANY(%s) OR EXISTS "
+                     "(SELECT 1 FROM bedrijf_gemeenten bg WHERE bg.bedrijf_id = b.id AND bg.gemeente = ANY(%s)))") if gemeenten else "")
+        rest_params = (actieve_ids, gemeenten, gemeenten) if gemeenten else (actieve_ids,)
         cur.execute(f"""
             SELECT b.id, b.naam, b.gemeente, b.email, b.sector,
                    0 AS aanbieding_count, 0 AS match_count,
@@ -993,17 +1030,23 @@ def get_bedrijven_for_item(gemeente: Optional[str], category: str, gemeenten: Op
                 SELECT b.id, b.naam, b.contactpersoon, b.email, b.telefoon
                 FROM bedrijven b
                 JOIN bedrijf_categorieen bc ON bc.bedrijf_id = b.id
-                WHERE b.gemeente = ANY(%s) AND bc.category = %s
+                WHERE (b.gemeente = ANY(%s)
+                       OR EXISTS (SELECT 1 FROM bedrijf_gemeenten bg
+                                  WHERE bg.bedrijf_id = b.id AND bg.gemeente = ANY(%s)))
+                  AND bc.category = %s
                 ORDER BY b.naam
-            """, (gemeenten, category))
+            """, (gemeenten, gemeenten, category))
         elif gemeente:
             cur.execute("""
                 SELECT b.id, b.naam, b.contactpersoon, b.email, b.telefoon
                 FROM bedrijven b
                 JOIN bedrijf_categorieen bc ON bc.bedrijf_id = b.id
-                WHERE b.gemeente = %s AND bc.category = %s
+                WHERE (b.gemeente = %s
+                       OR EXISTS (SELECT 1 FROM bedrijf_gemeenten bg
+                                  WHERE bg.bedrijf_id = b.id AND bg.gemeente = %s))
+                  AND bc.category = %s
                 ORDER BY b.naam
-            """, (gemeente, category))
+            """, (gemeente, gemeente, category))
         else:
             cur.execute("""
                 SELECT b.id, b.naam, b.contactpersoon, b.email, b.telefoon
@@ -1111,6 +1154,7 @@ def get_items_voor_bedrijf(bedrijf_id: int) -> list:
             FROM items i
             JOIN aanbiedingen a ON a.item_id = i.id AND a.bedrijf_id = %s
             LEFT JOIN users u ON u.id = a.aangeboden_door
+            WHERE NOT COALESCE(i.verwijderd, FALSE)
             ORDER BY i.timestamp DESC
         """, (bedrijf_id,))
         return [dict(r) for r in cur.fetchall()]
@@ -1136,7 +1180,7 @@ def get_aanbiedingen_door_user(user_id: int) -> list:
             FROM aanbiedingen a
             JOIN items i ON i.id = a.item_id
             JOIN bedrijven b ON b.id = a.bedrijf_id
-            WHERE a.aangeboden_door = %s
+            WHERE a.aangeboden_door = %s AND NOT COALESCE(i.verwijderd, FALSE)
             ORDER BY a.created_at DESC
         """, (user_id,))
         return [dict(r) for r in cur.fetchall()]

@@ -47,3 +47,16 @@ def delete(*keys: str):
         r.delete(*keys)
     except Exception:
         pass
+
+
+def delete_pattern(pattern: str):
+    """Verwijder alle keys die matchen (bv. 'items:bedrijf:39:*')."""
+    r = _get()
+    if not r:
+        return
+    try:
+        keys = list(r.scan_iter(match=pattern, count=200))
+        if keys:
+            r.delete(*keys)
+    except Exception:
+        pass

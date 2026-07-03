@@ -62,6 +62,30 @@
       });
     });
 
+    /* ── Liquid glass pil onder de actieve tab ───────────────────────────── */
+    (function () {
+      var bar = document.querySelector('.tabbar');
+      if (!bar || bar.querySelector('.tabbar-pil')) return;
+      var pil = document.createElement('div');
+      pil.className = 'tabbar-pil';
+      bar.prepend(pil);
+      function zet(animeer) {
+        var act = bar.querySelector('.tabbar-btn.active');
+        if (!act) { pil.style.opacity = '0'; return; }
+        pil.style.opacity = '1';
+        // Breedte/hoogte via layout (verandert alleen bij resize); beweging via transform
+        pil.style.width = (act.offsetWidth - 14) + 'px';
+        if (!animeer) pil.style.transition = 'none';
+        pil.style.transform = 'translateX(' + (act.offsetLeft + 7) + 'px)';
+        if (!animeer) requestAnimationFrame(function () { pil.style.transition = ''; });
+      }
+      zet(false);                                            // startpositie zonder animatie
+      bar.addEventListener('click', function () {            // ná de tab-handlers (bubbling)
+        requestAnimationFrame(function () { zet(true); });
+      });
+      window.addEventListener('resize', function () { zet(false); });
+    })();
+
     /* ── List item stagger ───────────────────────────────────────────────── */
     function staggerItems(root) {
       var rows = root.querySelectorAll('.item-row:not([data-staggered])');
@@ -137,4 +161,27 @@
     }
 
   });
+})();
+
+// ── Account-sync ──────────────────────────────────────────────────────────────
+// Wijzigt beheer iemands rol of gemeente-scope, dan werkt de app zichzelf bij
+// zonder dat opnieuw inloggen nodig is (de database is de bron van waarheid).
+(function () {
+  const token = localStorage.getItem("token");
+  if (!token) return;
+  fetch("/api/auth/me", { headers: { "Authorization": "Bearer " + token } })
+    .then(r => (r.ok ? r.json() : null))
+    .then(me => {
+      if (!me) return;
+      const anders = (me.gemeente || "") !== (localStorage.getItem("gemeente") || "") ||
+                     (me.role || "") !== (localStorage.getItem("role") || "");
+      if (!anders) { sessionStorage.removeItem("accSync"); return; }
+      if (sessionStorage.getItem("accSync")) return;   // bescherming tegen reload-lus
+      sessionStorage.setItem("accSync", "1");
+      localStorage.setItem("gemeente", me.gemeente || "");
+      localStorage.setItem("role", me.role || "");
+      if (me.organisatie) localStorage.setItem("organisatie", me.organisatie);
+      location.reload();
+    })
+    .catch(() => {});
 })();

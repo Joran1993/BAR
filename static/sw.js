@@ -35,20 +35,39 @@ self.addEventListener("push", event => {
   const title = data.title || "CIRQO";
   const body  = data.body  || "Nieuw aanbod ontvangen.";
   const url   = data.url   || "/";
-  event.waitUntil(
-    self.registration.showNotification(title, {
+  event.waitUntil((async () => {
+    await self.registration.showNotification(title, {
       body,
       icon: "/static/icon-cirqo-192.png",
       badge: "/static/icon-cirqo-192.png",
       data: { url },
-    })
-  );
+    });
+    // Open app-vensters direct laten verversen (anders wacht de lijst op de poll)
+    const vensters = await clients.matchAll({ type: "window", includeUncontrolled: true });
+    vensters.forEach(v => v.postMessage({ type: "push" }));
+    // Badge op het app-icoon ophogen (beginscherm-bolletje). De app zet hem
+    // bij openen weer op het werkelijke aantal (kv 'badge' in IndexedDB).
+    try {
+      const huidig = (await _idbGet("badge")) || 0;
+      const nieuw = Number(huidig) + 1;
+      await _idbPut("badge", nieuw);
+      if (self.navigator.setAppBadge) await self.navigator.setAppBadge(nieuw);
+    } catch (e) { /* best-effort */ }
+  })());
 });
 
 self.addEventListener("notificationclick", event => {
   event.notification.close();
   const url = event.notification.data?.url || "/";
-  event.waitUntil(clients.openWindow(url));
+  event.waitUntil((async () => {
+    const vensters = await clients.matchAll({ type: "window", includeUncontrolled: true });
+    if (vensters.length) {
+      vensters[0].focus();
+      vensters[0].postMessage({ type: "push" });
+      return;
+    }
+    await clients.openWindow(url);
+  })());
 });
 
 // ── Automatische vernieuwing van de push-subscription ──────────────────────────
@@ -68,6 +87,22 @@ function _idbGet(key) {
       };
       o.onerror = () => res(null);
     } catch (e) { res(null); }
+  });
+}
+
+function _idbPut(key, val) {
+  return new Promise(res => {
+    try {
+      const o = indexedDB.open("cirqo-push", 1);
+      o.onupgradeneeded = () => o.result.createObjectStore("kv");
+      o.onsuccess = () => {
+        const tx = o.result.transaction("kv", "readwrite");
+        tx.objectStore("kv").put(val, key);
+        tx.oncomplete = () => res();
+        tx.onerror = () => res();
+      };
+      o.onerror = () => res();
+    } catch (e) { res(); }
   });
 }
 

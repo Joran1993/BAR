@@ -12,7 +12,7 @@ from typing import Optional, List
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -29,15 +29,40 @@ security = HTTPBearer(auto_error=False)
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
+_USER_VERS_CACHE: dict = {}   # user_id → (timestamp, db-row) — max 60s oud
+
+
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     if not credentials:
         raise HTTPException(status_code=401, detail="Niet ingelogd")
     payload = auth_module.decode_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Sessie verlopen")
-    # Role en gemeente direct uit token — geen DB-query nodig
+    uid = int(payload["sub"])
+    # Rol/gemeente/bedrijf vers uit de DB (60s cache): accountwijzigingen werken
+    # direct door — niemand hoeft opnieuw in te loggen na een scope-aanpassing
+    import time as _t
+    nu = _t.time()
+    hit = _USER_VERS_CACHE.get(uid)
+    if not hit or nu - hit[0] > 60:
+        try:
+            hit = (nu, db.get_user_by_id(uid))
+        except Exception:
+            hit = (nu, None)   # DB even niet bereikbaar → val terug op token
+        _USER_VERS_CACHE[uid] = hit
+        if len(_USER_VERS_CACHE) > 5000:
+            _USER_VERS_CACHE.clear()
+    row = hit[1]
+    if row:
+        return {
+            "id": uid,
+            "username": row.get("username") or payload.get("username", ""),
+            "role": row.get("role") or payload.get("role", "user"),
+            "gemeente": row.get("gemeente") or "",
+            "bedrijf_id": row.get("bedrijf_id") if row.get("bedrijf_id") is not None else payload.get("bedrijf_id"),
+        }
     return {
-        "id": int(payload["sub"]),
+        "id": uid,
         "username": payload.get("username", ""),
         "role": payload.get("role", "user"),
         "gemeente": payload.get("gemeente", "") or "",
@@ -113,6 +138,16 @@ ORGANISATIE_GEMEENTEN = {
     "waardlanden": WAARDLANDEN_GEMEENTEN,
     "rwm":         RWM_GEMEENTEN,
 }
+# Milieustraten per organisatie: naam → gemeente waar de locatie staat
+# (items krijgen bij het scannen de gemeente van de milieustraat via GPS/account)
+ORGANISATIE_MILIEUSTRATEN = {
+    "waardlanden": [
+        {"naam": "Milieustraat Gorinchem",              "gemeente": "Gorinchem"},
+        {"naam": "Milieustraat Hardinxveld-Giessendam", "gemeente": "Hardinxveld-Giessendam"},
+        {"naam": "Milieustraat Leerdam",                "gemeente": "Vijfheerenlanden"},
+        {"naam": "Ecopark Groot-Ammers",                "gemeente": "Molenlanden"},
+    ],
+}
 
 
 def _gemeente_filter(user: dict, gemeente: Optional[str] = None) -> Optional[str]:
@@ -146,6 +181,30 @@ def _gemeenten_expand(gemeente: Optional[str]) -> Optional[list]:
     return None
 
 
+def _invalideer_bedrijf_items(bedrijf_id) -> None:
+    """Leeg de gecachete /api/items én het dashboard van dit bedrijf."""
+    if bedrijf_id:
+        cache_module.delete_pattern(f"items:bedrijf2:{bedrijf_id}:*")
+        cache_module.delete(f"dashboard-bedrijf:{bedrijf_id}")
+
+
+def _invalideer_item_caches(item_id: int, item: Optional[dict] = None) -> None:
+    """Leeg de items-caches van iedereen die dit item in zijn lijst kan hebben:
+    de uploader én alle bedrijven waaraan het is aangeboden. Nodig omdat de
+    items-cache lang leeft en puur op gerichte invalidatie leunt."""
+    try:
+        if item is None:
+            item = db.get_item(item_id)
+        if item and item.get("uploaded_by"):
+            cache_module.delete_pattern(f"items:*:0:{item['uploaded_by']}")
+        with db.get_cursor() as cur:
+            cur.execute("SELECT DISTINCT bedrijf_id FROM aanbiedingen WHERE item_id = %s", (item_id,))
+            for row in cur.fetchall():
+                _invalideer_bedrijf_items(row["bedrijf_id"])
+    except Exception as e:
+        print(f"[cache] item-invalidatie {item_id} mislukt: {e}")
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -176,9 +235,11 @@ def _migrate_admin_to_superadmin():
 
 # Ringtweelijst e-mail → bedrijf_id
 _RINGTWO_EMAIL_BEDRIJF = {
-    "info@kringloopgorinchem.nl": 20,   # Kringloop Gorinchem
-    "daan@opwaarts.nu":           38,   # Opwaarts (Almere)
-    "martin@behoudenvaart.net":   23,   # SitY academie
+    "info@kringloopgorinchem.nl":    20,   # Kringloop Gorinchem
+    "kantoor@kringloopgorinchem.nl": 20,   # Kringloop Gorinchem (tweede adres)
+    "daan@opwaarts.nu":              38,   # Opwaarts (Almere)
+    "martin@behoudenvaart.net":      23,   # SitY academie
+    "info@sityacademy.nl":           23,   # SitY academie (Firebase-account)
 }
 
 # Gemeente → standaard afnemer als er geen Ringtweelijst is
@@ -222,20 +283,43 @@ def _backup_firestore_docs(docs: list):
         print(f"[firestore-backup] Fout: {e}")
 
 
+def _verklein_foto(data: bytes, max_px: int = 1568) -> bytes:
+    """Schaal een foto terug tot max_px aan de langste zijde (JPEG).
+    Faalt de verwerking, dan komt het origineel terug (best-effort)."""
+    try:
+        import io
+        from PIL import Image
+        img = Image.open(io.BytesIO(data))
+        if max(img.size) <= max_px:
+            return data
+        img.thumbnail((max_px, max_px))
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, format="JPEG", quality=82)
+        return buf.getvalue()
+    except Exception:
+        return data
+
+
 def _estimate_weight_background(item_id: int, photo_url: str):
     """Download foto en schat gewicht via AI — draait in achtergrond-thread."""
     def _run():
         try:
-            import urllib.request
             import base64
-            with urllib.request.urlopen(photo_url, timeout=15) as r:
-                img_b64 = base64.b64encode(r.read()).decode()
+            import httpx
+            r = httpx.get(photo_url, timeout=20, follow_redirects=True)
+            r.raise_for_status()
+            # Foto's uit de app-kant kunnen >8000px zijn — de AI-API weigert die.
+            # Verklein naar max 1568px (optimale grootte voor beeldanalyse).
+            foto_bytes = _verklein_foto(r.content)
+            img_b64 = base64.b64encode(foto_bytes).decode()
             _, _, gewicht_kg, _, _ = ai_module.analyse_photo(img_b64)
             if gewicht_kg is not None:
                 with db.get_cursor() as cur:
                     cur.execute("UPDATE items SET gewicht_kg = %s WHERE id = %s AND gewicht_kg IS NULL",
                                 (gewicht_kg, item_id))
                 print(f"[gewicht] Item {item_id}: {gewicht_kg} kg")
+            else:
+                print(f"[gewicht] Item {item_id}: AI gaf geen gewicht terug")
         except Exception as e:
             print(f"[gewicht] Item {item_id} fout: {e}")
     import threading
@@ -539,6 +623,11 @@ def _verwerk_ophaalverzoek_doc(d: dict) -> str:
             if existing["status"] == status:
                 return "unchanged"
             cur.execute("UPDATE aanbiedingen SET status=%s WHERE id=%s", (status, existing["id"]))
+            _invalideer_bedrijf_items(bedrijf_id)
+            cur.execute("SELECT uploaded_by FROM items WHERE id=%s", (item_id,))
+            _u = cur.fetchone()
+            if _u and _u["uploaded_by"]:
+                cache_module.delete_pattern(f"items:*:0:{_u['uploaded_by']}")
             return "updated"
         aangemaakt = d.get("Datumaangemaakt") or d.get("datumaangemaakt")
         ts = aangemaakt.isoformat() if hasattr(aangemaakt, "isoformat") else None
@@ -546,6 +635,11 @@ def _verwerk_ophaalverzoek_doc(d: dict) -> str:
             "INSERT INTO aanbiedingen (item_id, bedrijf_id, status, created_at) VALUES (%s,%s,%s,%s)",
             (item_id, bedrijf_id, status, ts)
         )
+        _invalideer_bedrijf_items(bedrijf_id)
+        cur.execute("SELECT uploaded_by FROM items WHERE id=%s", (item_id,))
+        _u = cur.fetchone()
+        if _u and _u["uploaded_by"]:
+            cache_module.delete_pattern(f"items:*:0:{_u['uploaded_by']}")
         return "inserted"
 
 
@@ -657,6 +751,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=()"
+        # API-responses NOOIT laten cachen door de browser: zonder deze header
+        # cachet iOS/Safari heuristisch en blijven lijsten minutenlang oud
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
@@ -1081,18 +1179,28 @@ async def me(user=Depends(get_current_user)):
 async def list_gemeenten(user=Depends(get_current_user)):
     if DEFAULT_BRAND == "rwm":
         return RWM_GEMEENTEN
-    return db.get_gemeenten()
+    # Wijzigt zelden (alleen bij accountbeheer) — 5 min cache scheelt een DB-call
+    # in de drukke opstart-burst van de app
+    cached = cache_module.get("gemeenten:all")
+    if cached is not None:
+        return cached
+    result = db.get_gemeenten()
+    cache_module.set("gemeenten:all", result, ttl=300)
+    return result
 
 
 @app.get("/api/mijn-gemeenten")
 async def mijn_gemeenten(user=Depends(get_current_user)):
-    """Gemeenten binnen de scope van de ingelogde gebruiker (voor de dashboard-switcher)."""
+    """Scope van de ingelogde gebruiker voor de dashboard-switcher.
+    Geeft {gemeenten: [...], milieustraten: [{naam, gemeente}, ...]|null} terug —
+    organisaties met milieustraten filteren daarop i.p.v. op kale gemeenten."""
     g = user.get("gemeente") or ""
     if g in ORGANISATIE_GEMEENTEN:
-        return ORGANISATIE_GEMEENTEN[g]
+        return {"gemeenten": ORGANISATIE_GEMEENTEN[g],
+                "milieustraten": ORGANISATIE_MILIEUSTRATEN.get(g)}
     if user["role"] == "superadmin":
-        return db.get_gemeenten()
-    return [g] if g else []
+        return {"gemeenten": db.get_gemeenten(), "milieustraten": None}
+    return {"gemeenten": [g] if g else [], "milieustraten": None}
 
 
 @app.get("/api/milieustraten")
@@ -1183,8 +1291,13 @@ async def change_gemeente(
 ):
     if user["id"] != user_id:
         raise HTTPException(status_code=403, detail="Geen rechten")
+    # Organisatiescope (bv. 'waardlanden') is beheer-domein: een org-account mag
+    # zichzelf niet naar één gemeente versmallen (zelf-uitsluiting)
+    if (user.get("gemeente") or "") in ORGANISATIE_GEMEENTEN and user["role"] != "superadmin":
+        raise HTTPException(status_code=403, detail="Je scope wordt centraal beheerd — vraag de beheerder")
     with db.get_cursor() as cur:
         cur.execute("UPDATE users SET gemeente = %s WHERE id = %s", (gemeente.strip(), user_id))
+    _USER_VERS_CACHE.pop(user_id, None)   # scope-wijziging direct zichtbaar
     new_token = auth_module.create_token(
         user["id"], user["username"], user["role"],
         gemeente.strip(), user.get("bedrijf_id")
@@ -1262,6 +1375,9 @@ async def bedrijven_voor_scan(
 ):
     gemeenten = _gemeenten_expand(gemeente)
     alle = db.get_bedrijven(None if gemeenten else gemeente, gemeenten=gemeenten)
+    # Eigen bedrijf niet in de aanbiedlijst — aan jezelf aanbieden is ruis
+    if user.get("bedrijf_id"):
+        alle = [b for b in alle if b["id"] != user["bedrijf_id"]]
     if category:
         match_ids = {b["id"] for b in db.get_bedrijven_for_item(None if gemeenten else gemeente, category, gemeenten=gemeenten)}
         if not match_ids:
@@ -1353,6 +1469,8 @@ async def create_aanbieding(
     gemeenten = _gemeenten_expand(gemeente)
     cache_key = f"items:{gemeenten or gemeente}:0:{user['id']}"
     cache_module.delete(cache_key, f"items:None:0:{user['id']}")
+    _invalideer_bedrijf_items(bedrijf_id)               # ontvangend bedrijf ziet nieuw aanbod
+    _invalideer_bedrijf_items(user.get("bedrijf_id"))   # aanbieder-bedrijf: eigen item nu 'aangeboden'
 
     # Push op de achtergrond — vertraagt het response niet
     async def _stuur_bedrijf_push():
@@ -1404,6 +1522,9 @@ async def create_aanbiedingen_bulk(
     gemeenten = _gemeenten_expand(gemeente)
     cache_key = f"items:{gemeenten or gemeente}:0:{user['id']}"
     cache_module.delete(cache_key, f"items:None:0:{user['id']}")
+    for _bid in bedrijf_ids:
+        _invalideer_bedrijf_items(int(_bid))            # elk ontvangend bedrijf
+    _invalideer_bedrijf_items(user.get("bedrijf_id"))   # aanbieder-bedrijf
 
     async def _stuur_bulk_push():
         item = db.get_item(item_id)
@@ -1503,14 +1624,31 @@ async def mijn_aanbiedingen(
 
 
 @app.patch("/api/mijn-aanbiedingen/{aanbieding_id}")
-async def update_mijn_aanbieding(aanbieding_id: int, status: str = Form(...),
+async def update_mijn_aanbieding(aanbieding_id: int, status: Optional[str] = Form(None),
+                                  reden: Optional[str] = Form(None),
                                   user=Depends(get_current_user)):
     if not user.get("bedrijf_id"):
         raise HTTPException(status_code=403)
+    # Eigendomscheck: alleen aanbiedingen aan het eigen bedrijf zijn muteerbaar
+    with db.get_cursor() as cur:
+        cur.execute("SELECT 1 FROM aanbiedingen WHERE id = %s AND bedrijf_id = %s",
+                    (aanbieding_id, user["bedrijf_id"]))
+        if not cur.fetchone():
+            raise HTTPException(status_code=403, detail="Geen rechten op deze aanbieding")
+    # Optionele reden bij 'niet nodig' (losse vervolg-call vanuit de reden-chips)
+    if reden is not None:
+        with db.get_cursor() as cur:
+            cur.execute("UPDATE aanbiedingen SET niet_nodig_reden = %s WHERE id = %s",
+                        (reden.strip()[:120], aanbieding_id))
+        if not status:
+            return {"ok": True}
+    if not status:
+        raise HTTPException(status_code=400, detail="status of reden vereist")
     if status not in ("ophalen", "niet_nodig"):
         raise HTTPException(status_code=400, detail="Ongeldige status")
     db.update_aanbieding_status(aanbieding_id, status)
     fs.update_aanbieding_status(aanbieding_id, status)
+    _invalideer_bedrijf_items(user.get("bedrijf_id"))   # reagerend bedrijf: eigen lijststatus wijzigt
 
     async def _afhandel():
         with db.get_cursor() as cur:
@@ -1520,6 +1658,8 @@ async def update_mijn_aanbieding(aanbieding_id: int, status: str = Form(...),
             return
         offerer_id = row["aangeboden_door"]
         item_id    = row["item_id"]
+        # Aanbieder-lijst direct vers: statuswissel zichtbaar in 'Mijn reacties'
+        cache_module.delete_pattern(f"items:*:0:{offerer_id}")
         item       = db.get_item(item_id)
         label      = (item or {}).get("ai_label") or "materiaal"
         bedrijf_naam = user.get("username", "het bedrijf")
@@ -1534,6 +1674,7 @@ async def update_mijn_aanbieding(aanbieding_id: int, status: str = Form(...),
                 if volgend:
                     nieuw_id = db.create_aanbieding(item_id, volgend["id"], user_id=offerer_id)
                     cache_module.delete(f"items:{gemeente}:0:{offerer_id}", f"items:None:0:{offerer_id}")
+                    _invalideer_bedrijf_items(volgend["id"])   # doorgestuurd bedrijf
                     # Push naar aanbieder: doorgestuurd
                     subs = db.get_push_subscriptions_voor_user(offerer_id)
                     for sub in subs:
@@ -1598,6 +1739,12 @@ async def stuur_bericht(
 
     naam = localStorage_naam = user.get("username", "onbekend")
     bericht = db.stuur_bericht(aanbieding_id, user["id"], tekst)
+
+    # Items-caches van beide partijen verversen: bericht_count/last_bericht_at
+    # zitten in de lijst (ongelezen-badge) en in de client-fingerprint
+    _invalideer_bedrijf_items(info.get("bedrijf_id"))
+    if info.get("aangeboden_door"):
+        cache_module.delete_pattern(f"items:*:0:{info['aangeboden_door']}")
 
     # Push naar de andere partij op de achtergrond
     async def _push_bericht():
@@ -1756,10 +1903,13 @@ async def upload(
             f"items:None:0:{user['id']}",
             f"stats:{gemeente}", "stats:None"
         )
+        _invalideer_bedrijf_items(user.get("bedrijf_id"))   # scanner-bedrijf: eigen nieuw item
         # Bedrijven ophalen op basis van account-gemeente (niet GPS), org-expanded
         acct_gemeente = user.get("gemeente") or None
         acct_gemeenten = _gemeenten_expand(acct_gemeente)
         alle_bedrijven = db.get_bedrijven(None if acct_gemeenten else acct_gemeente, gemeenten=acct_gemeenten)
+        if user.get("bedrijf_id"):
+            alle_bedrijven = [b for b in alle_bedrijven if b["id"] != user["bedrijf_id"]]
         if final_category:
             match_ids = {b["id"] for b in db.get_bedrijven_for_item(acct_gemeente, final_category, gemeenten=acct_gemeenten)}
             if not match_ids:
@@ -1787,16 +1937,27 @@ async def upload(
 async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] = None, user=Depends(get_current_user)):
     bedrijf_id = user.get("bedrijf_id")
     if bedrijf_id:
+        # Per (bedrijf, gebruiker): 'ontvangen' is gedeeld binnen het bedrijf,
+        # 'eigen' scans zijn per gebruiker. Cache dus op beide. Invalidatie gebeurt
+        # gericht bij elke mutatie (aanbieding maken/status/scan) via
+        # _invalideer_bedrijf_items — de 60s-TTL is enkel een vangnet.
+        bedrijf_cache_key = f"items:bedrijf2:{bedrijf_id}:{user['id']}"
+        cached = cache_module.get(bedrijf_cache_key)
+        if cached is not None:
+            return cached
         # Items aangeboden ÁÁN dit bedrijf
         ontvangen = db.get_items_voor_bedrijf(bedrijf_id)
-        # Items die het bedrijf zelf gescand/aangeboden heeft (als scanner)
+        # Plus strikt de éígen scans van dit account — nooit gemeente-breed:
+        # een afnemer hoort niet te zien wat anderen scannen of aangeboden krijgen
         user_id = user["id"]
-        g = user.get("gemeente") or None
-        gm = _gemeenten_expand(g)
-        eigen = db.get_items(200, 0, None if gm else g, user_id=user_id, gemeenten=gm, own_user_id=user_id)
+        eigen = db.get_items(200, 0, None, user_id=user_id, own_user_id=user_id, alleen_eigen=True)
         ontvangen_ids = {i["id"] for i in ontvangen}
         extra = [i for i in eigen if i["id"] not in ontvangen_ids]
-        return ontvangen + extra
+        result = ontvangen + extra
+        # Lange TTL is veilig: élk mutatiepunt invalideert gericht
+        # (_invalideer_bedrijf_items / _invalideer_item_caches)
+        cache_module.set(bedrijf_cache_key, result, ttl=3600)
+        return result
     gemeente = _gemeente_filter(user, gemeente)
     gemeenten = _gemeenten_expand(gemeente)
     user_id = user["id"]
@@ -1808,7 +1969,8 @@ async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] 
     if cached is not None:
         return cached
     items = db.get_items(limit, offset, None if gemeenten else gemeente, user_id=user_id, gemeenten=gemeenten, own_user_id=own_user_id, all_aanbiedingen=is_admin)
-    cache_module.set(cache_key, items, ttl=90)
+    # Lange TTL is veilig: mutaties invalideren gericht (o.a. items:*:0:{user_id})
+    cache_module.set(cache_key, items, ttl=3600)
     return items
 
 
@@ -1842,6 +2004,9 @@ async def update_aanbieding_status_admin(
         raise HTTPException(status_code=403, detail="Geen rechten voor deze aanbieding")
     db.update_aanbieding_status(aanbieding_id, status)
     fs.update_aanbieding_status(aanbieding_id, status)
+    _invalideer_bedrijf_items(info.get("bedrijf_id"))
+    if info.get("aangeboden_door"):
+        cache_module.delete_pattern(f"items:*:0:{info['aangeboden_door']}")
     return {"ok": True}
 
 
@@ -1861,6 +2026,9 @@ async def update_item(
         raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
     db.update_item(item_id, manual_note, category, ai_detail=ai_detail, ai_label=ai_label)
     fs.sync_item(db.get_item(item_id))   # aangepaste titel/beschrijving ook naar de app-kant
+    _invalideer_item_caches(item_id, item)
+    cache_module.delete(f"items:{_gemeenten_expand(user.get('gemeente')) or user.get('gemeente')}:0:{user['id']}",
+                        f"items:None:0:{user['id']}")
     return {"ok": True}
 
 
@@ -1871,10 +2039,12 @@ async def delete_item(item_id: int, user=Depends(get_current_user)):
         raise HTTPException(status_code=404)
     if not _mag_item_beheren(user, item):
         raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
+    _invalideer_item_caches(item_id, item)   # vóór de delete (aanbiedingen-lookup)
     db.delete_item(item_id)
     fs.delete_item(item_id)
     gemeente = _gemeente_filter(user)
     cache_module.delete(f"items:{gemeente}:0:{user['id']}", f"items:None:0:{user['id']}", f"stats:{gemeente}", "stats:None")
+    _invalideer_bedrijf_items(user.get("bedrijf_id"))
     return {"ok": True}
 
 
@@ -2141,7 +2311,9 @@ async def debug_brand(request: Request):
 
 @app.get("/bedrijf", response_class=HTMLResponse)
 async def bedrijf_page(request: Request):
-    return _render_html("static/bedrijf.html", _detect_brand(request))
+    # Kale pagina zonder token is een pilot-restant → naar de normale login.
+    # De token-variant hieronder blijft werken (oude partnerlinks).
+    return RedirectResponse("/login", status_code=302)
 
 
 @app.get("/bedrijf/{token}", response_class=HTMLResponse)
@@ -2454,12 +2626,12 @@ async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int =
         cur.execute(f"""
             SELECT id, ai_label, ai_detail, photo_url, photo_url_thumb, gewicht_kg, category
             FROM items
-            WHERE {gem_filter} AND photo_url IS NOT NULL AND photo_url != ''
+            WHERE {gem_filter} AND photo_url IS NOT NULL AND photo_url != '' AND NOT COALESCE(verwijderd, FALSE)
             ORDER BY timestamp DESC
             LIMIT %s OFFSET %s
         """, (*gem_params, limit, offset))
         rows = [dict(r) for r in cur.fetchall()]
-        cur.execute(f"SELECT COUNT(*) AS cnt FROM items WHERE {gem_filter} AND photo_url IS NOT NULL AND photo_url != ''", gem_params)
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM items WHERE {gem_filter} AND photo_url IS NOT NULL AND photo_url != '' AND NOT COALESCE(verwijderd, FALSE)", gem_params)
         total = cur.fetchone()["cnt"]
         return {"items": rows, "total": total, "offset": offset, "limit": limit}
 

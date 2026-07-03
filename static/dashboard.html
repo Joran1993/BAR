@@ -36,7 +36,7 @@
                   font-family: 'Space Grotesk', sans-serif; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em;
                   text-transform: uppercase; cursor: pointer; }
     .tabbar-btn small { font-size: inherit; }
-    .tabbar-btn.active { color: var(--orange, #86bc97); border-top-color: var(--orange, #86bc97); }
+    .tabbar-btn.active { color: var(--orange, #86bc97); }
 
     /* Embed-modus: dashboard draait als tabblad ín de app (iframe) — eigen
        navigatie/logo verbergen, de app eromheen levert die al */
@@ -52,6 +52,15 @@
 
     .stat-kaart { background: #fff; border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
     .stat-waarde { font-family: 'Outfit', sans-serif; font-size: 2.2rem; font-weight: 900; color: var(--orange, #e67026); line-height: 1; }
+
+    /* Kaarten komen zacht gestaggerd binnen (alleen transform/opacity) */
+    @keyframes dashIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .stat-kaart { animation: dashIn .3s ease-out backwards; }
+    .stat-kaart:nth-child(2) { animation-delay: .05s; }
+    .stat-kaart:nth-child(3) { animation-delay: .1s; }
+    .stat-kaart:nth-child(4) { animation-delay: .15s; }
+    .impact-banner { animation: dashIn .32s ease-out .2s backwards; }
+    @media (prefers-reduced-motion: reduce) { .stat-kaart, .impact-banner { animation: none; } }
 
     /* Laad-indicatie: dunne lopende balk bovenin + shimmer op de cijfers */
     .laadbalk { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 60;
@@ -236,20 +245,32 @@
       })(t0);
     }
 
-    // Gemeente-switcher voor (super)admins met meerdere gemeenten in hun scope
+    // Switcher voor (super)admins: milieustraten als de organisatie die heeft, anders gemeenten
+    let _msNamen = {};   // gemeente → milieustraatnaam (voor labels in kop en netwerk-hub)
     async function laadGemeenteSwitch() {
       const role = localStorage.getItem('role');
       if (role !== 'admin' && role !== 'superadmin') return;
       try {
         const res = await fetch('/api/mijn-gemeenten', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } });
         if (!res.ok) return;
-        const lijst = await res.json();
-        if (!Array.isArray(lijst) || lijst.length < 2) return;
+        const d = await res.json();
+        const ms = d.milieustraten;
         const sel = document.getElementById('gem-switch');
-        sel.innerHTML = '<option value="">Alle gemeenten</option>' +
-          lijst.map(g => `<option value="${esc(g)}"${g === urlGemeente ? ' selected' : ''}>${esc(g)}</option>`).join('');
+        if (ms && ms.length) {
+          _msNamen = Object.fromEntries(ms.map(m => [m.gemeente, m.naam]));
+          sel.innerHTML = '<option value="">Alle milieustraten</option>' +
+            ms.map(m => `<option value="${esc(m.gemeente)}"${m.gemeente === urlGemeente ? ' selected' : ''}>${esc(m.naam)}</option>`).join('');
+          if (_msNamen[urlGemeente]) document.getElementById('hdr-sub').textContent = _msNamen[urlGemeente];
+          else if (!urlGemeente) document.getElementById('hdr-sub').textContent = 'Alle milieustraten · Waardlanden';
+        } else {
+          const lijst = d.gemeenten || [];
+          if (lijst.length < 2) return;
+          sel.innerHTML = '<option value="">Alle gemeenten</option>' +
+            lijst.map(g => `<option value="${esc(g)}"${g === urlGemeente ? ' selected' : ''}>${esc(g)}</option>`).join('');
+        }
         sel.style.display = '';
-        sel.onchange = () => location.href = '/dashboard' + (sel.value ? '?gemeente=' + encodeURIComponent(sel.value) : '');
+        sel.onchange = () => location.href = location.pathname + (sel.value ? '?gemeente=' + encodeURIComponent(sel.value) : '')
+          + (location.search.includes('embed=1') ? (sel.value ? '&' : '?') + 'embed=1' : '');
       } catch (e) {}
     }
     laadGemeenteSwitch();
@@ -682,7 +703,9 @@
           `</g>`;
       });
 
-      const hubNaam = (hub.naam || '').length > 24 ? hub.naam.slice(0, 23) + '…' : (hub.naam || '');
+      let hubBron = _msNamen[hub.naam] ? _msNamen[hub.naam].replace(/^Milieustraat /, '') : (hub.naam || '');
+      if (hub.naam === 'waardlanden' || (!gemeente && Object.keys(_msNamen).length)) hubBron = 'Alle milieustraten';
+      const hubNaam = hubBron.length > 24 ? hubBron.slice(0, 23) + '…' : hubBron;
       const hubNode = `<g class="nw-hub">` +
         `<circle cx="${cx}" cy="${cy}" r="${hubR + 6}" fill="none" stroke="#e67026" stroke-width="1.5" stroke-opacity="0.35">` +
           `<animate attributeName="r" values="${hubR + 6};${hubR + 13};${hubR + 6}" dur="3.2s" repeatCount="indefinite"/>` +

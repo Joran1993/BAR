@@ -16,6 +16,7 @@ document.documentElement.style.visibility = '';
 
 async function apiFetch(url, opts = {}) {
   const res = await fetch(url, {
+    cache: "no-store",   // nooit de browser-HTTP-cache: lijsten moeten live zijn
     ...opts,
     headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) }
   });
@@ -89,12 +90,50 @@ document.querySelectorAll(".tabbar-btn").forEach(btn => {
 // ── Sync ───────────────────────────────────────────────────────────────────────
 let _lastItemsJson = "";
 let _syncInFlight  = false;
+const _ITEMS_CACHE_KEY = `cirqo_items_v1_${_userId}`;
 
 function _listTabActive() {
   return document.getElementById("tab-list")?.classList.contains("active");
 }
 
 let _itemsGeladen = false;   // pas na de eerste succesvolle fetch "Geen items" tonen
+
+// Vingerafdruk die álle zichtbare wijzigingen dekt: nieuwe items, statuswissels,
+// nieuwe reacties én nieuwe chatberichten. (Voorheen alleen aantal+eerste+laatste
+// id — dan miste een aanbieding/status op een bestaand item de update volledig.)
+function _itemsFingerprint(arr) {
+  return arr.map(i =>
+    `${i.id}:${i.aanbieding_id || 0}:${i.aanbieding_status || ""}:${i.bericht_count || 0}:${i.last_bericht_at || ""}`
+  ).join("|");
+}
+
+// Stale-while-revalidate: toon direct de laatst bekende lijst uit localStorage,
+// zodat het openen van de app/aanbodtab een splitsecond voelt. Daarna revalideert
+// syncItems op de achtergrond en werkt bij zodra er iets écht wijzigt.
+function _laadItemsUitCache() {
+  try {
+    const raw = localStorage.getItem(_ITEMS_CACHE_KEY);
+    if (!raw) return false;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr) || !arr.length) return false;
+    allItems = arr;
+    _itemsGeladen = true;
+    _lastItemsJson = _itemsFingerprint(arr);
+    _updateAanbodTeller();
+    if (_isAdmin) _vulGemeenteDropdown();
+    if (_listTabActive()) renderItems();
+    return true;
+  } catch { return false; }
+}
+
+// Houd de lokale cache in sync na optimistische wijzigingen (verwijderen/aanbieden),
+// zodat een net-gewijzigd item niet terugknippert bij snel heropenen.
+function _bewaarItemsCache() {
+  try {
+    localStorage.setItem(_ITEMS_CACHE_KEY, JSON.stringify(allItems));
+    _lastItemsJson = _itemsFingerprint(allItems);
+  } catch {}
+}
 
 async function syncItems() {
   if (_syncInFlight) return;
@@ -108,10 +147,12 @@ async function syncItems() {
     const nieuw = await res.json();
     const eersteKeer = !_itemsGeladen;
     _itemsGeladen = true;
-    const hash = `${nieuw.length}_${nieuw[0]?.id || 0}_${nieuw[nieuw.length - 1]?.id || 0}`;
+    const hash = _itemsFingerprint(nieuw);
+    try { localStorage.setItem(_ITEMS_CACHE_KEY, JSON.stringify(nieuw)); } catch {}
     if (hash === _lastItemsJson && !eersteKeer) return;
     _lastItemsJson = hash;
     allItems = nieuw;
+    _updateAanbodTeller();
     if (_isAdmin) _vulGemeenteDropdown();
     if (_listTabActive()) renderItems();
   } finally {
@@ -175,6 +216,14 @@ function _vulMilieustraatSelect(sel, gemeente, huidig) {
   if (lijst.length === 1) sel.value = lijst[0]; // auto-select als er maar 1 is
 }
 
+// Gemeenten/milieustraten zijn alléén nodig voor het accountpaneel — lazy laden,
+// zodat de items-sync bij het opstarten nergens op hoeft te wachten.
+let _gemeentenPromise = null;
+function _zorgGemeentenGeladen() {
+  if (!_gemeentenPromise) _gemeentenPromise = laadGemeenten();
+  return _gemeentenPromise;
+}
+
 async function laadGemeenten() {
   const [gemRes, milRes] = await Promise.all([
     apiFetch("/api/gemeenten"),
@@ -187,15 +236,39 @@ async function laadGemeenten() {
   // (De gemeente-kiezer in de scan-flow is verwijderd: bedrijven volgen de
   //  accountscope; koppeling bedrijf↔gemeente wordt centraal beheerd.)
 
-  // ── Gebruikerspaneel selects ─────────────────────────────────────────────
+  // ── Gebruikerspaneel: gemeente-keuze alleen binnen de eigen scope.
+  //    Organisatie-accounts (meerdere gemeenten/milieustraten) kunnen hun scope
+  //    niet zelf wijzigen — die wordt centraal beheerd (vast label i.p.v. keuze).
   const upGem = document.getElementById("up-gemeente");
   if (upGem) {
-    upGem.innerHTML = '<option value="">— Selecteer gemeente —</option>' +
-      _allGemeenten.map(g => `<option value="${_esc(g)}">${_esc(g)}</option>`).join("");
-    upGem.addEventListener("change", function () {
+    let scopeGem = _allGemeenten, orgScope = false, orgLabel = "";
+    try {
+      const mg = await apiFetch("/api/mijn-gemeenten");
+      if (mg && mg.ok) {
+        const d = await mg.json();
+        if (Array.isArray(d.gemeenten) && d.gemeenten.length) scopeGem = d.gemeenten;
+        if (d.milieustraten || (d.gemeenten || []).length > 1) {
+          orgScope = _role !== "superadmin";
+          orgLabel = (localStorage.getItem("organisatie") || "Organisatie") +
+            (d.milieustraten ? ` — alle ${d.milieustraten.length} milieustraten` : " — alle gemeenten");
+        }
+      }
+    } catch (e) {}
+    if (orgScope) {
+      const vast = document.createElement("div");
+      vast.style.cssText = "padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-size:0.88rem;color:var(--muted);";
+      vast.textContent = orgLabel;
+      upGem.replaceWith(vast);
       const upMil = document.getElementById("up-milieustraat");
-      if (upMil) _vulMilieustraatSelect(upMil, this.value, "");
-    });
+      if (upMil) upMil.style.display = "none";
+    } else {
+      upGem.innerHTML = '<option value="">— Selecteer gemeente —</option>' +
+        scopeGem.map(g => `<option value="${_esc(g)}">${_esc(g)}</option>`).join("");
+      upGem.addEventListener("change", function () {
+        const upMil = document.getElementById("up-milieustraat");
+        if (upMil) _vulMilieustraatSelect(upMil, this.value, "");
+      });
+    }
   }
 }
 
@@ -223,7 +296,7 @@ function _scanBedrijfOmlaag(i) {
 
 async function aanbiedenAanSelectie(itemId) {
   const ids = [...document.querySelectorAll(".scan-bedrijf-check:checked")].map(c => parseInt(c.value, 10));
-  if (!ids.length) { alert("Selecteer minstens één bedrijf."); return; }
+  if (!ids.length) { (window.uxToast || alert)("Selecteer minstens één bedrijf", "info"); return; }
   const btn = document.getElementById("btn-aanbied-selectie");
   if (btn) { btn.disabled = true; btn.textContent = "Bezig…"; }
   const res = await apiFetch("/api/aanbiedingen/bulk", {
@@ -247,6 +320,11 @@ function _scanToggleAlle(aan) {
   document.querySelectorAll(".scan-bedrijf-check").forEach(c => { c.checked = aan; });
 }
 
+// Ecopark Groot-Ammers (gemeente Molenlanden): aanbod standaard aan álle partners
+// aangevinkt — wens Waardlanden ("automatisch aan div. partijen aanbieden").
+// Eén tik op 'Aanbieden' is dan genoeg; uitvinken blijft mogelijk.
+const _ALLES_VOORAF_AAN = (_gemeente === "Molenlanden");
+
 function _renderBedrijvenLijst(itemId, external) {
   // external = array als het direct vanuit analyse-resultaat komt (voor achterwaartse compatibiliteit)
   if (external) { _scanBedrijven = external; }
@@ -268,7 +346,7 @@ function _renderBedrijvenLijst(itemId, external) {
     </div>
     ${_scanBedrijven.map((b) => `
     <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;">
-      <input type="checkbox" class="scan-bedrijf-check" value="${b.id}" ${(b.historie_count > 0 || b.categorie_match) ? "checked" : ""} style="width:18px;height:18px;flex-shrink:0;accent-color:var(--orange);">
+      <input type="checkbox" class="scan-bedrijf-check" value="${b.id}" ${(_ALLES_VOORAF_AAN || b.historie_count > 0 || b.categorie_match) ? "checked" : ""} style="width:18px;height:18px;flex-shrink:0;accent-color:var(--orange);">
       <span style="flex:1;">
         <span style="font-weight:600;font-size:0.88rem;">${_esc(b.naam)}</span>
         ${b.historie_count > 0 ? `<span style="font-size:0.6rem;font-weight:700;background:#fff3e0;color:#b4531a;padding:2px 7px;border-radius:100px;margin-left:6px;">★ haalde dit ${b.historie_count}× eerder op</span>`
@@ -497,6 +575,7 @@ analyseBtn.addEventListener("click", async () => {
     }
 
     allItems.unshift(item);
+    _bewaarItemsCache();   // verse scan direct in de lokale kopie — nooit "zoek"
     if (stats) { stats.total++; stats.today++; }
     pendingFiles = [];
     cameraInput.value = "";
@@ -521,7 +600,33 @@ function _markeerAangeboden(itemId, bedrijfNaam, aanbiedingId) {
     item.bedrijf_naam      = bedrijfNaam || null;
     if (aanbiedingId) item.aanbieding_id = aanbiedingId;
   }
+  _bewaarItemsCache();
   renderItems();
+}
+
+// Klein feestje (confetti + trilling) bij succesmomenten — puur decoratief,
+// pointer-events:none en met reduced-motion-respect
+function _confettiBurst(anker) {
+  try {
+    if (!anker || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const r = anker.getBoundingClientRect();
+    const kleuren = ["#86bc97", "#6aaa82", "#f5c26b", "#3a9ab5", "#e8865a"];
+    for (let i = 0; i < 22; i++) {
+      const s = document.createElement("div");
+      const maat = 5 + Math.random() * 5;
+      s.style.cssText = `position:fixed;left:${r.left + r.width / 2}px;top:${r.top + r.height / 2}px;` +
+        `width:${maat}px;height:${maat}px;background:${kleuren[i % kleuren.length]};` +
+        `border-radius:${Math.random() < 0.4 ? "50%" : "2px"};pointer-events:none;z-index:9999;`;
+      document.body.appendChild(s);
+      const hoek = Math.random() * Math.PI * 2;
+      const afstand = 60 + Math.random() * 110;
+      s.animate([
+        { transform: "translate(0,0) rotate(0deg)", opacity: 1 },
+        { transform: `translate(${Math.cos(hoek) * afstand}px, ${Math.sin(hoek) * afstand + 70}px) rotate(${Math.round(Math.random() * 540 - 270)}deg)`, opacity: 0 },
+      ], { duration: 650 + Math.random() * 250, easing: "cubic-bezier(.16,.8,.32,1)" }).onfinish = () => s.remove();
+    }
+    if (navigator.vibrate) navigator.vibrate([12, 40, 18]);
+  } catch (e) { /* decoratie mag nooit de flow breken */ }
 }
 
 function _toonSucces(titel, tekst) {
@@ -529,6 +634,7 @@ function _toonSucces(titel, tekst) {
   document.getElementById("succes-tekst").textContent = tekst;
   const el = document.getElementById("succes-overlay");
   el.style.display = "flex";
+  setTimeout(() => _confettiBurst(el.querySelector(".succes-cirkel")), 220);
 }
 
 function sluitSucces() {
@@ -593,6 +699,86 @@ function _hasUnread(item) {
   return item.last_bericht_at > lastRead;
 }
 
+// Status van de eigen aanbieding (aanbieder-weergave) als badge.
+// Beheerders zien de badge ook op ontvangen-items (overzicht per stroom).
+function _statusBadge(item) {
+  if (item.aangeboden_door_naam && !_isAdmin) return "";
+  if (!item.aanbieding_id) {
+    // Gescand maar nog niet aangeboden: benoem dat — anders lijkt het item zoek
+    return _isAdmin ? "" : `<span class="st-badge st-wacht">Nog niet aangeboden</span>`;
+  }
+  if (item.aanbieding_status === "ophalen")    return `<span class="st-badge st-match">Match</span>`;
+  if (item.aanbieding_status === "niet_nodig") return `<span class="st-badge st-nee" title="${_esc(item.niet_nodig_reden || "")}">Niet nodig${item.niet_nodig_reden ? " · " + _esc(item.niet_nodig_reden) : ""}</span>`;
+  const d = item.aanbieding_created_at ? Math.floor((Date.now() - new Date(item.aanbieding_created_at)) / 864e5) : null;
+  return `<span class="st-badge st-wacht">Wacht${d > 0 ? ` · ${d}d` : ""}</span>`;
+}
+// Nog te beoordelen aanbod (ontvanger-weergave)
+function _nieuwBadge(item) {
+  if (_role !== "bedrijf" || !item.aangeboden_door_naam) return "";
+  return (item.aanbieding_status === "open" || item.aanbieding_status === "beschikbaar")
+    ? `<span class="st-badge st-nieuw">Nieuw</span>` : "";
+}
+// Tweede regel: status + (waar relevant) afzender — op één rustige lijn.
+// "Aan wie aangeboden" staat bewust NIET in de lijst: dat detail (incl. status
+// per bedrijf) staat op de detailpagina; alleen beheer ziet het hier wel.
+function _itemSubRegel(item) {
+  const delen = [];
+  const badge = _statusBadge(item) + _nieuwBadge(item);
+  if (badge) delen.push(badge);
+  if (item.aangeboden_door_naam) delen.push(`<span class="item-partij">van <b>${_esc(item.aangeboden_door_naam)}</b></span>`);
+  if (_isAdmin && item.bedrijf_naam) delen.push(`<span class="item-partij">aan <b>${_esc(item.bedrijf_naam)}</b></span>`);
+  if (_isAdmin && item.gemeente) delen.push(`<span class="item-cat" style="background:#e8f0fe;border-color:#c5d2f6;">${_esc(item.gemeente)}</span>`);
+  return delen.length ? `<div class="item-sub">${delen.join("")}</div>` : "";
+}
+// Nog niet bekeken reactie op eigen aanbod (aanbieder-kant): een bedrijf heeft
+// gereageerd (match/niet nodig) en de aanbieder heeft het item sindsdien niet geopend
+function _reactieOngezien(item) {
+  if (item.aangeboden_door_naam || !item.aanbieding_id) return false;
+  if (item.aanbieding_status !== "ophalen" && item.aanbieding_status !== "niet_nodig") return false;
+  return localStorage.getItem(`reactie_gezien_${item.aanbieding_id}`) !== item.aanbieding_status;
+}
+
+// Rood bolletje op de Aanbod-tab: alles wat aandacht vraagt, voor elke rol —
+// nieuw aanbod (bedrijf), ongelezen chatberichten en ongeziene reacties (aanbieder)
+function _updateAanbodTeller() {
+  const btn = document.querySelector('.tabbar-btn[data-tab="list"]');
+  if (!btn) return;
+  const n = allItems.filter(i =>
+    (_role === "bedrijf" && i.aangeboden_door_naam &&
+      (i.aanbieding_status === "open" || i.aanbieding_status === "beschikbaar")) ||
+    _hasUnread(i) ||
+    (!_isAdmin && _reactieOngezien(i))
+  ).length;
+  let b = btn.querySelector(".tab-teller");
+  _zetAppBadge(n);
+  if (!n) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement("span"); b.className = "tab-teller"; btn.appendChild(b); }
+  b.textContent = n > 9 ? "9+" : String(n);
+}
+
+// Badge op het app-icoon (beginscherm) — zelfde teller als het bolletje in de
+// onderbalk. De service worker verhoogt hem bij pushmeldingen als de app dicht
+// is; zodra de app opent zet deze functie hem op het werkelijke aantal.
+function _zetAppBadge(n) {
+  try {
+    if (n > 0) navigator.setAppBadge?.(n);
+    else navigator.clearAppBadge?.();
+    _idbPut("badge", n).catch(() => {});
+  } catch (e) { /* niet ondersteund — geen probleem */ }
+}
+
+// Foto's zacht laten infaden zodra ze binnenkomen; cache-hits verschijnen direct
+function _fadeInFotos(scope) {
+  scope.querySelectorAll("img.item-thumb, img.modal-img").forEach(img => {
+    if (img.complete) return;
+    img.style.opacity = "0";
+    img.addEventListener("load", () => {
+      img.style.transition = "opacity .3s ease";
+      img.style.opacity = "1";
+    }, { once: true });
+  });
+}
+
 function renderItems() {
   const list = document.getElementById("items-list");
   const q = searchQuery.toLowerCase();
@@ -608,8 +794,11 @@ function renderItems() {
         !i.aangeboden_door_naam && i.aanbieding_id && i.aanbieding_status && i.aanbieding_status !== "open"
       );
     } else {
-      // "Door mij aangeboden": eigen items die aangeboden zijn (hebben aanbieding_id, niet ontvangen van iemand anders)
-      source = allItems.filter(i => i.aanbieding_id && !i.aangeboden_door_naam);
+      // "Mijn items": strikt eigen items — zelf geüpload (ook nog niet aangeboden)
+      // of zelf aangeboden. Gemeente-genoten (bv. collega-scanners) horen hier
+      // NIET tussen, ook al zitten hun items in de data.
+      source = allItems.filter(i =>
+        !i.aangeboden_door_naam && (i.uploaded_by === _userId || i.aanbieding_id));
     }
   } else {
     // Ontvangen: items aangeboden ÁÁN mij (heeft aangeboden_door_naam) of voor user-rol leeg
@@ -629,12 +818,33 @@ function renderItems() {
         (i.gemeente || "").toLowerCase().includes(q))
     : source;
   if (!filtered.length) {
-    // Nog aan het laden? Dan een laadindicatie i.p.v. verwarrend "geen items"
-    list.innerHTML = _itemsGeladen
-      ? `<p style="padding:24px 16px;color:var(--muted);">Geen items gevonden.</p>`
-      : `<div style="display:flex;align-items:center;gap:10px;padding:24px 16px;color:var(--muted);">
-           <span class="laad-spinner"></span> Items laden…
-         </div>`;
+    if (!_itemsGeladen) {
+      // Skeleton-rijen: de lijst krijgt meteen zijn vorm, laden voelt korter
+      list.innerHTML = Array.from({ length: 4 }, (_, i) => `
+        <div class="item-row sk-row" style="--stagger:${i * 60}ms">
+          <div class="skeleton sk-thumb"></div>
+          <div class="item-info">
+            <div class="skeleton sk-lijn" style="width:${62 - i * 7}%"></div>
+            <div class="skeleton sk-lijn kort" style="width:${38 - i * 4}%"></div>
+          </div>
+        </div>`).join("");
+      return;
+    }
+    let leeg = `<p style="padding:24px 16px;color:var(--muted);">Geen items gevonden.</p>`;
+    if (!q && _role === "bedrijf" && activeMain !== "aanbieden") {
+      leeg = `<div class="wachtstand">
+        <div class="wachtstand-ico">🔔</div>
+        <div class="wachtstand-titel">Nog geen aanbod voor jou</div>
+        <p>Zodra de milieustraat iets aanbiedt dat bij jouw bedrijf past, krijg je direct een melding en verschijnt het hier.</p>
+      </div>`;
+    } else if (!q && activeMain === "aanbieden" && activeSubtab === "reacties") {
+      leeg = `<div class="wachtstand">
+        <div class="wachtstand-ico">💬</div>
+        <div class="wachtstand-titel">Nog geen reacties</div>
+        <p>Je krijgt een melding zodra een bedrijf reageert op je aanbiedingen.</p>
+      </div>`;
+    }
+    list.innerHTML = leeg;
     return;
   }
   const totalPages = Math.ceil(filtered.length / _PAGE_SIZE);
@@ -646,18 +856,15 @@ function renderItems() {
       <div class="item-row" onclick="openModal(${item.id})">
         <img class="item-thumb" src="${_esc(item.photo_url_thumb || item.photo_url)}" alt="" onerror="this.style.opacity=0" loading="lazy" decoding="async">
         <div class="item-info">
-          <div class="item-name">${_esc(item.ai_label || "Niet herkend")}</div>
-          <div class="item-meta">
-            ${item.category ? `<span class="item-cat">${_esc(item.category)}</span>` : ""}
-            ${_isAdmin && item.gemeente ? `<span class="item-cat" style="background:#e8f0fe;border-color:#c5d2f6;">${_esc(item.gemeente)}</span>` : ""}
-            <span>${formatTime(item.timestamp)}</span>
-            ${item.aangeboden_door_naam ? `<span class="aanbieder-van">${_esc(item.aangeboden_door_naam)}</span>` : ""}
-            ${item.aangeboden_door_naam && item.bedrijf_naam ? `<span class="aanbieder-pijl">›</span>` : ""}
-            ${item.bedrijf_naam ? `<span class="aanbieder-aan">${_esc(item.bedrijf_naam)}</span>` : ""}
+          <div class="item-kop">
+            <span class="item-titel">${_esc(item.ai_label || "Niet herkend")}</span>
           </div>
+          ${_itemSubRegel(item)}
         </div>
-        ${item.aanbieding_id ? `<span class="item-chat-icon${_hasUnread(item) ? ' has-unread' : ''}" onclick="event.stopPropagation();openModal(${item.id},true)">${SVG.chat}</span>` : ""}
-        <span class="item-chevron">›</span>
+        <div class="item-rechts">
+          <span class="item-tijd">${formatTime(item.timestamp)}</span>
+          ${item.aanbieding_id ? `<span class="item-chat-icon${_hasUnread(item) ? ' has-unread' : ''}" onclick="event.stopPropagation();openModal(${item.id},true)">${SVG.chat}</span>` : ""}
+        </div>
       </div>`;
     if (!kanVerwijderen) return rij;
     return `
@@ -666,6 +873,7 @@ function renderItems() {
       ${rij}
     </div>`;
   }).join("");
+  _fadeInFotos(list);
   if (kanVerwijderen && !_swipeReady) { _initSwipe(); _swipeReady = true; }
 
   if (totalPages > 1) {
@@ -839,6 +1047,7 @@ function _renderCarousel() {
   const multi = _carouselUrls.length > 1;
 
   img.src = _carouselUrls[_carouselIdx] || "";
+  _fadeInFotos(img.parentElement || document);
   prev.classList.toggle("visible", multi && _carouselIdx > 0);
   next.classList.toggle("visible", multi && _carouselIdx < _carouselUrls.length - 1);
 
@@ -873,6 +1082,16 @@ async function openModal(id, scrollToChat = false) {
   document.getElementById("modal-note").value  = item.manual_note || "";
   document.getElementById("modal-cat").value   = item.category || "";
 
+  // Herstel de standaard actieknoppen (kunnen vervangen zijn door match-/reden-kaart)
+  if (!window._bedrijfActiesHTML) window._bedrijfActiesHTML = document.getElementById("modal-bedrijf-acties").innerHTML;
+  document.getElementById("modal-bedrijf-acties").innerHTML = window._bedrijfActiesHTML;
+
+  // Reactie op eigen aanbod bekeken → bolletje op de Aanbod-tab bijwerken
+  if (item.aanbieding_id && !item.aangeboden_door_naam && item.aanbieding_status) {
+    localStorage.setItem(`reactie_gezien_${item.aanbieding_id}`, item.aanbieding_status);
+    _updateAanbodTeller();
+  }
+
   // Ontvanger: bedrijf-rol én item is aangeboden ÁÁN dit bedrijf
   const isOntvanger = _role === "bedrijf" && !!item.aanbieding_id && !!item.aangeboden_door_naam;
   // Aanbieder: de ingelogde gebruiker heeft dit item zelf aangeboden (geen bedrijf-rol)
@@ -882,16 +1101,24 @@ async function openModal(id, scrollToChat = false) {
   document.getElementById("modal-edit-acties").style.display       = isOntvanger ? "none" : "block";
   document.getElementById("modal-bewerk-velden").style.display     = isOntvanger ? "none" : "block";
   if (isOntvanger) {
-    document.getElementById("modal-aanbieder").textContent =
-      `Aangeboden door: ${item.aangeboden_door_naam || "CIRQO"}`;
+    const aanbiederNaam = item.aangeboden_door_naam || "CIRQO";
+    document.getElementById("modal-aanbieder").textContent = aanbiederNaam;
+    const avatar = document.getElementById("modal-aanbieder-avatar");
+    if (avatar) avatar.textContent = aanbiederNaam.trim().charAt(0).toUpperCase();
     const statusInfo = { open: ["In afwachting", "msb-open"], ophalen: ["Wordt opgehaald ✓", "msb-ophalen"], niet_nodig: ["Niet nodig", "msb-niet_nodig"] };
     const si = statusInfo[item.aanbieding_status];
     const stEl = document.getElementById("modal-aanbieding-status");
     stEl.textContent = si ? si[0] : "";
     stEl.className = "modal-status-badge " + (si ? si[1] : "");
     stEl.style.display = si ? "inline-block" : "none";
-    document.getElementById("modal-btn-ophalen").onclick    = () => reagerenOpAanbieding(item.aanbieding_id, "ophalen",    id);
-    document.getElementById("modal-btn-niet-nodig").onclick = () => reagerenOpAanbieding(item.aanbieding_id, "niet_nodig", id);
+    const btnOp  = document.getElementById("modal-btn-ophalen");
+    const btnNee = document.getElementById("modal-btn-niet-nodig");
+    btnOp.onclick  = () => reagerenOpAanbieding(item.aanbieding_id, "ophalen",    id);
+    btnNee.onclick = () => reagerenOpAanbieding(item.aanbieding_id, "niet_nodig", id);
+    // Al gereageerd? Toon de gekozen knop nadrukkelijk en demp de andere —
+    // wijzigen blijft mogelijk, maar de staat is in één oogopslag duidelijk
+    btnOp.classList.toggle("actie-gedempt",  item.aanbieding_status === "niet_nodig");
+    btnNee.classList.toggle("actie-gedempt", item.aanbieding_status === "ophalen");
   } else if (item.aanbieding_id && item.bedrijf_naam) {
     document.getElementById("modal-aanbieder").textContent = `Aangeboden aan ${item.bedrijf_naam}`;
     document.getElementById("modal-aanbieding-status").textContent = "";
@@ -899,29 +1126,29 @@ async function openModal(id, scrollToChat = false) {
 
   document.getElementById("modal").classList.remove("hidden");
 
-  // Chat: toon voor bedrijf (altijd) of admin (zodra er een aanbieding is)
+  // Chat: opent als apart scherm via de knop (niet meer inline in de detailpagina)
   const chatWrap = document.getElementById("modal-chat");
   chatWrap.style.display = "none";
-  document.getElementById("chat-berichten").innerHTML = "";
-  document.getElementById("chat-input").value = "";
   if (isOntvanger || isAanbieder) {
-    window._chatAanbiedingId = item.aanbieding_id;
     chatWrap.style.display = "block";
-    laadBerichten(item.aanbieding_id).then(() => {
-      if (scrollToChat) setTimeout(() => chatWrap.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
-    });
-    _startChatPoll(item.aanbieding_id);
+    document.getElementById("modal-chat-open").onclick = () => openChatScherm(item.aanbieding_id, item.ai_label || "");
+    if (scrollToChat) openChatScherm(item.aanbieding_id, item.ai_label || "");
   }
 
-  // Laad aanbiedingen voor dit item
+  // Reacties-lijst met Chat-per-bedrijf: alleen voor de aanbieder/beheerder.
+  // Een ontvangend bedrijf heeft al de "Gesprek openen"-knop — anders staat er
+  // dubbel een chat-ingang op de detailpagina.
   const aSection = document.getElementById("modal-aanbiedingen");
   const aList    = document.getElementById("modal-aanbiedingen-list");
   aSection.style.display = "none";
   aList.innerHTML = "";
-  const res = await apiFetch(`/api/items/${id}/aanbiedingen`);
+  const res = isOntvanger ? null : await apiFetch(`/api/items/${id}/aanbiedingen`);
   if (res && res.ok) {
     const aanbiedingen = await res.json();
     if (aanbiedingen.length) {
+      // Meerdere gesprekken mogelijk (één per bedrijf) → de lijst is de chat-ingang;
+      // de generieke "Gesprek openen"-knop verdwijnt dan
+      chatWrap.style.display = "none";
       const slabel = { open: "In afwachting", ophalen: "Wordt opgehaald", niet_nodig: "Niet nodig" };
       const scls   = { open: "color:#e67e00", ophalen: "color:#2e7d32", niet_nodig: "color:#c0392b" };
       aList.innerHTML = aanbiedingen.map(a => `
@@ -930,7 +1157,7 @@ async function openModal(id, scrollToChat = false) {
             <div style="font-weight:600;font-size:0.86rem;">${_esc(a.bedrijf_naam || "—")}</div>
             <div style="font-size:0.75rem;${scls[a.status]||''};margin-top:2px;">${slabel[a.status]||a.status}</div>
           </div>
-          <button onclick="openChatVoorAanbieding(${a.id})"
+          <button onclick="openChatScherm(${a.id}, '${escJs(a.bedrijf_naam || "")}')"
             title="Chat openen"
             style="padding:7px 10px;border-radius:100px;border:1.5px solid var(--border);background:none;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:5px;font-size:0.75rem;">
             ${SVG.chat} Chat
@@ -941,35 +1168,104 @@ async function openModal(id, scrollToChat = false) {
   }
 }
 
-async function reagerenOpAanbieding(aanbiedingId, status, itemId) {
-  // Optimistic: sluit modal en update UI direct
-  const item = allItems.find(i => i.id === itemId);
-  const prevStatus = item?.aanbieding_status;
-  if (item) item.aanbieding_status = status;
-  document.getElementById("modal").classList.add("hidden");
-  renderItems();
+// ── Ophaaladressen van de Waardlanden-milieustraten (match-vervolg) ────────────
+const MILIEUSTRAAT_INFO = {
+  "Hardinxveld-Giessendam": { naam: "Milieustraat Hardinxveld-Giessendam", adres: "Schrank 10, Hardinxveld-Giessendam" },
+  "Gorinchem":              { naam: "Milieustraat Gorinchem",              adres: "Boezem 3, Gorinchem" },
+  "Vijfheerenlanden":       { naam: "Milieustraat Leerdam",                adres: "Handelstraat 15, Leerdam" },
+  "Molenlanden":            { naam: "Ecopark Groot-Ammers",                adres: "Transportweg 6, Groot-Ammers" },
+};
 
+async function reagerenOpAanbieding(aanbiedingId, status, itemId) {
+  const item = allItems.find(i => i.id === itemId);
   const fd = new FormData();
   fd.append("status", status);
   const res = await apiFetch(`/api/mijn-aanbiedingen/${aanbiedingId}`, { method: "PATCH", body: fd });
-  if (!res || !res.ok) {
-    // Terugdraaien bij fout
-    if (item) item.aanbieding_status = prevStatus;
-    renderItems();
-    alert("Fout bij opslaan");
+  if (!res || !res.ok) { (window.uxToast || alert)("Opslaan mislukt — probeer het opnieuw", "error"); return; }
+  if (item) item.aanbieding_status = status;
+  _bewaarItemsCache();
+  renderItems();
+  _updateAanbodTeller();
+
+  // Vervolgstap in de modal: match-info of reden-chips
+  const wrap = document.getElementById("modal-bedrijf-acties");
+  if (status === "ophalen") {
+    const info = MILIEUSTRAAT_INFO[item?.gemeente];
+    wrap.innerHTML = `<hr class="divider">
+      <div class="match-titel">🎉 Match — dit staat voor je klaar!</div>
+      ${info
+        ? `<div class="match-adres"><b>${_esc(info.naam)}</b><br>${_esc(info.adres)}</div>`
+        : (item?.gemeente ? `<div class="match-adres">Op te halen bij de milieustraat in <b>${_esc(item.gemeente)}</b></div>` : "")}
+      <button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="_stemOphaalAf(${aanbiedingId}, '${escJs(item?.ai_label || "")}')">💬 Stem het ophaalmoment af</button>
+      <button class="btn btn-ghost" style="width:100%;margin-top:8px;" onclick="document.getElementById('modal').classList.add('hidden')">Klaar</button>`;
+    setTimeout(() => _confettiBurst(wrap.querySelector(".match-titel")), 120);
+  } else {
+    wrap.innerHTML = `<hr class="divider">
+      <div class="match-titel">Genoteerd — niet nodig.</div>
+      <p style="font-size:0.78rem;color:var(--muted);margin:6px 0 10px;">Mogen we weten waarom? Dat helpt de milieustraat gerichter aanbieden (optioneel).</p>
+      <div class="reden-chips">
+        ${["Te groot", "Geen ruimte", "Verkeerde soort", "Anders"].map(r =>
+          `<button class="reden-chip" onclick="_stuurReden(${aanbiedingId}, '${escJs(r)}', this)">${r}</button>`).join("")}
+      </div>
+      <button class="btn btn-ghost" style="width:100%;margin-top:12px;" onclick="document.getElementById('modal').classList.add('hidden')">Overslaan</button>`;
   }
 }
 
+async function _stemOphaalAf(aanbiedingId, titel) {
+  document.getElementById("modal").classList.add("hidden");
+  openChatScherm(aanbiedingId, titel);
+  const inp = document.getElementById("chat-input");
+  if (inp && !inp.value) inp.value = "Hoi! Wanneer komt het uit dat ik dit kom ophalen?";
+}
+
+async function _stuurReden(aanbiedingId, reden, knop) {
+  document.querySelectorAll(".reden-chip").forEach(c => { c.disabled = true; });
+  knop.classList.add("gekozen");
+  const fd = new FormData();
+  fd.append("reden", reden);
+  await apiFetch(`/api/mijn-aanbiedingen/${aanbiedingId}`, { method: "PATCH", body: fd });
+  const item = allItems.find(i => i.aanbieding_id === aanbiedingId);
+  if (item) item.niet_nodig_reden = reden;
+  setTimeout(() => document.getElementById("modal").classList.add("hidden"), 700);
+}
+window._stemOphaalAf = _stemOphaalAf;
+window._stuurReden = _stuurReden;
+
 function openChatVoorAanbieding(aanbiedingId) {
+  openChatScherm(aanbiedingId, "");
+}
+
+// "Reacties"-knop op het scanscherm: rolbewust — een bedrijf heeft zijn reacties
+// onder Ontvangen › Mijn reacties, een scanner onder Aanbieden › Reacties
+function gaNaarReacties() {
+  document.querySelector('[data-tab=list]')?.click();
+  setTimeout(() => {
+    if (_role === "bedrijf") {
+      document.querySelector('.list-maintab[data-main="ontvangen"]')?.click();
+      setTimeout(() => document.querySelector('[data-subtab="mijn-reacties"]')?.click(), 60);
+    } else {
+      document.querySelector('[data-subtab="reacties"]')?.click();
+    }
+  }, 100);
+}
+window.gaNaarReacties = gaNaarReacties;
+
+// ── Chatscherm (apart, volledig scherm) ─────────────────────────────────────
+function openChatScherm(aanbiedingId, titel) {
   window._chatAanbiedingId = aanbiedingId;
-  const chatWrap = document.getElementById("modal-chat");
-  chatWrap.style.display = "block";
+  document.getElementById("chat-kop-sub").textContent = titel || "";
   document.getElementById("chat-berichten").innerHTML = "";
   document.getElementById("chat-input").value = "";
+  document.getElementById("chat-scherm").classList.remove("hidden");
   laadBerichten(aanbiedingId);
   _startChatPoll(aanbiedingId);
-  chatWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
+function sluitChatScherm() {
+  document.getElementById("chat-scherm").classList.add("hidden");
+  _stopChatPoll();
+  window._chatAanbiedingId = null;
+}
+window.sluitChatScherm = sluitChatScherm;
 
 let _chatPollInterval = null;
 let _chatRenderedCount = 0;
@@ -1049,7 +1345,7 @@ async function verstuurBericht() {
 
   const fd = new FormData(); fd.append("tekst", tekst);
   const res = await apiFetch(`/api/aanbiedingen/${aanbiedingId}/berichten`, { method: "POST", body: fd });
-  if (!res || !res.ok) { alert("Bericht niet verzonden"); laadBerichten(aanbiedingId); return; }
+  if (!res || !res.ok) { (window.uxToast || alert)("Bericht niet verzonden", "error"); laadBerichten(aanbiedingId); return; }
   const data = await res.json();
   if (data?.created_at) localStorage.setItem(`chat_read_${aanbiedingId}`, data.created_at);
 }
@@ -1097,6 +1393,7 @@ document.getElementById("modal-del").addEventListener("click", async () => {
   if (!currentItemId || !confirm("Verwijderen?")) return;
   const id = currentItemId;
   allItems = allItems.filter(i => i.id !== id);
+  _bewaarItemsCache();
   if (stats) stats.total = Math.max(0, stats.total - 1);
   document.getElementById("modal").classList.add("hidden");
   renderItems();
@@ -1108,6 +1405,7 @@ document.getElementById("modal-del").addEventListener("click", async () => {
 let _swipeReady = false;
 async function deleteItemById(id) {
   allItems = allItems.filter(i => i.id !== id);
+  _bewaarItemsCache();
   if (stats) stats.total = Math.max(0, stats.total - 1);
   renderItems();
   renderStats();
@@ -1216,10 +1514,14 @@ async function initPush() {
   if (!Notif) return;
   if (Notif.permission === "granted") {
     try {
-      await _abonneerPush();
+      // Bestaat er al een subscription? Die is bij app-start al aan dit account
+      // gekoppeld (_ensurePushRegistered) — toon dan direct ✓ zonder netwerk.
+      const bestaand = await _swReg.pushManager.getSubscription();
+      if (!bestaand) await _abonneerPush();
       status.textContent = "✓ Meldingen staan aan voor dit account";
       status.style.display = "block";
       btn.style.display = "none";
+      document.querySelector("#user-panel .acc-rij-ico")?.classList.add("actief");
     } catch (e) {
       // Geen/kapotte subscription — laat de gebruiker 'm via een tik (her)activeren.
       status.textContent = "Tik op de knop om meldingen voor dit account te activeren.";
@@ -1262,7 +1564,7 @@ async function meldingInschakelen() {
   } catch (e) {
     btn.innerHTML = `${SVG.bell} Meldingen inschakelen`;
     btn.disabled = false;
-    alert("Push fout: " + (e.message || e.name || JSON.stringify(e)));
+    (window.uxToast || alert)("Meldingen inschakelen mislukt: " + (e.message || e.name || "onbekende fout"), "error", 4000);
   }
 }
 
@@ -1333,22 +1635,20 @@ async function _ensurePushRegistered() {
 async function openUserPanel() {
   const gem = localStorage.getItem("gemeente") || "";
   const mil = localStorage.getItem("milieustraat") || "";
-  const upGem = document.getElementById("up-gemeente");
-  if (upGem) upGem.value = gem;
-  // Herstel milieustraat cascade
-  const upMil = document.getElementById("up-milieustraat");
-  if (upMil && gem) _vulMilieustraatSelect(upMil, gem, mil);
-  document.getElementById("up-organisatie").value = localStorage.getItem("organisatie") || "";
+  // Gemeente-opties lazy: paneel opent direct, dropdowns vullen zodra geladen
+  _zorgGemeentenGeladen().then(() => {
+    const upGem = document.getElementById("up-gemeente");
+    if (upGem) upGem.value = gem;
+    const upMil = document.getElementById("up-milieustraat");
+    if (upMil && gem) _vulMilieustraatSelect(upMil, gem, mil);
+  });
+  const orgInit = localStorage.getItem("organisatie") || _username || "";
+  document.getElementById("up-organisatie").value = orgInit;
   document.getElementById("up-status").textContent = "";
   document.getElementById("up-pwd").value = "";
-  // Rol label
+  // Identiteitskop: naam, avatar-initiaal en rol-pill
   const rolLabels = { superadmin: "Platform", admin: "Beheerder", user: "Scanner", bedrijf: "Afnemer" };
-  const rolEl = document.getElementById("up-rol-label");
-  if (rolEl) rolEl.textContent = "Rol: " + (rolLabels[_role] || _role);
-  // Volgorde + toggle voor scanners en bedrijven (die ook aanbieden)
-  const kanAanbieden = (_role === "user" || _role === "bedrijf");
-  document.getElementById("auto-doorsturen-wrap").style.display = kanAanbieden ? "block" : "none";
-  document.getElementById("volgorde-wrap").style.display = kanAanbieden ? "block" : "none";
+  _vulAccountKop(orgInit, rolLabels[_role] || _role);
   document.getElementById("user-panel").classList.remove("hidden");
   initPush();
   const res = await apiFetch("/api/auth/me");
@@ -1357,73 +1657,30 @@ async function openUserPanel() {
     const org = me.organisatie || me.username || _username || "";
     document.getElementById("up-organisatie").value = org;
     localStorage.setItem("organisatie", org);
-    if (kanAanbieden) {
-      document.getElementById("up-auto-doorsturen").checked = !!me.auto_doorsturen;
-      const gem = me.gemeente || localStorage.getItem("gemeente") || "";
-      if (gem) laadVolgorde(gem);
-    }
+    _vulAccountKop(org, rolLabels[_role] || _role);
   }
 }
 
-// ── Volgorde bedrijven ─────────────────────────────────────────────────────────
-let _volgordeData = []; // [{id, naam, gemeente}]
-
-async function laadVolgorde(gemeente) {
-  const [volgordeRes, bedrijvenRes] = await Promise.all([
-    apiFetch("/api/mijn-volgorde"),
-    apiFetch(`/api/bedrijven-voor-scan?gemeente=${encodeURIComponent(gemeente || "")}&category=`),
-  ]);
-  const volgorde  = (volgordeRes && volgordeRes.ok)  ? await volgordeRes.json()  : [];
-  const bedrijven = (bedrijvenRes && bedrijvenRes.ok) ? await bedrijvenRes.json() : [];
-
-  // Merge: eerst de ingestelde volgorde, dan resterende bedrijven
-  const inVolgorde  = volgorde.map(v => bedrijven.find(b => b.id === v.id) || v);
-  const resterende  = bedrijven.filter(b => !volgorde.find(v => v.id === b.id));
-  _volgordeData = [...inVolgorde, ...resterende].filter(b => b.id);
-  _renderVolgorde();
+function _vulAccountKop(naam, rol) {
+  const n = (naam || "Mijn account").trim();
+  document.getElementById("up-naam").textContent = n;
+  const av = document.getElementById("up-avatar");
+  if (av) av.textContent = n.charAt(0).toUpperCase();
+  const rolEl = document.getElementById("up-rol-label");
+  if (rolEl) rolEl.textContent = rol || "";
+  // Gemeente-pill + versienummer in de voettekst
+  const gemPill = document.getElementById("up-gem-pill");
+  const gem = localStorage.getItem("gemeente") || "";
+  if (gemPill) {
+    gemPill.textContent = gem ? `📍 ${gem}` : "";
+    gemPill.style.display = gem ? "" : "none";
+  }
+  const versieEl = document.getElementById("up-versie");
+  if (versieEl && window._APP_VERSION) versieEl.textContent = String(window._APP_VERSION).slice(0, 7);
 }
 
-function _renderVolgorde() {
-  const lijst = document.getElementById("volgorde-lijst");
-  lijst.innerHTML = _volgordeData.map((b, i) => `
-    <div data-id="${b.id}" style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
-      <span style="font-size:0.7rem;font-weight:700;color:var(--orange);min-width:18px;">${i + 1}</span>
-      <span style="flex:1;font-size:0.88rem;font-weight:600;">${_esc(b.naam)}</span>
-      <button onclick="_volgordeOmhoog(${i})" ${i === 0 ? "disabled" : ""} style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:0.9rem;${i === 0 ? "opacity:.3;" : ""}">↑</button>
-      <button onclick="_volgordeOmlaag(${i})" ${i === _volgordeData.length - 1 ? "disabled" : ""} style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:0.9rem;${i === _volgordeData.length - 1 ? "opacity:.3;" : ""}">↓</button>
-    </div>`).join("");
-}
-
-function _volgordeOmhoog(i) {
-  if (i === 0) return;
-  [_volgordeData[i - 1], _volgordeData[i]] = [_volgordeData[i], _volgordeData[i - 1]];
-  _renderVolgorde();
-}
-
-function _volgordeOmlaag(i) {
-  if (i === _volgordeData.length - 1) return;
-  [_volgordeData[i], _volgordeData[i + 1]] = [_volgordeData[i + 1], _volgordeData[i]];
-  _renderVolgorde();
-}
-
-async function slaVolgorde() {
-  const ids = _volgordeData.map(b => b.id);
-  const res = await apiFetch("/api/mijn-volgorde", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(ids),
-  });
-  const status = document.getElementById("volgorde-status");
-  status.textContent = (res && res.ok) ? "✓ Opgeslagen" : "Fout bij opslaan";
-  status.style.color = (res && res.ok) ? "#2e7d32" : "var(--danger)";
-  setTimeout(() => { status.textContent = ""; }, 2000);
-}
-
-async function saveAutoDoorsturen(enabled) {
-  const userId = JSON.parse(atob(token.split(".")[1])).sub;
-  const fd = new FormData(); fd.append("enabled", enabled);
-  await apiFetch(`/api/users/${userId}/auto-doorsturen`, { method: "PATCH", body: fd });
-}
+// (Volgorde-bedrijven-sectie en de 'Automatisch doorsturen'-toggle zijn
+//  vervallen: aanbieden gaat via multi-select, niet meer sequentieel.)
 
 function closeUserPanel() {
   document.getElementById("user-panel").classList.add("hidden");
@@ -1435,9 +1692,11 @@ async function saveUserPanel() {
   const organisatie = document.getElementById("up-organisatie").value.trim();
   const pwd         = document.getElementById("up-pwd").value;
   const statusEl    = document.getElementById("up-status");
+  const opslaanBtn  = document.querySelector(".acc-opslaan");
   const userId      = JSON.parse(atob(token.split(".")[1])).sub;
 
-  statusEl.textContent = "Opslaan…"; statusEl.style.color = "var(--muted)";
+  statusEl.textContent = "";
+  if (opslaanBtn) { opslaanBtn.disabled = true; opslaanBtn.innerHTML = '<span class="spinner"></span> Opslaan…'; }
 
   try {
     if (gemeente !== (localStorage.getItem("gemeente") || "")) {
@@ -1462,14 +1721,25 @@ async function saveUserPanel() {
       const fd = new FormData(); fd.append("password", pwd);
       await apiFetch(`/api/users/${userId}/password`, { method: "PATCH", body: fd });
     }
-    statusEl.textContent = "✓ Opgeslagen"; statusEl.style.color = "#2e7d32";
     if (_username) document.getElementById("hdr-username").textContent = _username + (gemeente ? ` · ${gemeente}` : "");
+    _vulAccountKop(organisatie || _username, document.getElementById("up-rol-label")?.textContent);
+    (window.uxToast || (() => {}))("Wijzigingen opgeslagen", "success");
   } catch (e) {
-    statusEl.textContent = "Fout bij opslaan"; statusEl.style.color = "var(--danger)";
+    statusEl.textContent = "Opslaan is niet gelukt — controleer je verbinding en probeer opnieuw";
+    statusEl.style.color = "var(--danger)";
+  } finally {
+    if (opslaanBtn) { opslaanBtn.disabled = false; opslaanBtn.textContent = "Wijzigingen opslaan"; }
   }
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────────
+
+// Scanner-rol: de "Ontvangen"-tab is voor bedrijven — voor scanners altijd leeg,
+// dus verbergen (Aanbieden vult dan de volle breedte)
+if (_role === "user") {
+  const ontvTab = document.querySelector('.list-maintab[data-main="ontvangen"]');
+  if (ontvTab) ontvTab.style.display = "none";
+}
 
 // Bedrijf-rol: standaard op "Ontvangen" starten
 if (_role === "bedrijf") {
@@ -1555,7 +1825,8 @@ window.closeInstallPopup = function () { document.getElementById("install-pop").
 
 // Verberg alle install-suggesties als de app al geïnstalleerd is
 function _verbergInstallUI() {
-  ["install-fab", "app-install-field", "install-pop"].forEach(id => {
+  // app-install-field = sectielabel, app-install-kaart = de kaart eronder — beide weg
+  ["install-fab", "app-install-field", "app-install-kaart", "install-pop"].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = "none";
   });
 }
@@ -1577,9 +1848,19 @@ _appReedsGeinstalleerd().then(installed => {
   if (_fab) _fab.style.display = "flex";
 });
 
-laadGemeenten().then(() => syncAll());
+_laadItemsUitCache();                        // toon direct de laatst bekende lijst (splitsecond)
+syncAll();                                    // items verversen — wacht op níéts anders
+setTimeout(_zorgGemeentenGeladen, 2500);      // paneel-data rustig ná de start-drukte
 _ensurePushRegistered();
-setInterval(syncItems, 30000);
+// Poll: 12s zolang de app zichtbaar is (fingerprint voorkomt onnodig hertekenen;
+// warme servercache maakt de call ~200ms). Push + focus-sync dekken de rest.
+setInterval(() => { if (!document.hidden) syncItems(); }, 12000);
+// Pushmelding binnen terwijl de app open staat → direct verversen (niet op de poll wachten)
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", e => {
+    if (e.data && e.data.type === "push") { _lastItemsJson = ""; syncItems(); }
+  });
+}
 document.addEventListener("visibilitychange", () => { if (!document.hidden) syncItems(); });
 
 // ── Auto-update: herlaad zodra er een nieuwe versie live staat ──────────────────

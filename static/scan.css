@@ -10,9 +10,12 @@ body {
 
 /* ── Tab bar (onderaan) ───────────────────────────────────────────────────── */
 .tabbar {
+  /* Vastgepind (zoals op de dashboardpagina): flex-layout met 100dvh bleek op
+     Android soms 56px te hoog uit te vallen waardoor de balk buiten beeld viel */
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 40;
   display: flex;
-  flex-shrink: 0;
-  order: 99; /* altijd onderaan */
   padding-bottom: var(--sab);
   background: #fff;
   border-top: 1px solid var(--border);
@@ -38,7 +41,8 @@ body {
   transition: color 0.15s, border-color 0.15s;
 }
 .tabbar-btn small { font-size: inherit; }
-.tabbar-btn.active { color: var(--orange); border-top-color: var(--orange); }
+/* Actieve tab: kleur + liquid-glass pil (ux.css/ux.js) — geen streepje meer */
+.tabbar-btn.active { color: var(--orange); }
 
 /* ── Tab content ─────────────────────────────────────────────────────────── */
 .tab {
@@ -47,6 +51,7 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   background: var(--bg);
+  padding-bottom: calc(64px + var(--sab));  /* ruimte voor de vaste onderbalk */
 }
 .tab.active { display: flex; flex-direction: column; }
 #tab-scan.active { justify-content: flex-start; }
@@ -350,14 +355,26 @@ body {
   flex-shrink: 0;
 }
 .item-info { flex: 1; min-width: 0; }
-.item-name {
-  font-weight: 600; font-size: 0.92rem;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  margin-bottom: 4px;
+/* Kopregel: titel links (ellipsis); tijd + chaticoon in de rechterkolom */
+.item-kop { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-bottom: 4px; }
+.item-titel {
+  flex: 1; font-weight: 700; font-size: 0.95rem; letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
 }
+/* Rechterkolom: registratiemoment boven, chaticoon eronder — één verticale lijn */
+.item-rechts {
+  display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+  gap: 7px; flex-shrink: 0; align-self: stretch;
+}
+.item-tijd { flex-shrink: 0; font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+/* Tweede regel: badge + afzender op één lijn */
+.item-sub { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.item-partij { font-size: 0.78rem; color: var(--muted);
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.item-partij b { font-weight: 650; color: #3a3935; }
 .item-meta {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  font-size: 0.72rem; color: var(--muted);
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-size: 0.73rem; color: var(--muted);
 }
 .item-kg {
   font-family: 'Barlow Condensed', sans-serif;
@@ -369,9 +386,8 @@ body {
 }
 .item-cat {
   background: var(--surface); border: 1px solid var(--border);
-  padding: 1px 7px; border-radius: 100px;
-  font-size: 0.62rem; font-weight: 700;
-  letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 2px 9px; border-radius: 100px;
+  font-size: 0.68rem; font-weight: 600; color: #5c5b55;
 }
 .aanbieder-van { color: var(--orange); font-weight: 600; }
 .aanbieder-pijl { color: var(--muted); }
@@ -687,3 +703,317 @@ body {
   animation: laadDraai 0.8s linear infinite;
 }
 @keyframes laadDraai { to { transform: rotate(360deg); } }
+
+/* ── Chatscherm (apart, volledig scherm) ─────────────────────────────────── */
+.chat-scherm { position: fixed; inset: 0; z-index: 700; background: var(--bg);
+               display: flex; flex-direction: column;
+               animation: chatIn 220ms cubic-bezier(0.215, 0.61, 0.355, 1); }
+@keyframes chatIn { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .chat-scherm { animation: none; } }
+.chat-scherm-kop { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+                   background: #fff; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.chat-terug { width: 38px; height: 38px; border-radius: 50%; border: none; background: var(--surface);
+              color: var(--ink); font-size: 1.5rem; line-height: 1; cursor: pointer; flex-shrink: 0; }
+.chat-kop-titel { font-weight: 800; font-size: 1rem; }
+.chat-kop-sub { font-size: 0.72rem; color: var(--muted); }
+.chat-wrap-vol { flex: 1; max-height: none; border: none; border-radius: 0; background: var(--bg); padding: 16px; }
+.chat-input-vast { margin: 0; padding: 10px 12px calc(10px + var(--sab, 0px)); background: #fff;
+                   border-top: 1px solid var(--border); flex-shrink: 0; }
+
+/* ── Statusbadges in de itemlijst ─────────────────────────────────────────── */
+.st-badge { display: inline-flex; align-items: center; font-size: 0.66rem; font-weight: 700;
+            padding: 2px 9px; border-radius: 100px; white-space: nowrap; flex-shrink: 0; }
+.st-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
+                    background: currentColor; opacity: .75; margin-right: 5px; }
+.st-nieuw::before { display: none; }
+.st-wacht { background: #f0efeb; color: #7a726a; }
+.st-match { background: #e9f3ec; color: #2c6e3f; }
+.st-nee   { background: #fdecea; color: #b71c1c; }
+.st-nieuw { background: var(--orange); color: #fff; }
+
+/* Teller op de Aanbod-tab */
+.tabbar-btn { position: relative; }
+.tab-teller { position: absolute; top: 4px; left: calc(50% + 8px); min-width: 17px; height: 17px;
+              padding: 0 4px; border-radius: 100px; background: var(--danger); color: #fff;
+              font-size: 0.6rem; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+
+/* Match-vervolg + reden-chips in de detailmodal */
+.match-titel { font-weight: 800; font-size: 1rem; margin-bottom: 4px; }
+.match-adres { font-size: 0.85rem; line-height: 1.5; background: var(--surface);
+               border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-top: 8px; }
+.reden-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.reden-chip { padding: 8px 14px; border-radius: 100px; border: 1.5px solid var(--border); background: #fff;
+              font-family: inherit; font-size: 0.8rem; font-weight: 600; color: var(--ink); cursor: pointer; }
+.reden-chip.gekozen { border-color: var(--orange); background: var(--orange); color: #fff; }
+
+/* Wachtstand (lege lijst met perspectief) */
+.wachtstand { text-align: center; padding: 44px 28px; color: var(--muted); }
+.wachtstand-ico { font-size: 2.2rem; margin-bottom: 10px; }
+.wachtstand-titel { font-weight: 800; font-size: 1rem; color: var(--ink); margin-bottom: 6px; }
+.wachtstand p { font-size: 0.84rem; line-height: 1.55; max-width: 300px; margin: 0 auto; }
+
+/* ── Polish-ronde: skeletons, succes-momenten, gekozen staat ─────────────────── */
+
+/* Skeleton-rijen tijdens eerste lijst-load (shimmer komt uit ux.css .skeleton) */
+.sk-row { pointer-events: none; }
+.sk-thumb { width: 48px; height: 48px; border-radius: 8px; flex-shrink: 0; }
+.sk-lijn { height: 13px; border-radius: 6px; margin: 3px 0; }
+.sk-lijn.kort { height: 11px; }
+
+/* Al gereageerd op een aanbieding: demp de niet-gekozen actieknop */
+#modal-bedrijf-acties .btn { transition: opacity .2s ease, transform .12s ease; }
+.actie-gedempt { opacity: .35; filter: saturate(.4); }
+
+/* Succes-overlay: cirkel popt, vinkje tekent zichzelf, tekst schuift zacht in */
+@keyframes succesPop { from { opacity: 0; transform: scale(.5); } 60% { transform: scale(1.08); } to { opacity: 1; transform: scale(1); } }
+@keyframes succesFadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes vinkTeken { to { stroke-dashoffset: 0; } }
+#succes-overlay .succes-cirkel { animation: succesPop .4s cubic-bezier(.2,.82,.26,1) both; }
+#succes-overlay .succes-vink { stroke-dasharray: 30; stroke-dashoffset: 30; animation: vinkTeken .3s ease-out .22s forwards; }
+#succes-overlay .succes-inhoud { animation: succesFadeUp .3s ease-out .12s both; }
+
+/* Match-kaart in de detailmodal komt zacht binnen */
+#modal-bedrijf-acties .match-titel { animation: succesFadeUp .28s ease-out both; }
+#modal-bedrijf-acties .match-adres { animation: succesFadeUp .28s ease-out .06s both; }
+
+/* Lege chat: boodschap verticaal gecentreerd i.p.v. bovenin geplakt */
+.chat-wrap-vol .chat-empty:only-child {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; padding: 0 24px;
+  animation: succesFadeUp .25s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #succes-overlay .succes-cirkel, #succes-overlay .succes-inhoud,
+  #modal-bedrijf-acties .match-titel, #modal-bedrijf-acties .match-adres,
+  .chat-wrap-vol .chat-empty:only-child { animation: none; }
+  #succes-overlay .succes-vink { animation: none; stroke-dashoffset: 0; }
+}
+
+/* ── Polish-ronde 2: tikfeedback, scan-hero entrance ─────────────────────────── */
+
+/* Lijstrij licht op bij aanraken, zoals native lijsten */
+.item-row { transition: background .15s ease; }
+.item-row:active { background: var(--surface); }
+
+/* Scan-hero: rustig gestaggerd binnenkomen (fill backwards zodat
+   :active-transforms na afloop gewoon blijven werken) */
+@keyframes heroIn  { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes heroPop { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }
+#tab-scan.active .scan-hero-intro        { animation: heroIn .3s ease-out backwards; }
+#tab-scan.active .scan-hero-title        { animation: heroIn .3s ease-out .05s backwards; }
+#tab-scan.active .scan-circle-btn        { animation: heroPop .34s cubic-bezier(.2,.82,.26,1) .1s backwards; }
+#tab-scan.active .scan-hero-reacties-btn { animation: heroIn .3s ease-out .16s backwards; }
+#tab-scan.active .scan-hero-sub          { animation: heroIn .3s ease-out .2s backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  #tab-scan.active .scan-hero-intro, #tab-scan.active .scan-hero-title,
+  #tab-scan.active .scan-circle-btn, #tab-scan.active .scan-hero-reacties-btn,
+  #tab-scan.active .scan-hero-sub { animation: none; }
+}
+
+/* ── Polish-ronde 3: vloeiender & aantrekkelijker ────────────────────────────── */
+
+/* Nieuw chatbericht komt zacht binnen (alleen de laatste bubbel, zodat oudere
+   bij een re-render niet opnieuw animeren) */
+@keyframes chatMsgIn {
+  from { opacity: 0; transform: translateY(9px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+.chat-wrap-vol .chat-msg:last-child {
+  animation: chatMsgIn 0.26s cubic-bezier(.2,.82,.26,1) both;
+}
+
+/* Scan-cirkel 'ademt' heel subtiel — trekt de blik naar de hoofdactie zonder af
+   te leiden. Stopt zodra je 'm aanraakt (active-state neemt over). */
+@keyframes scanAdem {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-3px) scale(1.012); }
+}
+#tab-scan.active .scan-circle-inner {
+  animation: scanAdem 3.6s ease-in-out infinite;
+}
+.scan-circle-btn:active .scan-circle-inner { animation: none; }
+
+/* Item-rij: entree in één consistente, licht verende curve */
+.item-row { animation-timing-function: cubic-bezier(.2,.82,.26,1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-wrap-vol .chat-msg:last-child,
+  #tab-scan.active .scan-circle-inner { animation: none; }
+}
+
+/* ── Detailpagina: een slag professioneler ───────────────────────────────────── */
+
+/* Knoppen op de detailpagina: geen kapitalen meer — rustiger en volwassener */
+#modal .btn {
+  text-transform: none;
+  letter-spacing: -0.01em;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+#modal-btn-ophalen { box-shadow: 0 3px 14px rgba(134,188,151,0.38); }
+
+/* Aanbieder-rij: avatar + naam + status in één professionele regel */
+.aanbieder-rij { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.aanbieder-avatar {
+  width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, #e9f3ec, #d3e6da);
+  color: #2c6e3f; font-weight: 800; font-size: 1.05rem;
+  display: flex; align-items: center; justify-content: center;
+}
+.aanbieder-info { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+.aanbieder-eyebrow {
+  font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.11em; color: var(--muted);
+}
+.aanbieder-naam {
+  font-size: 0.95rem; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.aanbieder-rij .modal-status-badge { margin: 0 0 0 auto; flex-shrink: 0; }
+
+/* Foto: subtiele scrim onderaan (diepte + betere leesbaarheid van de dots)
+   en rustiger geblurde flanken */
+.modal-carousel::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 46px;
+  background: linear-gradient(to top, rgba(20,22,20,0.12), transparent);
+  pointer-events: none;
+}
+.modal-carousel::before { opacity: 0.42; filter: blur(24px) brightness(0.99) saturate(1.03); }
+
+/* Rustiger ritme in de modal-body */
+.modal-body { padding: 22px 20px; }
+#modal .divider { margin: 18px 0; border-top-color: #eeece6; }
+#modal .m-chip { padding: 5px 12px; background: #fff; }
+#modal .modal-detail { font-size: 0.88rem; color: #4c4b45; }
+
+/* ── iOS: geen auto-zoom op invoervelden ─────────────────────────────────────
+   Safari zoomt bij focus automatisch in als een veld < 16px is (waardoor de
+   verzendknop uit beeld schuift). 16px voorkomt dat — geen viewport-lock nodig,
+   dus knijp-zoomen blijft voor wie dat wil (toegankelijkheid). */
+.chat-input-row input,
+.search-wrap input,
+#modal-note,
+#modal-cat,
+#up-organisatie,
+#up-pwd { font-size: 16px; }
+
+/* ── Mijn account — professionele settings-look ──────────────────────────────── */
+#user-panel .modal-sheet { background: var(--surface); }
+.acc-body { padding: 20px 16px 24px; }
+
+/* Identiteitskop */
+.acc-hero { display: flex; align-items: center; gap: 14px; margin: 4px 0 22px; padding-right: 40px; }
+.acc-avatar {
+  width: 56px; height: 56px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, #8fc4a1, #5d9a76);
+  color: #fff; font-weight: 800; font-size: 1.5rem;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(93,154,118,0.32);
+}
+.acc-hero-info { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.acc-naam {
+  font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.acc-rol {
+  align-self: flex-start;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.03em;
+  color: #33604a; background: #e6f0e9; border: 1px solid #d2e5d8;
+  padding: 2px 10px; border-radius: 100px;
+}
+
+/* Sectielabels + kaarten (iOS-settings-achtig) */
+.acc-groep-titel {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); margin: 22px 4px 8px;
+}
+.acc-kaart {
+  background: #fff; border-radius: 16px; border: 1px solid #ece9e2;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  overflow: hidden;
+}
+
+/* Invoervelden binnen een kaart */
+.acc-veld { padding: 13px 16px; }
+.acc-veld + .acc-veld { border-top: 1px solid #f0ede7; }
+.acc-veld label {
+  display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 7px;
+}
+.acc-veld input, .acc-veld select {
+  width: 100%; height: 44px; box-sizing: border-box;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 0 13px; color: var(--ink); font-family: 'Inter', sans-serif;
+  -webkit-appearance: none; outline: none;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.acc-veld input:focus, .acc-veld select:focus {
+  border-color: var(--orange); background: #fff;
+  box-shadow: 0 0 0 3px rgba(134,188,151,0.14);
+}
+/* Vast gemeente-label (org-scope, ingevoegd door JS) netjes binnen de kaart */
+.acc-veld > div { border-radius: 10px; }
+
+/* Info-/actie-rij (meldingen, app) */
+.acc-rij, .acc-actie-rij { display: flex; align-items: center; gap: 13px; padding: 14px 16px; }
+.acc-actie-rij { width: 100%; background: none; border: none; cursor: pointer; text-align: left; font: inherit; }
+.acc-actie-rij:active { background: #faf8f4; }
+.acc-rij-ico {
+  width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+  background: #eef5f0; color: #4e8a66;
+  display: flex; align-items: center; justify-content: center;
+}
+.acc-rij-tekst { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.acc-rij-titel { font-size: 0.92rem; font-weight: 650; color: var(--ink); }
+.acc-rij-sub { font-size: 0.76rem; color: var(--muted); line-height: 1.35; }
+.acc-chevron { color: #c3bdb2; font-size: 1.3rem; flex-shrink: 0; }
+#push-status { display: block; }
+
+/* Opslaan + status */
+.acc-opslaan {
+  width: 100%; margin-top: 22px; text-transform: none;
+  letter-spacing: -0.01em; font-size: 0.95rem;
+  box-shadow: 0 3px 14px rgba(134,188,151,0.34);
+}
+.acc-status { font-size: 0.82rem; margin-top: 10px; text-align: center; min-height: 1em; }
+
+/* Uitloggen — rustig, subtiel gevaar */
+.acc-uitloggen {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  width: 100%; margin-top: 20px; padding: 14px;
+  background: none; border: none; border-radius: 14px; cursor: pointer;
+  color: var(--danger); font-family: 'Inter', sans-serif; font-size: 0.9rem; font-weight: 700;
+  transition: background .15s;
+}
+.acc-uitloggen:active { background: rgba(200,32,26,0.06); }
+
+/* ── Mijn account — extra verfijning ─────────────────────────────────────────── */
+.acc-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.acc-gem-pill { background: #f4f1ea; border-color: #e6e1d6; color: #6b6a64; }
+
+/* Bel-icoon kleurt merkgroen zodra meldingen aan staan */
+.acc-rij-ico { transition: background .25s ease, color .25s ease; }
+.acc-rij-ico.actief { background: var(--orange); color: #fff; }
+
+/* Voettekst met versie — stil en verzorgd */
+.acc-footer {
+  margin: 26px 0 4px; text-align: center;
+  font-size: 0.68rem; letter-spacing: 0.04em; color: #b3ada2;
+}
+
+/* Kaarten en kop komen zacht gestaggerd binnen bij openen */
+@keyframes accIn { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
+#user-panel:not(.hidden) .acc-hero        { animation: accIn .28s ease-out backwards; }
+#user-panel:not(.hidden) .acc-groep-titel { animation: accIn .28s ease-out .04s backwards; }
+#user-panel:not(.hidden) .acc-kaart       { animation: accIn .3s ease-out .07s backwards; }
+#user-panel:not(.hidden) .acc-kaart:nth-of-type(2) { animation-delay: .11s; }
+#user-panel:not(.hidden) .acc-opslaan,
+#user-panel:not(.hidden) .acc-uitloggen,
+#user-panel:not(.hidden) .acc-footer      { animation: accIn .3s ease-out .15s backwards; }
+@media (prefers-reduced-motion: reduce) {
+  #user-panel:not(.hidden) .acc-hero, #user-panel:not(.hidden) .acc-groep-titel,
+  #user-panel:not(.hidden) .acc-kaart, #user-panel:not(.hidden) .acc-opslaan,
+  #user-panel:not(.hidden) .acc-uitloggen, #user-panel:not(.hidden) .acc-footer { animation: none; }
+}
