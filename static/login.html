@@ -97,7 +97,7 @@
       </form>
       <button id="reset-link" style="display:block;width:100%;margin-top:12px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--muted);padding:6px;text-align:center;">Wachtwoord vergeten?</button>
       <button onclick="onboardingOpen()" style="display:block;width:100%;margin-top:2px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--muted);padding:6px;text-align:center;">Hoe werkt de app? →</button>
-      <button id="install-link-btn" onclick="toonInstallInstructie()" style="display:block;width:100%;margin-top:2px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--orange);font-weight:600;padding:6px;text-align:center;">📲 Op beginscherm zetten (app installeren)</button>
+      <button id="install-link-btn" onclick="toonInstallInstructie()" style="display:block;width:100%;margin-top:2px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--orange);font-weight:600;padding:6px;text-align:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>Op beginscherm zetten (app installeren)</button>
     </div>
 
     <!-- Installatie-instructie (per browser) -->
@@ -136,6 +136,36 @@
     if (localStorage.getItem('token')) {
       location.href = new URLSearchParams(location.search).get('redirect') || '/';
     }
+
+    // ── Naadloze overname: wie in de oude app ingelogd was, blijft ingelogd ──
+    // De native schil (App/Play Store-app) leest de achtergebleven Firebase-
+    // inlog van de oude app en wisselt die stil om voor een CIRQO-sessie.
+    (async function () {
+      try {
+        var C = window.Capacitor;
+        if (!(C && C.isNativePlatform && C.isNativePlatform())) return;
+        if (localStorage.getItem('token')) return;
+        var LA = C.Plugins && C.Plugins.LegacyAuth;
+        if (!LA) return;
+        var r = await LA.getLegacyToken();
+        if (!r || !r.idToken) return;
+        // Oude inlog gevonden — toon een rustig overgangsscherm i.p.v. het formulier
+        var ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#faf8f4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;';
+        ov.innerHTML = '<img src="/static/cirqo-logo.webp" style="height:40px" alt="CIRQO">' +
+          '<div style="font-family:Inter,-apple-system,sans-serif;font-size:.9rem;color:#5c6b60;">Je wordt ingelogd…</div>';
+        document.body.appendChild(ov);
+        var res = await fetch('/api/auth/firebase-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id_token: r.idToken }),
+        });
+        if (!res.ok) { ov.remove(); return; }
+        var data = await res.json();
+        _saveSession(data);
+        _redirectNaLogin(data);
+      } catch (e) { /* stil terugvallen op het normale inlogformulier */ }
+    })();
 
     firebase.initializeApp({
       apiKey: "AIzaSyDZOfYXQHCu3Bs7xjuukneAShqCEwvICTY",
@@ -289,6 +319,8 @@
     }
 
     function platform() {
+      // Native schil (App Store/Play Store-app): installeren is niet aan de orde
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) return 'installed';
       var ua = navigator.userAgent || '';
       var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
       if (standalone) return 'installed';

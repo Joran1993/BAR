@@ -830,16 +830,34 @@ function renderItems() {
         </div>`).join("");
       return;
     }
-    let leeg = `<p style="padding:24px 16px;color:var(--muted);">Geen items gevonden.</p>`;
+    let leeg = `<div class="wachtstand">
+      <div class="wachtstand-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2c6e3f" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg></div>
+      <div class="wachtstand-titel">Geen items gevonden</div>
+      <p>Er staat hier op dit moment niets.</p>
+    </div>`;
+    if (q) {
+      leeg = `<div class="wachtstand">
+        <div class="wachtstand-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2c6e3f" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
+        <div class="wachtstand-titel">Niets gevonden</div>
+        <p>Geen items die passen bij &lsquo;${_esc(q)}&rsquo;. Probeer een ander zoekwoord.</p>
+      </div>`;
+    } else if (activeMain === "aanbieden" && activeSubtab === "aangeboden") {
+      leeg = `<div class="wachtstand">
+        <div class="wachtstand-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2c6e3f" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5a2 2 0 0 1 2-2h1.6l1.2-1.8a1.5 1.5 0 0 1 1.25-.7h5.9a1.5 1.5 0 0 1 1.25.7l1.2 1.8H19a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.6"/></svg></div>
+        <div class="wachtstand-titel">Nog geen items aangeboden</div>
+        <p>Scan je eerste item en bied het aan lokale afnemers aan — binnen een minuut staat het hier.</p>
+        <button class="btn btn-primary wachtstand-knop" onclick="document.querySelector('[data-tab=scan]').click()">Eerste item scannen</button>
+      </div>`;
+    }
     if (!q && _role === "bedrijf" && activeMain !== "aanbieden") {
       leeg = `<div class="wachtstand">
-        <div class="wachtstand-ico">🔔</div>
+        <div class="wachtstand-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2c6e3f" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
         <div class="wachtstand-titel">Nog geen aanbod voor jou</div>
         <p>Zodra de milieustraat iets aanbiedt dat bij jouw bedrijf past, krijg je direct een melding en verschijnt het hier.</p>
       </div>`;
     } else if (!q && activeMain === "aanbieden" && activeSubtab === "reacties") {
       leeg = `<div class="wachtstand">
-        <div class="wachtstand-ico">💬</div>
+        <div class="wachtstand-ico"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2c6e3f" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
         <div class="wachtstand-titel">Nog geen reacties</div>
         <p>Je krijgt een melding zodra een bedrijf reageert op je aanbiedingen.</p>
       </div>`;
@@ -1192,11 +1210,11 @@ async function reagerenOpAanbieding(aanbiedingId, status, itemId) {
   if (status === "ophalen") {
     const info = MILIEUSTRAAT_INFO[item?.gemeente];
     wrap.innerHTML = `<hr class="divider">
-      <div class="match-titel">🎉 Match — dit staat voor je klaar!</div>
+      <div class="match-titel">Match — dit staat voor je klaar!</div>
       ${info
         ? `<div class="match-adres"><b>${_esc(info.naam)}</b><br>${_esc(info.adres)}</div>`
         : (item?.gemeente ? `<div class="match-adres">Op te halen bij de milieustraat in <b>${_esc(item.gemeente)}</b></div>` : "")}
-      <button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="_stemOphaalAf(${aanbiedingId}, '${escJs(item?.ai_label || "")}')">💬 Stem het ophaalmoment af</button>
+      <button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="_stemOphaalAf(${aanbiedingId}, '${escJs(item?.ai_label || "")}')">${SVG.chat} Stem het ophaalmoment af</button>
       <button class="btn btn-ghost" style="width:100%;margin-top:8px;" onclick="document.getElementById('modal').classList.add('hidden')">Klaar</button>`;
     setTimeout(() => _confettiBurst(wrap.querySelector(".match-titel")), 120);
   } else {
@@ -1296,7 +1314,7 @@ async function laadBerichten(aanbiedingId, silent = false) {
   const mijnId = JSON.parse(atob(token.split(".")[1])).sub;
   const wrap = document.getElementById("chat-berichten");
   if (!berichten.length) {
-    if (!silent) wrap.innerHTML = `<div class="chat-empty">Nog geen berichten — start het gesprek 👋</div>`;
+    if (!silent) wrap.innerHTML = `<div class="chat-empty">Nog geen berichten — start het gesprek</div>`;
     return;
   }
   // Alleen herschrijven als er nieuwe berichten zijn
@@ -1390,7 +1408,11 @@ document.getElementById("modal-save").addEventListener("click", async () => {
 });
 
 document.getElementById("modal-del").addEventListener("click", async () => {
-  if (!currentItemId || !confirm("Verwijderen?")) return;
+  if (!currentItemId) return;
+  const zeker = window.uxBevestig
+    ? await uxBevestig("Item verwijderen?", "Het item verdwijnt uit je lijsten. De dashboard-tellingen blijven bewaard.")
+    : confirm("Verwijderen?");
+  if (!zeker) return;
   const id = currentItemId;
   allItems = allItems.filter(i => i.id !== id);
   _bewaarItemsCache();
@@ -1505,6 +1527,22 @@ let _swReg = null;
 async function initPush() {
   const btn    = document.getElementById("push-btn");
   const status = document.getElementById("push-status");
+  // Native schil: status tonen op basis van het app-kanaal
+  if (_isNativeSchil()) {
+    try {
+      const PN = window.Capacitor?.Plugins?.PushNotifications;
+      const perm = PN ? await PN.checkPermissions() : null;
+      if (perm && perm.receive === "granted") {
+        status.textContent = "✓ Meldingen staan aan voor dit account";
+        status.style.display = "block";
+        btn.style.display = "none";
+        document.querySelector("#user-panel .acc-rij-ico")?.classList.add("actief");
+      } else {
+        btn.style.display = "block";
+      }
+    } catch (e) { btn.style.display = "block"; }
+    return;
+  }
   if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
   try {
     _swReg = await navigator.serviceWorker.register("/sw.js");
@@ -1542,6 +1580,20 @@ async function meldingInschakelen() {
   const btn    = document.getElementById("push-btn");
   const status = document.getElementById("push-status");
   btn.disabled = true; btn.textContent = "Bezig…";
+  // Native schil: meldingen via het app-kanaal (FCM/APNs) i.p.v. web push
+  if (_isNativeSchil()) {
+    try {
+      await _registreerNativePush();
+      btn.style.display = "none";
+      _toonPushGelukt();
+    } catch (e) {
+      btn.innerHTML = `${SVG.bell} Meldingen inschakelen`;
+      btn.disabled = false;
+      status.textContent = e.message || "Meldingen inschakelen is niet gelukt.";
+      status.style.display = "block";
+    }
+    return;
+  }
   const Notif = window.Notification;
   if (!Notif) {
     btn.innerHTML = `${SVG.bell} Meldingen inschakelen`;
@@ -1554,8 +1606,7 @@ async function meldingInschakelen() {
     if (perm === "granted") {
       await _abonneerPush();
       btn.style.display = "none";
-      status.textContent = "✓ Pushmeldingen ingeschakeld!";
-      status.style.display = "block";
+      _toonPushGelukt();
     } else {
       btn.textContent = "Toestemming geweigerd";
       status.textContent = "Sta meldingen toe via de browserinstellingen.";
@@ -1566,6 +1617,33 @@ async function meldingInschakelen() {
     btn.disabled = false;
     (window.uxToast || alert)("Meldingen inschakelen mislukt: " + (e.message || e.name || "onbekende fout"), "error", 4000);
   }
+}
+
+// Bevestigingsmoment als meldingen zojuist zijn aangezet: vinkje dat zichzelf
+// tekent + korte uitleg, wegklikbaar met "Begrepen"
+function _toonPushGelukt() {
+  const status = document.getElementById("push-status");
+  status.textContent = "✓ Meldingen staan aan voor dit account";
+  status.style.display = "block";
+  document.querySelector("#user-panel .acc-rij-ico")?.classList.add("actief");
+  const kaart = document.getElementById("push-btn")?.closest(".acc-kaart");
+  if (!kaart || kaart.querySelector(".push-gelukt")) return;
+  const el = document.createElement("div");
+  el.className = "push-gelukt";
+  el.innerHTML = `
+    <span class="push-gelukt-cirkel" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline class="push-gelukt-vink" points="20 6 9 17 4 12"/></svg>
+    </span>
+    <div class="push-gelukt-titel">Meldingen staan aan!</div>
+    <p class="push-gelukt-tekst">Je krijgt vanaf nu direct bericht bij nieuw aanbod en reacties — ook als de app dicht is.</p>
+    <button type="button" class="btn btn-primary push-gelukt-knop">Begrepen</button>`;
+  el.querySelector(".push-gelukt-knop").onclick = () => {
+    el.style.opacity = "0";
+    setTimeout(() => el.remove(), 200);
+  };
+  kaart.appendChild(el);
+  if (window._confettiBurst || typeof _confettiBurst === "function")
+    setTimeout(() => _confettiBurst(el.querySelector(".push-gelukt-cirkel")), 250);
 }
 
 // Bewaar het account-token in IndexedDB zodat de service worker een verlopen
@@ -1583,6 +1661,36 @@ function _idbPut(key, val) {
       };
       o.onerror = () => rej(o.error);
     } catch (e) { rej(e); }
+  });
+}
+
+// ── Native schil (Play Store/App Store-app via Capacitor) ──────────────────────
+// In de schil werkt web push niet; meldingen lopen dan via het native kanaal
+// (FCM/APNs). Het token wordt via hetzelfde subscribe-endpoint opgeslagen.
+function _isNativeSchil() {
+  return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+}
+
+async function _registreerNativePush() {
+  const PN = window.Capacitor?.Plugins?.PushNotifications;
+  if (!PN) throw new Error("Pushmodule niet beschikbaar in deze app-versie");
+  const perm = await PN.requestPermissions();
+  if (perm.receive !== "granted") throw new Error("Toestemming geweigerd");
+  return new Promise((res, rej) => {
+    const klaar = setTimeout(() => rej(new Error("Registratie duurde te lang")), 15000);
+    PN.addListener("registration", async (t) => {
+      clearTimeout(klaar);
+      try {
+        await apiFetch("/api/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription: { type: "fcm", token: t.value } }),
+        });
+        res(true);
+      } catch (e) { rej(e); }
+    });
+    PN.addListener("registrationError", () => { clearTimeout(klaar); rej(new Error("Registratie mislukt")); });
+    PN.register();
   });
 }
 
@@ -1614,6 +1722,15 @@ async function _abonneerPush() {
 // ingelogd altijd zijn eigen pushmeldingen — ook na inloggen of herstart, zonder
 // dat je eerst het accountpaneel hoeft te openen. Vraagt zelf geen toestemming.
 async function _ensurePushRegistered() {
+  // Native schil: token bij elke start opnieuw aan dit account koppelen
+  if (_isNativeSchil()) {
+    try {
+      const PN = window.Capacitor?.Plugins?.PushNotifications;
+      const perm = PN ? await PN.checkPermissions() : null;
+      if (perm && perm.receive === "granted") await _registreerNativePush();
+    } catch (e) { /* stil — best-effort */ }
+    return;
+  }
   if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
   if (window.Notification.permission !== "granted") return;
   try {
@@ -1645,7 +1762,11 @@ async function openUserPanel() {
   const orgInit = localStorage.getItem("organisatie") || _username || "";
   document.getElementById("up-organisatie").value = orgInit;
   document.getElementById("up-status").textContent = "";
+  // Wachtwoord-sectie altijd dichtgeklapt bij openen
+  const pwdUit = document.getElementById("pwd-uitklap");
+  if (pwdUit && pwdUit.style.display !== "none") toggleWachtwoord();
   document.getElementById("up-pwd").value = "";
+  const pwd2 = document.getElementById("up-pwd2"); if (pwd2) pwd2.value = "";
   // Identiteitskop: naam, avatar-initiaal en rol-pill
   const rolLabels = { superadmin: "Platform", admin: "Beheerder", user: "Scanner", bedrijf: "Afnemer" };
   _vulAccountKop(orgInit, rolLabels[_role] || _role);
@@ -1686,11 +1807,51 @@ function closeUserPanel() {
   document.getElementById("user-panel").classList.add("hidden");
 }
 
+// Wachtwoord-sectie in-/uitklappen (staat standaard dicht — minder overweldigend)
+function toggleWachtwoord() {
+  const uit = document.getElementById("pwd-uitklap");
+  const chevron = document.getElementById("pwd-chevron");
+  const open = uit.style.display !== "none";
+  uit.style.display = open ? "none" : "block";
+  if (chevron) chevron.style.transform = open ? "" : "rotate(90deg)";
+  if (open) {
+    document.getElementById("up-pwd").value = "";
+    document.getElementById("up-pwd2").value = "";
+    document.getElementById("pwd-status").textContent = "";
+  } else {
+    setTimeout(() => document.getElementById("up-pwd").focus(), 60);
+  }
+}
+window.toggleWachtwoord = toggleWachtwoord;
+
+async function slaWachtwoordOp() {
+  const pwd  = document.getElementById("up-pwd").value;
+  const pwd2 = document.getElementById("up-pwd2").value;
+  const st   = document.getElementById("pwd-status");
+  st.style.color = "var(--danger)";
+  if (pwd.length < 6)   { st.textContent = "Minimaal 6 tekens."; return; }
+  if (pwd !== pwd2)     { st.textContent = "De twee wachtwoorden zijn niet gelijk."; return; }
+  const btn = document.querySelector("#pwd-uitklap .btn");
+  const userId = JSON.parse(atob(token.split(".")[1])).sub;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Opslaan…'; }
+  try {
+    const fd = new FormData(); fd.append("password", pwd);
+    const res = await apiFetch(`/api/users/${userId}/password`, { method: "PATCH", body: fd });
+    if (!res || !res.ok) throw new Error();
+    (window.uxToast || (() => {}))("Wachtwoord gewijzigd", "success");
+    toggleWachtwoord();   // sluit + wist de velden
+  } catch (e) {
+    st.textContent = "Wijzigen is niet gelukt — probeer het opnieuw.";
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Wachtwoord opslaan"; }
+  }
+}
+window.slaWachtwoordOp = slaWachtwoordOp;
+
 async function saveUserPanel() {
   const gemeente    = (document.getElementById("up-gemeente")?.value || "").trim();
   const milieustraat = (document.getElementById("up-milieustraat")?.value || "").trim();
   const organisatie = document.getElementById("up-organisatie").value.trim();
-  const pwd         = document.getElementById("up-pwd").value;
   const statusEl    = document.getElementById("up-status");
   const opslaanBtn  = document.querySelector(".acc-opslaan");
   const userId      = JSON.parse(atob(token.split(".")[1])).sub;
@@ -1716,10 +1877,6 @@ async function saveUserPanel() {
       if (res && res.ok) {
         localStorage.setItem("organisatie", organisatie);
       }
-    }
-    if (pwd) {
-      const fd = new FormData(); fd.append("password", pwd);
-      await apiFetch(`/api/users/${userId}/password`, { method: "PATCH", body: fd });
     }
     if (_username) document.getElementById("hdr-username").textContent = _username + (gemeente ? ` · ${gemeente}` : "");
     _vulAccountKop(organisatie || _username, document.getElementById("up-rol-label")?.textContent);
@@ -1762,6 +1919,8 @@ let _deferredInstallPrompt = null;
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); _deferredInstallPrompt = e; });
 
 function _installPlatform() {
+  // Native schil (App Store/Play Store-app): installeren is per definitie niet aan de orde
+  if (_isNativeSchil()) return "installed";
   const ua = navigator.userAgent || "";
   const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
   if (standalone) return "installed";

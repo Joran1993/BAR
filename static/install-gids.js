@@ -6,6 +6,9 @@
 
   // Nooit in een iframe (bijv. dashboard als tabblad): de app eromheen regelt dit al
   if (window !== window.top) return;
+  // Nooit in de eigen native schil (App/Play Store-app): daar ís het al een app —
+  // elke installatie-uitleg is er irrelevant.
+  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) return;
 
   /* ── Native install-prompt opvangen (Android Chrome/Edge/Samsung) ───────── */
   var deferred = null;
@@ -45,6 +48,27 @@
   }
   function isMobiel(p) { return p.indexOf('ios') === 0 || p.indexOf('android') === 0; }
 
+  /* ── In-app-browserdetectie (WhatsApp/Outlook e.d.) ──────────────────────
+     In zo'n ingebouwd browsertje kan een app NIET geïnstalleerd worden —
+     zonder waarschuwing volgen mensen de stappen en gebeurt er niets. */
+  function inAppBrowser() {
+    // De eigen native schil (App/Play Store-app) is géén in-app-browser:
+    // daar is installeren niet aan de orde en hoort geen enkele gids te tonen.
+    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) return null;
+    var ua = navigator.userAgent || '';
+    if (/FBAN|FBAV|FB_IAB/i.test(ua))            return 'Facebook';
+    if (/Instagram/i.test(ua))                    return 'Instagram';
+    if (/WhatsApp/i.test(ua))                     return 'WhatsApp';
+    if (/LinkedInApp/i.test(ua))                  return 'LinkedIn';
+    if (/Outlook-(iOS|Android)|OutlookMobile/i.test(ua)) return 'Outlook';
+    if (/TeamsMobile|Teams\//i.test(ua))          return 'Teams';
+    if (/GSA\//i.test(ua))                        return 'de Google-app';
+    if (/android/i.test(ua) && /; wv\)/.test(ua)) return 'een andere app';
+    var isIOS = /iphone|ipad|ipod/i.test(ua);
+    if (isIOS && !/Safari|CriOS|FxiOS|EdgiOS/i.test(ua)) return 'een andere app';
+    return null;
+  }
+
   /* ── Iconen (inline SVG, kleur via currentColor) ─────────────────────────── */
   function svg(inhoud, maat) {
     return "<svg width='" + (maat || 24) + "' height='" + (maat || 24) + "' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>" + inhoud + "</svg>";
@@ -65,19 +89,21 @@
   /* ── Stappen per platform ────────────────────────────────────────────────── */
   var GIDS = {
     'ios-safari': { titel: 'iPhone / iPad · Safari', stappen: [
-      [IC.deel,    "Tik op het <b>deel-icoon</b> — het vierkantje met het pijltje omhoog, <b>onderaan</b> je scherm (op iPad: rechtsboven)."],
-      [IC.plusVak, "Scroll omlaag in het lijstje en tik op <b>&lsquo;Zet op beginscherm&rsquo;</b>."],
-      [IC.vink,    "Tik rechtsboven op <b>&lsquo;Voeg toe&rsquo;</b>. Klaar — het CIRQO-logo staat nu op je beginscherm!"]
+      [IC.deel,     "Tik op het <b>deel-icoon</b> — het vierkantje met het pijltje omhoog, <b>onderaan in het midden</b> van je scherm (op iPad: rechtsboven)."],
+      [IC.streepjes, "Er schuift een lijstje omhoog. <b>Scroll omlaag</b> in dat lijstje. Zie je onderaan <b>&lsquo;Toon meer&rsquo;</b> staan? Tik daar dan eerst op."],
+      [IC.plusVak,  "Tik op <b>&lsquo;Zet op beginscherm&rsquo;</b> — het vakje met het plusje ernaast."],
+      [IC.vink,     "Tik rechtsboven op <b>&lsquo;Voeg toe&rsquo;</b>. Klaar — het CIRQO-logo staat nu op je beginscherm!"]
     ]},
     'ios-chrome': { titel: 'iPhone / iPad · Chrome', stappen: [
-      [IC.deel,    "Tik op het <b>deel-icoon</b> (vierkantje met pijltje omhoog), rechts naast de adresbalk."],
-      [IC.plusVak, "Kies <b>&lsquo;Zet op beginscherm&rsquo;</b>."],
-      [IC.vink,    "Tik op <b>&lsquo;Voeg toe&rsquo;</b>. Klaar!"]
+      [IC.deel,     "Tik op het <b>deel-icoon</b> (vierkantje met pijltje omhoog), rechts naast de adresbalk."],
+      [IC.streepjes, "Scroll omlaag in het lijstje dat verschijnt. Staat er <b>&lsquo;Toon meer&rsquo;</b>? Tik daar dan eerst op."],
+      [IC.plusVak,  "Tik op <b>&lsquo;Zet op beginscherm&rsquo;</b>."],
+      [IC.vink,     "Tik op <b>&lsquo;Voeg toe&rsquo;</b>. Klaar!"]
     ], tip: "Lukt het niet? Open <b>app.cirqo.nl</b> in <b>Safari</b> en volg de stappen daar." },
     'ios-anders': { titel: 'iPhone / iPad', intro: "In deze browser werkt installeren niet goed. Via <b>Safari</b> duurt het 30 seconden:", stappen: [
       [IC.safari,  "Open <b>Safari</b> en ga naar <b>app.cirqo.nl</b>."],
       [IC.deel,    "Tik op het <b>deel-icoon</b> (vierkantje met pijltje omhoog) onderaan het scherm."],
-      [IC.plusVak, "Kies <b>&lsquo;Zet op beginscherm&rsquo;</b> en tik op <b>&lsquo;Voeg toe&rsquo;</b>."]
+      [IC.plusVak, "Scroll omlaag (tik zo nodig eerst op <b>&lsquo;Toon meer&rsquo;</b>), kies <b>&lsquo;Zet op beginscherm&rsquo;</b> en tik op <b>&lsquo;Voeg toe&rsquo;</b>."]
     ]},
     'android-chrome': { titel: 'Android · Chrome', stappen: [
       [IC.puntjesV, "Tik <b>rechtsboven</b> op de drie puntjes <b>&#8942;</b>."],
@@ -165,7 +191,12 @@
   fab.id = 'ig-fab';
   fab.setAttribute('aria-label', 'App installeren');
   fab.innerHTML = IC.download;
+  // Inline-modus (/installeren): gids permanent op de pagina, geen fab/overlay
+  var inlineDoel = document.getElementById('ig-inline');
   function plaats() {
+    // Inline-modus rendert pas in reedsGeinstalleerd() — dan zijn LOGO e.d. al
+    // gedefinieerd (deze functie draait vóór de rest van het script)
+    if (inlineDoel) return;
     document.body.appendChild(overlay);
     document.body.appendChild(fab);
     // Op pagina's met een onderbalk: bolletje erbóven hangen i.p.v. eroverheen
@@ -192,6 +223,24 @@
 
   function bouwInstall() {
     var p = platform();
+    // In een ingebouwd browsertje (WhatsApp/Outlook/…): eerst dáár uit — anders
+    // volgen mensen de stappen en gebeurt er niets
+    var inApp = inAppBrowser();
+    if (inApp) {
+      var ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+      var hi = kop('Bijna! E&eacute;n stap eerst', 'Je opent CIRQO nu binnen ' + inApp + '.');
+      hi += "<div class='ig-intro' style='background:#fbe8da;border:1px solid #f2cfae;border-radius:12px;padding:11px 13px;'>" +
+            "In het ingebouwde browsertje van <b>" + inApp + "</b> kan de app <b>niet ge&iuml;nstalleerd</b> worden. Open CIRQO eerst in je echte browser:</div>";
+      if (ios) {
+        hi += "<div class='ig-stap'><span class='ig-stap-nr'>1</span><span class='ig-stap-ic'>" + IC.deel + "</span><span class='ig-stap-tekst'>Tik op het <b>deel-icoon</b> of op <b>&#8943;</b> en kies <b>&lsquo;Open in Safari&rsquo;</b> (of &lsquo;Open in browser&rsquo;).</span></div>";
+        hi += "<div class='ig-stap'><span class='ig-stap-nr'>2</span><span class='ig-stap-ic'>" + IC.telPlus + "</span><span class='ig-stap-tekst'>Volg daarna de installatiestappen die je daar vanzelf ziet.</span></div>";
+      } else {
+        hi += "<div class='ig-stap'><span class='ig-stap-nr'>1</span><span class='ig-stap-ic'>" + IC.puntjesV + "</span><span class='ig-stap-tekst'>Tik rechtsboven op <b>&#8942;</b> en kies <b>&lsquo;Openen in Chrome&rsquo;</b> (of &lsquo;Open in browser&rsquo;).</span></div>";
+        hi += "<div class='ig-stap'><span class='ig-stap-nr'>2</span><span class='ig-stap-ic'>" + IC.telPlus + "</span><span class='ig-stap-tekst'>Volg daarna de installatiestappen die je daar vanzelf ziet.</span></div>";
+      }
+      hi += "<button class='ig-later'>Misschien later</button>";
+      return hi;
+    }
     var g = GIDS[p] || GIDS['desktop-anders'];
     var h = kop('Zet CIRQO op je telefoon', 'Opent als echte app — snel, groot icoon, met meldingen.');
     h += "<span class='ig-browser'>" + g.titel + "</span>";
@@ -313,6 +362,12 @@
 
   /* ── Na installatie: succes + meldingen-suggestie ────────────────────────── */
   window.addEventListener('appinstalled', function () {
+    if (inlineDoel) {
+      inlineDoel.innerHTML = bouwPush(true);
+      var pb = document.getElementById('ig-push-aan');
+      if (pb) pb.addEventListener('click', zetPushAan);
+      return;
+    }
     fabModus = 'push';
     fab.innerHTML = IC.bel;
     open('push', true);
@@ -331,6 +386,21 @@
   }
 
   reedsGeinstalleerd(function (installed) {
+    if (inlineDoel) {
+      // /installeren-pagina: de gids permanent op de pagina
+      if (installed) {
+        inlineDoel.innerHTML =
+          kop('Al gelukt! &#127881;', 'CIRQO staat al op dit toestel.') +
+          "<div class='ig-succes'>" + IC.vink + " Open de app via het CIRQO-icoon op je beginscherm.</div>";
+      } else {
+        inlineDoel.innerHTML = bouwInstall();
+        var d = document.getElementById('ig-direct');
+        if (d) d.addEventListener('click', installNu);
+        var later = inlineDoel.querySelector('.ig-later');
+        if (later) later.style.display = 'none';
+      }
+      return;
+    }
     var p = platform();
     if (installed) {
       // App staat er al → alleen nog meldingen-suggestie (belletje) indien nodig

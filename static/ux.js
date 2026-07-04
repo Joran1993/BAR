@@ -21,6 +21,36 @@
     }, duration);
   };
 
+  /* ── Bevestigingskaart in appstijl (vervangt het systeem-confirm) ───────── */
+  window.uxBevestig = function (titel, tekst, bevestigLabel) {
+    return new Promise(function (res) {
+      var wrap = document.createElement('div');
+      wrap.className = 'ux-bevestig';
+      wrap.innerHTML =
+        '<div class="ux-bevestig-kaart" role="dialog" aria-modal="true">' +
+          '<div class="ux-bevestig-titel"></div>' +
+          '<p class="ux-bevestig-tekst"></p>' +
+          '<div class="ux-bevestig-knoppen">' +
+            '<button type="button" class="ux-b-annuleer">Annuleren</button>' +
+            '<button type="button" class="ux-b-bevestig"></button>' +
+          '</div>' +
+        '</div>';
+      wrap.querySelector('.ux-bevestig-titel').textContent = titel || 'Weet je het zeker?';
+      var t = wrap.querySelector('.ux-bevestig-tekst');
+      if (tekst) t.textContent = tekst; else t.remove();
+      wrap.querySelector('.ux-b-bevestig').textContent = bevestigLabel || 'Verwijderen';
+      document.body.appendChild(wrap);
+      function klaar(v) {
+        wrap.classList.add('weg');
+        setTimeout(function () { wrap.remove(); }, 200);
+        res(v);
+      }
+      wrap.querySelector('.ux-b-annuleer').onclick = function () { klaar(false); };
+      wrap.querySelector('.ux-b-bevestig').onclick = function () { klaar(true); };
+      wrap.addEventListener('click', function (e) { if (e.target === wrap) klaar(false); });
+    });
+  };
+
   /* ── Button spinner helper ───────────────────────────────────────────────── */
   window.uxBtnLoading = function (btn, loading) {
     if (loading) {

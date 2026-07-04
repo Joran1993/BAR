@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#86bc97">
+  <link rel="icon" href="/static/favicon.ico">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon-cirqo-192.png">
+  <title>CIRQO installeren — in 3 stappen op je telefoon</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Outfit:wght@800;900&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Outfit:wght@800;900&display=swap" media="print" onload="this.media='all'">
+  <style>
+    :root { --orange: #86bc97; --ink: #1a1a1a; --muted: #67676e; --surface: #f8f4ef; --border: #e4e4e9; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif; color: var(--ink);
+      background: var(--surface); min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .vel { max-width: 520px; margin: 0 auto; padding: 34px 20px 48px; }
+    .logo { display: block; height: 40px; margin: 0 auto 22px; }
+    h1 {
+      font-family: 'Outfit', sans-serif; font-size: 1.7rem; font-weight: 900;
+      text-align: center; letter-spacing: -0.02em; line-height: 1.15;
+    }
+    .sub { text-align: center; font-size: 0.95rem; color: var(--muted); margin: 10px 0 20px; line-height: 1.5; }
+    .voordelen {
+      display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 26px;
+    }
+    .voordeel {
+      font-size: 0.72rem; font-weight: 700; color: #33604a;
+      background: #e6f0e9; border: 1px solid #d2e5d8;
+      padding: 5px 12px; border-radius: 100px;
+    }
+    .gids-kaart {
+      background: #fff; border-radius: 22px; padding: 22px 20px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    }
+    /* De pagina heeft al een eigen kop — de gids-kop alleen verbergen als er
+       stappen volgen (bij 'Al gelukt' is de kop juist de boodschap) */
+    #ig-inline > .ig-kop:has(+ .ig-browser) { display: none; }
+    .voet { text-align: center; font-size: 0.72rem; color: #b3ada2; margin-top: 26px; letter-spacing: 0.04em; }
+    .voet a { color: inherit; }
+  </style>
+</head>
+<body>
+  <div class="vel">
+    <img class="logo" src="/static/cirqo-logo.webp" alt="CIRQO">
+    <h1>Zet CIRQO op je telefoon</h1>
+    <p class="sub">Geen app-store nodig — in drie tikken staat CIRQO op je beginscherm en werkt hij als een echte app.</p>
+    <div class="voordelen">
+      <span class="voordeel">✓ Eigen icoon</span>
+      <span class="voordeel">✓ Volledig scherm</span>
+      <span class="voordeel">✓ Pushmeldingen</span>
+      <span class="voordeel">✓ Altijd de nieuwste versie</span>
+    </div>
+    <div class="gids-kaart">
+      <div id="ig-inline"></div>
+    </div>
+    <p class="voet">CIRQO · <a href="/login">inloggen</a> · app.cirqo.nl/installeren</p>
+  </div>
+  <script src="/static/install-gids.js"></script>
+</body>
+</html>

@@ -968,7 +968,7 @@ body {
 .acc-rij-tekst { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .acc-rij-titel { font-size: 0.92rem; font-weight: 650; color: var(--ink); }
 .acc-rij-sub { font-size: 0.76rem; color: var(--muted); line-height: 1.35; }
-.acc-chevron { color: #c3bdb2; font-size: 1.3rem; flex-shrink: 0; }
+.acc-chevron { color: #c3bdb2; font-size: 1.3rem; flex-shrink: 0; transition: transform .2s ease; }
 #push-status { display: block; }
 
 /* Opslaan + status */
@@ -1016,4 +1016,114 @@ body {
   #user-panel:not(.hidden) .acc-hero, #user-panel:not(.hidden) .acc-groep-titel,
   #user-panel:not(.hidden) .acc-kaart, #user-panel:not(.hidden) .acc-opslaan,
   #user-panel:not(.hidden) .acc-uitloggen, #user-panel:not(.hidden) .acc-footer { animation: none; }
+}
+
+/* ── Liquid glass op meer plekken ────────────────────────────────────────────
+   Zelfde discipline als de onderbalk: bescheiden blur (≤12px), kleine
+   oppervlakken, altijd een dekkende fallback zonder backdrop-filter. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+
+  /* Plakkende lijst-koppen: items schuiven er wazig achterlangs */
+  .list-maintabs {
+    background: rgba(255,255,255,0.8);
+    -webkit-backdrop-filter: blur(10px) saturate(1.5);
+    backdrop-filter: blur(10px) saturate(1.5);
+  }
+  .list-subtabs {
+    background: rgba(248,244,239,0.82);
+    -webkit-backdrop-filter: blur(10px) saturate(1.5);
+    backdrop-filter: blur(10px) saturate(1.5);
+  }
+  .search-wrap {
+    background: rgba(255,255,255,0.8);
+    -webkit-backdrop-filter: blur(10px) saturate(1.5);
+    backdrop-filter: blur(10px) saturate(1.5);
+  }
+
+  /* Knoppen óver de foto in de detailmodal: glas i.p.v. massief */
+  .modal-close {
+    background: rgba(255,255,255,0.6);
+    -webkit-backdrop-filter: blur(12px) saturate(1.6);
+    backdrop-filter: blur(12px) saturate(1.6);
+    border: 1px solid rgba(255,255,255,0.65);
+  }
+  .carousel-btn {
+    background: rgba(30,30,28,0.28);
+    -webkit-backdrop-filter: blur(10px) saturate(1.4);
+    backdrop-filter: blur(10px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,0.25);
+  }
+
+  /* Zwevende installeer-knop: glazen pil in merkgroen */
+  .install-fab {
+    background: rgba(134,188,151,0.72);
+    -webkit-backdrop-filter: blur(12px) saturate(1.6);
+    backdrop-filter: blur(12px) saturate(1.6);
+    border: 1px solid rgba(255,255,255,0.55);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.5), 0 4px 16px rgba(93,154,118,0.35);
+  }
+  .install-fab:hover { background: rgba(106,170,130,0.78); }
+
+  /* Succes-overlay: de app schemert wazig door het feestmoment heen */
+  #succes-overlay {
+    background: rgba(250,248,244,0.82);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    backdrop-filter: blur(14px) saturate(1.4);
+  }
+}
+
+/* ── Meldingen-aan bevestigingsmoment ────────────────────────────────────────── */
+.push-gelukt {
+  text-align: center; padding: 6px 16px 18px;
+  border-top: 1px solid #f0ede7; margin-top: 4px; padding-top: 18px;
+  transition: opacity .2s ease;
+}
+.push-gelukt-cirkel {
+  width: 58px; height: 58px; border-radius: 50%;
+  background: linear-gradient(135deg, #8fc4a1, #5d9a76);
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(93,154,118,0.35);
+  animation: succesPop .4s cubic-bezier(.2,.82,.26,1) both;
+}
+.push-gelukt-vink {
+  stroke-dasharray: 30; stroke-dashoffset: 30;
+  animation: vinkTeken .3s ease-out .25s forwards;
+}
+.push-gelukt-titel { font-weight: 800; font-size: 1rem; margin-top: 12px;
+                     animation: succesFadeUp .3s ease-out .15s both; }
+.push-gelukt-tekst { font-size: 0.82rem; color: var(--muted); line-height: 1.5;
+                     margin: 5px 0 14px; animation: succesFadeUp .3s ease-out .2s both; }
+.push-gelukt-knop { width: 100%; text-transform: none; letter-spacing: -0.01em;
+                    animation: succesFadeUp .3s ease-out .25s both; }
+@media (prefers-reduced-motion: reduce) {
+  .push-gelukt-cirkel, .push-gelukt-titel, .push-gelukt-tekst, .push-gelukt-knop { animation: none; }
+  .push-gelukt-vink { animation: none; stroke-dashoffset: 0; }
+}
+
+/* ── Lege staten: icoon popt binnen en zweeft zachtjes ───────────────────────── */
+@keyframes wachtstandPop {
+  from { opacity: 0; transform: scale(.6); }
+  60%  { transform: scale(1.08); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes wachtstandZweef {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+.wachtstand-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 72px; height: 72px; border-radius: 50%;
+  background: #eef5f0; font-size: 2rem;
+  animation: wachtstandPop .4s cubic-bezier(.2,.82,.26,1) both,
+             wachtstandZweef 3.2s ease-in-out .5s infinite;
+}
+.wachtstand-titel { animation: succesFadeUp .3s ease-out .12s both; }
+.wachtstand p     { animation: succesFadeUp .3s ease-out .18s both; }
+.wachtstand-knop  {
+  width: auto; display: inline-block; margin-top: 16px; padding: 12px 26px;
+  text-transform: none; letter-spacing: -0.01em; font-size: 0.9rem;
+  animation: succesFadeUp .3s ease-out .24s both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wachtstand-ico, .wachtstand-titel, .wachtstand p, .wachtstand-knop { animation: none; }
 }

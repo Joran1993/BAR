@@ -2309,6 +2309,38 @@ async def debug_brand(request: Request):
     return {"DEFAULT_BRAND": DEFAULT_BRAND, "detected_brand": detected, "host": request.headers.get("host"), "BRAND_ENV": _os2.getenv("BRAND")}
 
 
+@app.get("/.well-known/assetlinks.json")
+async def assetlinks():
+    """Digital Asset Links: koppelt de Play Store-app (TWA-schil) aan dit domein,
+    zodat hij zonder browserbalk opent. Vingerafdrukken = upload- + Play-signing-
+    certificaat van de bestaande CIRQO-app (uit Firebase, project database-e5575)."""
+    return [{
+        "relation": ["delegate_permission/common.handle_all_urls"],
+        "target": {
+            "namespace": "android_app",
+            "package_name": "com.cirqoapp.ios",
+            "sha256_cert_fingerprints": [
+                "07:B9:2E:02:75:D5:E2:F3:B3:51:EF:6C:44:C5:A6:74:C3:6B:E6:F4:36:9F:01:E0:13:34:AF:A3:7B:6D:6E:EF",
+                "5F:D6:9F:19:1D:29:76:6B:26:CC:9E:30:2C:F8:3B:1A:FB:FD:D2:E9:02:B6:31:13:06:2F:A4:94:3E:59:93:F0",
+                # Nieuwe upload-sleutel (cirqo-playstore, jul 2026)
+                "2B:2D:C9:81:B9:86:B6:A1:74:34:7D:12:3A:2A:82:8C:7C:B9:C9:55:5D:31:6E:A6:18:F7:64:15:D5:49:7D:32",
+            ],
+        },
+    }]
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_page():
+    """Privacyverklaring — verplicht veld voor App Store en Play Store."""
+    return _render_html("static/privacy.html", DEFAULT_BRAND)
+
+
+@app.get("/installeren", response_class=HTMLResponse)
+async def installeren_page(request: Request):
+    """Openbare installatiepagina — voor mails en de QR-poster op de milieustraat."""
+    return _render_html("static/installeren.html", _detect_brand(request))
+
+
 @app.get("/bedrijf", response_class=HTMLResponse)
 async def bedrijf_page(request: Request):
     # Kale pagina zonder token is een pilot-restant → naar de normale login.
