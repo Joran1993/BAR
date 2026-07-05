@@ -132,9 +132,12 @@ def _mag_item_beheren(user: dict, item: dict) -> bool:
 
 
 def _scope_gemeenten(user: dict, item: Optional[dict] = None) -> list:
-    """Gemeenten waarbinnen deze gebruiker mag handelen (incl. item-gemeente)."""
+    """Gemeenten waarbinnen deze gebruiker mag handelen (incl. organisatie en item-gemeente)."""
     g = user.get("gemeente")
     scope = set(_gemeenten_expand(g) or ([g] if g else []))
+    org = (user.get("organisatie") or "").strip().lower()
+    if org in ORGANISATIE_GEMEENTEN:
+        scope |= set(ORGANISATIE_GEMEENTEN[org])
     if item and item.get("gemeente"):
         scope.add(item["gemeente"])
     return list(scope)
@@ -1671,8 +1674,9 @@ async def create_aanbieding(
         raise HTTPException(status_code=404)
     if not _mag_item_beheren(user, _item):
         raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
-    if user["role"] != "superadmin" and not _bedrijf_werkt_in(bedrijf_id, _scope_gemeenten(user, _item)):
-        raise HTTPException(status_code=403, detail="Bedrijf valt buiten je werkgebied")
+    # Geen gemeente-check op het bedrijf: de aanbiedlijst toont bewust ook
+    # bedrijven buiten de eigen gemeente (organisatie-breed + landelijke
+    # fallback als er lokaal geen categorie-match is)
     aanbieding_id = db.create_aanbieding(item_id, bedrijf_id, user_id=user["id"])
     fs.sync_aanbieding({"id": aanbieding_id, "item_id": item_id, "bedrijf_id": bedrijf_id, "status": "open"})
     gemeente = _gemeente_filter(user)
@@ -1718,11 +1722,6 @@ async def create_aanbiedingen_bulk(
         raise HTTPException(status_code=404)
     if not _mag_item_beheren(user, _item):
         raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
-    if user["role"] != "superadmin":
-        scope = _scope_gemeenten(user, _item)
-        for bedrijf_id in bedrijf_ids:
-            if not _bedrijf_werkt_in(int(bedrijf_id), scope):
-                raise HTTPException(status_code=403, detail="Bedrijf valt buiten je werkgebied")
 
     ids = []
     for bedrijf_id in bedrijf_ids:

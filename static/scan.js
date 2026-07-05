@@ -326,6 +326,8 @@ async function aanbiedenAanSelectie(itemId) {
     syncItems();
     _toonSucces("Aangeboden!", `Het item is aangeboden aan: ${gekozen.map(b => b.naam).join(", ")}.`);
   } else {
+    const err = res ? await res.json().catch(() => null) : null;
+    (window.uxToast || alert)((err && err.detail) || "Aanbieden is niet gelukt — probeer opnieuw", "error");
     if (btn) { btn.disabled = false; btn.textContent = "Opnieuw proberen"; }
   }
 }
@@ -727,6 +729,8 @@ async function aanbieden(itemId, bedrijfId) {
     syncItems();
     _toonSucces("Aangeboden!", `Het item is aangeboden aan ${bedrijfNaam}.`);
   } else {
+    const err = res ? await res.json().catch(() => null) : null;
+    (window.uxToast || alert)((err && err.detail) || "Aanbieden is niet gelukt — probeer opnieuw", "error");
     if (btn) { btn.disabled = false; btn.textContent = "Opnieuw proberen"; }
   }
 }
