@@ -47,6 +47,19 @@ Reageer uitsluitend in dit JSON-formaat (geen extra tekst):
 {{"label": "...", "detail": "...", "gewicht_kg": 0.0, "category": "...", "geaccepteerd": true}}"""
 
 
+_client = None
+
+
+def _get_client(api_key: str):
+    """Eén gedeelde Anthropic-client: houdt de HTTPS-verbinding naar de API warm
+    (keep-alive), zodat niet elke scan opnieuw een TLS-handshake betaalt."""
+    global _client
+    if _client is None:
+        import anthropic
+        _client = anthropic.Anthropic(api_key=api_key)
+    return _client
+
+
 def analyse_photo(image_b64: str, inzamellijst: Optional[list] = None) -> tuple[Optional[str], Optional[str], Optional[float], Optional[str], Optional[bool]]:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -64,7 +77,7 @@ def analyse_photo(image_b64: str, inzamellijst: Optional[list] = None) -> tuple[
     import anthropic
     import time
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = _get_client(api_key)
 
     for poging in range(3):
         try:
@@ -133,7 +146,7 @@ def heranalyseer_gewicht(photo_url: str, label: str) -> Optional[float]:
     if not api_key:
         return None
     import anthropic, time, urllib.request
-    client = anthropic.Anthropic(api_key=api_key)
+    client = _get_client(api_key)
     try:
         with urllib.request.urlopen(photo_url, timeout=10) as r:
             img_data = base64.b64encode(r.read()).decode()

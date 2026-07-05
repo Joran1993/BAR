@@ -2059,11 +2059,15 @@ async def upload(
         files = (files or [])[:4]   # maximaal 4 foto's
         if not files:
             raise HTTPException(status_code=400, detail="Geen foto ontvangen")
-        contents = []
+        raws = []
         for f in files:
             raw = await f.read()
-            if not raw:
-                continue
+            if raw:
+                raws.append(raw)
+        if not raws:
+            raise HTTPException(status_code=400, detail="Geen geldige foto")
+
+        def _resize(raw):
             try:
                 img = Image.open(_io.BytesIO(raw))
                 img = ImageOps.exif_transpose(img)
@@ -2073,15 +2077,18 @@ async def upload(
                     img = img.resize((512, int(img.height * ratio)), Image.LANCZOS)
                 buf = _io.BytesIO()
                 img.save(buf, format="JPEG", quality=72)
-                raw = buf.getvalue()
+                return buf.getvalue()
             except Exception as e:
                 print(f"[upload] Resize overgeslagen: {e}")
-            contents.append(raw)
-        if not contents:
-            raise HTTPException(status_code=400, detail="Geen geldige foto")
+                return raw
+
+        loop = asyncio.get_event_loop()
+        # Resize parallel én van de event-loop af (Pillow is CPU-werk): meerdere
+        # foto's worden tegelijk verkleind i.p.v. na elkaar, en de app blijft
+        # ondertussen andere verzoeken bedienen
+        contents = list(await asyncio.gather(*[loop.run_in_executor(None, _resize, r) for r in raws]))
 
         image_b64 = base64.b64encode(contents[0]).decode("utf-8")
-        loop = asyncio.get_event_loop()
         # GPS-gemeente heeft voorrang boven account-gemeente
         gemeente = gemeente_override.strip() if gemeente_override and gemeente_override.strip() else (user.get("gemeente") or None)
 
