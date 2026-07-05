@@ -2757,8 +2757,10 @@ async def kiosk_page(key: str = ""):
         raise HTTPException(status_code=503, detail="Kiosk is niet geconfigureerd")
     if key != KIOSK_TOKEN:
         raise HTTPException(status_code=403, detail="Ongeldige kiosk-sleutel")
-    html = _render_html("static/kiosk.html", DEFAULT_BRAND)
-    return html.replace("</head>", f'<script>window._KIOSK_KEY="{KIOSK_TOKEN}";</script></head>', 1)
+    resp = _render_html("static/kiosk.html", DEFAULT_BRAND)
+    html = resp.body.decode("utf-8").replace(
+        "</head>", f'<script>window._KIOSK_KEY="{KIOSK_TOKEN}";</script></head>', 1)
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/kiosk/scan")
