@@ -1233,3 +1233,16 @@ body {
   color: var(--muted); padding: 6px 11px; white-space: nowrap;
 }
 .digest-opt.actief { background: #fff; color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+
+/* ── Wis-kruisje rechts in titel/beschrijving-veld ─────────────────────────── */
+.veld-wis-wrap { position: relative; }
+.veld-wis {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  width: 30px; height: 30px; display: none;
+  align-items: center; justify-content: center;
+  border: none; background: none; padding: 0; cursor: pointer;
+  color: #c2c2c8; font-size: 1.5rem; line-height: 1;
+}
+.veld-wis.zichtbaar { display: flex; }
+.veld-wis:hover, .veld-wis:active { color: #8a8a90; }
+.veld-wis-top { top: 8px; transform: none; }   /* meerregelig veld: bovenaan uitlijnen */

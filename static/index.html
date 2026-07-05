@@ -195,15 +195,21 @@
       </div>
       <div class="field" style="margin-bottom:10px;">
         <label style="font-size:0.8rem;">Titel</label>
-        <input id="result-label" type="text" placeholder="Bijv. 12 fietsen" autocomplete="off"
-          style="width:100%;font-family:inherit;font-weight:800;font-size:1.02rem;padding:11px 12px;border:1.5px dashed var(--orange);border-radius:12px;background:#fff;">
+        <div class="veld-wis-wrap">
+          <input id="result-label" type="text" placeholder="Bijv. 12 fietsen" autocomplete="off"
+            style="width:100%;font-family:inherit;font-weight:800;font-size:1.02rem;padding:11px 40px 11px 12px;border:1.5px dashed var(--orange);border-radius:12px;background:#fff;">
+          <button type="button" class="veld-wis" aria-label="Titel wissen" onclick="_wisVeld('result-label')">&times;</button>
+        </div>
       </div>
       <div id="result-weight" class="result-weight"></div>
       <div id="result-co2" class="result-co2 hidden"></div>
       <div class="field" style="margin-top:10px;">
         <label style="font-size:0.8rem;">Beschrijving</label>
-        <textarea id="result-detail" class="result-detail" rows="3"
-          style="width:100%;font-family:inherit;font-size:16px;line-height:1.5;padding:10px 12px;border:1.5px dashed var(--orange);border-radius:12px;background:#fff;resize:vertical;"></textarea>
+        <div class="veld-wis-wrap">
+          <textarea id="result-detail" class="result-detail" rows="3"
+            style="width:100%;font-family:inherit;font-size:16px;line-height:1.5;padding:10px 40px 10px 12px;border:1.5px dashed var(--orange);border-radius:12px;background:#fff;resize:vertical;"></textarea>
+          <button type="button" class="veld-wis veld-wis-top" aria-label="Beschrijving wissen" onclick="_wisVeld('result-detail')">&times;</button>
+        </div>
       </div>
       <button id="result-bewerk-opslaan" class="btn btn-primary hidden" style="width:100%;margin-top:10px;">✓ Aanpassing opslaan</button>
       <p style="font-size:0.8rem;color:var(--muted);margin-top:8px;text-align:center;">Tik op een veld om de tekst te verbeteren — de stippellijn betekent: bewerkbaar.</p>

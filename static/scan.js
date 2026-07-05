@@ -500,9 +500,27 @@ function resetScan() {
 // geen vastloper in de iOS-webview (waar getCurrentPosition kon blijven hangen).
 
 // ── Titel + beschrijving bewerken (AI-suggestie → eigen tekst) ─────────────────
+// Wis-kruisje verschijnt zodra er tekst in het veld staat
+function _updateWisKnop(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const knop = el.parentElement && el.parentElement.querySelector(".veld-wis");
+  if (knop) knop.classList.toggle("zichtbaar", !!el.value.trim());
+}
+function _wisVeld(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.value = "";
+  document.getElementById("result-bewerk-opslaan").classList.remove("hidden");
+  _updateWisKnop(id);
+  el.focus();
+}
+window._wisVeld = _wisVeld;
+
 ["result-label", "result-detail"].forEach(id =>
   document.getElementById(id).addEventListener("input", () => {
     document.getElementById("result-bewerk-opslaan").classList.remove("hidden");
+    _updateWisKnop(id);
   }));
 document.getElementById("result-bewerk-opslaan").addEventListener("click", async () => {
   if (!_huidigItemId) return;
@@ -588,6 +606,8 @@ analyseBtn.addEventListener("click", async () => {
     }
     // Beschrijving als AI-suggestie in een bewerkbaar veld
     document.getElementById("result-detail").value = item.ai_detail || "";
+    _updateWisKnop("result-label");
+    _updateWisKnop("result-detail");
 
     const acceptatieBadge = document.getElementById("result-acceptatie");
     acceptatieBadge.className = "result-acceptatie hidden";
