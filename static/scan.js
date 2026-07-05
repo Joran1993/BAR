@@ -437,7 +437,6 @@ function _voegFotosToe(fileList) {
     pendingFiles.push(f);
   }
   if (!pendingFiles.length) return;
-  _startGemeentePrefetch();   // locatie alvast bepalen terwijl de gebruiker foto's bekijkt
   scanHero.classList.add("hidden");
   previewWrap.classList.remove("hidden");
   analyseBtn.classList.remove("hidden");
@@ -482,7 +481,6 @@ if (addPhotoInput) addPhotoInput.addEventListener("change", () => { _voegFotosTo
 
 function resetScan() {
   pendingFiles = [];
-  _gpsPrefetch = null;   // locatie opnieuw bepalen bij de volgende scan
   cameraInput.value = "";
   if (addPhotoInput) addPhotoInput.value = "";
   previewThumbs.innerHTML = "";
@@ -496,27 +494,10 @@ function resetScan() {
   _huidigItemId = null; _huidigCategory = null;
 }
 
-// ── GPS ────────────────────────────────────────────────────────────────────────
-function getGPSLocation() {
-  return new Promise(resolve => {
-    if (!navigator.geolocation) { resolve(null); return; }
-    navigator.geolocation.getCurrentPosition(
-      pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-      ()  => resolve(null),
-      { timeout: 6000, maximumAge: 60000 }
-    );
-  });
-}
-
-async function getGemeenteFromCoords(lat, lon) {
-  try {
-    // Via de eigen backend (met cache): geen rechtstreekse Nominatim-afhankelijkheid
-    const res = await apiFetch(`/api/geocode?lat=${lat}&lon=${lon}`, { _stil: true });
-    if (!res || !res.ok) return null;
-    const data = await res.json();
-    return data.gemeente || null;
-  } catch { return null; }
-}
+// Locatiebepaling is bewust verwijderd: de gemeente van een item volgt de
+// gemeente-scope van het ingelogde account, en de koppeling van bedrijven aan
+// het juiste netwerk gebeurt handmatig in het beheer. Geen GPS betekent ook
+// geen vastloper in de iOS-webview (waar getCurrentPosition kon blijven hangen).
 
 // ── Titel + beschrijving bewerken (AI-suggestie → eigen tekst) ─────────────────
 ["result-label", "result-detail"].forEach(id =>
@@ -558,17 +539,6 @@ async function _comprimeer(file, maxPx = 1280, kwaliteit = 0.8) {
 }
 
 // ── Analyseren ─────────────────────────────────────────────────────────────────
-// GPS + gemeente alvast bepalen zodra er foto's zijn — dan is dat klaar
-// tegen de tijd dat de gebruiker op Analyseren tikt
-let _gpsPrefetch = null;
-function _startGemeentePrefetch() {
-  if (_gpsPrefetch) return;
-  _gpsPrefetch = (async () => {
-    const gps = await getGPSLocation();
-    return gps ? await getGemeenteFromCoords(gps.lat, gps.lon) : null;
-  })();
-}
-
 analyseBtn.addEventListener("click", async () => {
   if (!pendingFiles.length) return;
   analyseBtn.disabled = true;
@@ -576,31 +546,20 @@ analyseBtn.addEventListener("click", async () => {
   analyseTxt.textContent = "Voorbereiden…";
   resultCard.classList.add("hidden");
   scanError.classList.add("hidden");
+  locatieTxt.classList.add("hidden");
 
-  // Compressie en locatiebepaling parallel (locatie is meestal al voorgeladen)
-  _startGemeentePrefetch();
-  const [gecomprimeerd, detectedGemeente] = await Promise.all([
-    Promise.all(pendingFiles.map(f => _comprimeer(f))),
-    _gpsPrefetch,
-  ]);
+  // Alleen compressie — geen locatiebepaling meer (de gemeente volgt het account)
+  const gecomprimeerd = await Promise.all(pendingFiles.map(f => _comprimeer(f)));
   analyseTxt.textContent = "AI analyseert…";
-
-  if (detectedGemeente) {
-    locatieTxt.textContent = `Locatie: ${detectedGemeente}`;
-    locatieTxt.classList.remove("hidden");
-  } else {
-    locatieTxt.classList.add("hidden");
-  }
 
   try {
     const fd = new FormData();
     gecomprimeerd.forEach(f => fd.append("files", f));
-    if (detectedGemeente) fd.append("gemeente_override", detectedGemeente);
     const res = await apiFetch("/api/upload", { method: "POST", body: fd, _stil: true });
     if (!res) {
       // Geen verbinding: scan lokaal bewaren — wordt automatisch verstuurd
       // zodra de verbinding terug is (zie offline-scanwachtrij onderaan)
-      await _wachtrijTx(true, s => s.add({ fotos: gecomprimeerd, gemeente: detectedGemeente || null, tijd: Date.now() }));
+      await _wachtrijTx(true, s => s.add({ fotos: gecomprimeerd, tijd: Date.now() }));
       _wachtrijToon();
       pendingFiles = [];
       cameraInput.value = "";
