@@ -18,6 +18,11 @@ def _get() -> redis.Redis | None:
     return _client
 
 
+def get_redis() -> redis.Redis | None:
+    """Voor health checks: de rauwe client (of None als Redis uit staat)."""
+    return _get()
+
+
 def get(key: str):
     r = _get()
     if not r:

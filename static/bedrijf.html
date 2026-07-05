@@ -337,7 +337,7 @@
     async function meldingInschakelen() {
       const btn = document.getElementById("push-btn");
       if (!("Notification" in window)) {
-        alert("Deze browser ondersteunt geen meldingen. Probeer Chrome of voeg de app toe aan je beginscherm.");
+        (window.uxToast || alert)("Deze browser ondersteunt geen meldingen. Probeer Chrome of voeg de app toe aan je beginscherm.", "info", 5000);
         return;
       }
       btn.textContent = "Bezig…"; btn.disabled = true;
@@ -345,7 +345,7 @@
         const perm = await Notification.requestPermission();
         if (perm === "granted") {
           if (!("PushManager" in window)) {
-            alert("Push meldingen worden niet ondersteund. Voeg de app toe aan je beginscherm (PWA) en probeer opnieuw.");
+            (window.uxToast || alert)("Push meldingen worden niet ondersteund. Voeg de app toe aan je beginscherm (PWA) en probeer opnieuw.", "info", 5000);
             btn.textContent = "Meldingen"; btn.disabled = false;
             return;
           }
@@ -359,7 +359,7 @@
         }
       } catch (e) {
         console.warn("[push] Fout:", e);
-        alert("Fout: " + e.message);
+        (window.uxToast || alert)("Er ging iets mis: " + e.message, "error");
         btn.textContent = "Meldingen"; btn.disabled = false;
       }
     }
@@ -475,7 +475,7 @@
       const fd = new FormData();
       fd.append("status", status);
       const res = await apiFetch(`/api/mijn-aanbiedingen/${id}`, { method: "PATCH", body: fd });
-      if (!res || !res.ok) { alert("Fout bij opslaan"); return; }
+      if (!res || !res.ok) { (window.uxToast || alert)("Opslaan is niet gelukt — probeer opnieuw", "error"); return; }
       laadAanbiedingen();
     }
 

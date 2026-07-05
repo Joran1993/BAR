@@ -770,7 +770,7 @@
         a.href = cvs.toDataURL('image/png');
         a.click();
       } catch (e) {
-        alert('Downloaden mislukt — probeer het opnieuw.');
+        (window.uxToast || alert)('Downloaden mislukt — probeer het opnieuw.', 'error');
       } finally {
         URL.revokeObjectURL(url);
       }

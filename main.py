@@ -24,6 +24,17 @@ import cache as cache_module
 import push as push_module
 import firestore as fs
 
+# Foutbewaking: wordt actief zodra SENTRY_DSN als env-var is gezet; zonder DSN
+# is dit een no-op en kost het niets
+if os.getenv("SENTRY_DSN"):
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        environment=os.getenv("RAILWAY_ENVIRONMENT_NAME", "development"),
+        traces_sample_rate=0.0,       # geen performance-tracing: nul overhead
+        send_default_pii=False,       # geen persoonsgegevens meesturen (AVG)
+    )
+
 security = HTTPBearer(auto_error=False)
 
 
@@ -118,6 +129,30 @@ def _mag_item_beheren(user: dict, item: dict) -> bool:
         return gem in scope
     up = item.get("uploaded_by")
     return up is not None and up == user["id"]
+
+
+def _scope_gemeenten(user: dict, item: Optional[dict] = None) -> list:
+    """Gemeenten waarbinnen deze gebruiker mag handelen (incl. item-gemeente)."""
+    g = user.get("gemeente")
+    scope = set(_gemeenten_expand(g) or ([g] if g else []))
+    if item and item.get("gemeente"):
+        scope.add(item["gemeente"])
+    return list(scope)
+
+
+def _bedrijf_werkt_in(bedrijf_id: int, gemeenten: list) -> bool:
+    """Werkt dit bedrijf (hoofdgemeente of extra werkgebied) in een van deze gemeenten?"""
+    if not gemeenten:
+        return False
+    with db.get_cursor() as cur:
+        cur.execute(
+            """SELECT 1 FROM bedrijven b
+               WHERE b.id = %s AND (b.gemeente = ANY(%s)
+                  OR EXISTS (SELECT 1 FROM bedrijf_gemeenten bg
+                             WHERE bg.bedrijf_id = b.id AND bg.gemeente = ANY(%s)))""",
+            (bedrijf_id, gemeenten, gemeenten),
+        )
+        return cur.fetchone() is not None
 
 
 RWM_GEMEENTEN = [
@@ -814,7 +849,17 @@ async def health():
         with db.get_cursor() as cur:
             cur.execute("SELECT 1")
         ai_ok = bool(os.environ.get("ANTHROPIC_API_KEY"))
-        return {"status": "ok", "db": "ok", "ai": "ok" if ai_ok else "geen API key"}
+        # Redis is optioneel maar bepaalt de "warme" snelheid; zichtbaar maken
+        # in de health-check zodat een stille uitval opvalt
+        redis_status = "uit"
+        if os.environ.get("REDIS_URL"):
+            try:
+                r = cache_module.get_redis()
+                redis_status = "ok" if (r and r.ping()) else "fout"
+            except Exception:
+                redis_status = "fout"
+        return {"status": "ok", "db": "ok", "redis": redis_status,
+                "ai": "ok" if ai_ok else "geen API key"}
     except Exception as e:
         from fastapi import Response
         return Response(content=f"db fout: {e}", status_code=503)
@@ -1267,6 +1312,37 @@ async def list_gemeenten(user=Depends(get_current_user)):
     return result
 
 
+@app.get("/api/geocode")
+async def geocode(lat: float, lon: float, user=Depends(get_current_user)):
+    """Reverse-geocode via de backend i.p.v. rechtstreeks vanaf de client.
+    Milieustraten zijn vaste locaties, dus de cache (cel van ~100m) vangt
+    vrijwel alles op — sneller én geen throttling-risico bij Nominatim."""
+    cache_key = f"geo:{round(lat, 3)}:{round(lon, 3)}"
+    cached = cache_module.get(cache_key)
+    if cached is not None:
+        return {"gemeente": cached or None}
+    gemeente = None
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            r = await client.get(
+                "https://nominatim.openstreetmap.org/reverse",
+                params={"lat": lat, "lon": lon, "format": "json", "addressdetails": 1},
+                headers={
+                    "Accept-Language": "nl",
+                    # Nominatim-beleid vereist een identificerende User-Agent
+                    "User-Agent": "cirqo-app/1.0 (https://app.cirqo.nl)",
+                },
+            )
+            addr = (r.json() or {}).get("address", {})
+            gemeente = (addr.get("municipality") or addr.get("city")
+                        or addr.get("town") or addr.get("village"))
+    except Exception as e:
+        db.registreer_fout("geocode", str(e))
+    cache_module.set(cache_key, gemeente or "", ttl=60 * 60 * 24 * 30)
+    return {"gemeente": gemeente}
+
+
 @app.get("/api/mijn-gemeenten")
 async def mijn_gemeenten(user=Depends(get_current_user)):
     """Scope van de ingelogde gebruiker voor de dashboard-switcher.
@@ -1376,6 +1452,20 @@ async def change_gemeente(
     # zichzelf niet naar één gemeente versmallen (zelf-uitsluiting)
     if (user.get("gemeente") or "") in ORGANISATIE_GEMEENTEN and user["role"] != "superadmin":
         raise HTTPException(status_code=403, detail="Je scope wordt centraal beheerd — vraag de beheerder")
+    # Zelf-wijziging alleen binnen de eigen organisatiescope: de gemeente bepaalt
+    # tot welke tenant-data iemand toegang heeft, dus een vrije wissel zou
+    # toegang tot andere gemeenten geven
+    if user["role"] != "superadmin":
+        huidige = (user.get("gemeente") or "").strip()
+        toegestaan = {huidige} if huidige else set()
+        org = (user.get("organisatie") or "").strip().lower()
+        if org in ORGANISATIE_GEMEENTEN:
+            toegestaan |= set(ORGANISATIE_GEMEENTEN[org])
+        scope = _gemeenten_expand(huidige)
+        if scope:
+            toegestaan |= set(scope)
+        if gemeente.strip() not in toegestaan:
+            raise HTTPException(status_code=403, detail="Gemeente valt buiten je organisatie — vraag de beheerder")
     with db.get_cursor() as cur:
         cur.execute("UPDATE users SET gemeente = %s WHERE id = %s", (gemeente.strip(), user_id))
     _USER_VERS_CACHE.pop(user_id, None)   # scope-wijziging direct zichtbaar
@@ -1553,6 +1643,8 @@ async def update_bedrijf(
     categorieen: str = Form(""),
     user=Depends(require_admin),
 ):
+    if user["role"] != "superadmin" and not _bedrijf_werkt_in(bedrijf_id, _scope_gemeenten(user)):
+        raise HTTPException(status_code=403, detail="Bedrijf valt buiten je gemeente-scope")
     cat_list = [c.strip() for c in categorieen.split(",") if c.strip()]
     db.update_bedrijf(bedrijf_id, naam, contactpersoon, email, telefoon, cat_list)
     return {"ok": True}
@@ -1560,6 +1652,8 @@ async def update_bedrijf(
 
 @app.delete("/api/bedrijven/{bedrijf_id}")
 async def delete_bedrijf(bedrijf_id: int, user=Depends(require_admin)):
+    if user["role"] != "superadmin" and not _bedrijf_werkt_in(bedrijf_id, _scope_gemeenten(user)):
+        raise HTTPException(status_code=403, detail="Bedrijf valt buiten je gemeente-scope")
     db.delete_bedrijf(bedrijf_id)
     return {"ok": True}
 
@@ -1577,6 +1671,8 @@ async def create_aanbieding(
         raise HTTPException(status_code=404)
     if not _mag_item_beheren(user, _item):
         raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
+    if user["role"] != "superadmin" and not _bedrijf_werkt_in(bedrijf_id, _scope_gemeenten(user, _item)):
+        raise HTTPException(status_code=403, detail="Bedrijf valt buiten je werkgebied")
     aanbieding_id = db.create_aanbieding(item_id, bedrijf_id, user_id=user["id"])
     fs.sync_aanbieding({"id": aanbieding_id, "item_id": item_id, "bedrijf_id": bedrijf_id, "status": "open"})
     gemeente = _gemeente_filter(user)
@@ -1622,6 +1718,11 @@ async def create_aanbiedingen_bulk(
         raise HTTPException(status_code=404)
     if not _mag_item_beheren(user, _item):
         raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
+    if user["role"] != "superadmin":
+        scope = _scope_gemeenten(user, _item)
+        for bedrijf_id in bedrijf_ids:
+            if not _bedrijf_werkt_in(int(bedrijf_id), scope):
+                raise HTTPException(status_code=403, detail="Bedrijf valt buiten je werkgebied")
 
     ids = []
     for bedrijf_id in bedrijf_ids:
@@ -1629,8 +1730,8 @@ async def create_aanbiedingen_bulk(
             aanbieding_id = db.create_aanbieding(item_id, int(bedrijf_id), user_id=user["id"])
             ids.append(aanbieding_id)
             fs.sync_aanbieding({"id": aanbieding_id, "item_id": item_id, "bedrijf_id": int(bedrijf_id), "status": "open"})
-        except Exception:
-            pass
+        except Exception as e:
+            db.registreer_fout("aanbieding_bulk", f"bedrijf {bedrijf_id}: {e}")
 
     gemeente = _gemeente_filter(user)
     gemeenten = _gemeenten_expand(gemeente)
@@ -1760,7 +1861,7 @@ async def update_mijn_aanbieding(aanbieding_id: int, status: Optional[str] = For
         raise HTTPException(status_code=400, detail="status of reden vereist")
     if status not in ("ophalen", "niet_nodig"):
         raise HTTPException(status_code=400, detail="Ongeldige status")
-    db.update_aanbieding_status(aanbieding_id, status)
+    db.update_aanbieding_status(aanbieding_id, status, door_user=user["id"])
     fs.update_aanbieding_status(aanbieding_id, status)
     _invalideer_bedrijf_items(user.get("bedrijf_id"))   # reagerend bedrijf: eigen lijststatus wijzigt
 
@@ -2093,6 +2194,12 @@ async def get_item(item_id: int, user=Depends(get_current_user)):
     item = db.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404)
+    if not _mag_item_beheren(user, item):
+        # Bedrijf mag een item zien dat aan hem is aangeboden
+        bid = user.get("bedrijf_id")
+        if not (bid and any(a.get("bedrijf_id") == bid
+                            for a in db.get_aanbiedingen_voor_item(item_id))):
+            raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
     return item
 
 
@@ -2129,7 +2236,7 @@ async def update_aanbieding_status_admin(
     is_bedrijf   = user.get("bedrijf_id") is not None and user.get("bedrijf_id") == info.get("bedrijf_id")
     if not (is_aanbieder or is_bedrijf or user["role"] in ("admin", "superadmin")):
         raise HTTPException(status_code=403, detail="Geen rechten voor deze aanbieding")
-    db.update_aanbieding_status(aanbieding_id, status)
+    db.update_aanbieding_status(aanbieding_id, status, door_user=user["id"])
     fs.update_aanbieding_status(aanbieding_id, status)
     _invalideer_bedrijf_items(info.get("bedrijf_id"))
     if info.get("aangeboden_door"):
@@ -2402,11 +2509,6 @@ async def export_csv(gemeente: Optional[str] = None, user=Depends(require_admin)
     )
 
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-
 # ── Pagina's ──────────────────────────────────────────────────────────────────
 
 from fastapi.responses import FileResponse
@@ -2642,18 +2744,43 @@ async def tuya_test(kleur: str, user=Depends(require_admin)):
     raise HTTPException(status_code=400, detail="wit / oranje / uit / status / functies")
 
 
+# Kiosk draait op een onbeheerd apparaat zonder login; de sleutel in de URL
+# (bookmark op het kiosk-apparaat) voorkomt dat de AI-analyse publiek misbruikt
+# kan worden. Zonder KIOSK_TOKEN in de omgeving staat de kiosk uit.
+KIOSK_TOKEN = os.getenv("KIOSK_TOKEN", "")
+_KIOSK_SCANS: dict = {}   # ip → [timestamps], max 12 scans/minuut
+
+
 @app.get("/kiosk", response_class=HTMLResponse)
-async def kiosk_page():
-    return _render_html("static/kiosk.html", DEFAULT_BRAND)
+async def kiosk_page(key: str = ""):
+    if not KIOSK_TOKEN:
+        raise HTTPException(status_code=503, detail="Kiosk is niet geconfigureerd")
+    if key != KIOSK_TOKEN:
+        raise HTTPException(status_code=403, detail="Ongeldige kiosk-sleutel")
+    html = _render_html("static/kiosk.html", DEFAULT_BRAND)
+    return html.replace("</head>", f'<script>window._KIOSK_KEY="{KIOSK_TOKEN}";</script></head>', 1)
 
 
 @app.post("/api/kiosk/scan")
-async def kiosk_scan(file: UploadFile = File(...), gemeente: str = Form("Almere")):
+async def kiosk_scan(request: Request, file: UploadFile = File(...), gemeente: str = Form("Almere")):
     import base64, asyncio
     from PIL import Image, ImageOps
     import io as _io
+    import time as _t
+
+    if not KIOSK_TOKEN or request.headers.get("X-Kiosk-Key", "") != KIOSK_TOKEN:
+        raise HTTPException(status_code=401, detail="Kiosk-sleutel ontbreekt of is ongeldig")
+    ip = request.client.host if request.client else "?"
+    nu = _t.time()
+    recent = [t for t in _KIOSK_SCANS.get(ip, []) if nu - t < 60]
+    if len(recent) >= 12:
+        raise HTTPException(status_code=429, detail="Te veel scans — wacht even")
+    recent.append(nu)
+    _KIOSK_SCANS[ip] = recent
 
     content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Foto te groot (max 10 MB)")
     try:
         img = Image.open(_io.BytesIO(content))
         img = ImageOps.exif_transpose(img)
@@ -2847,8 +2974,7 @@ async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int =
 
 
 @app.post("/api/admin/bouw-thumb-urls")
-async def bouw_thumb_urls(gemeente: str = "Almere", credentials: HTTPAuthorizationCredentials = Depends(security)):
-    verify_superadmin(credentials)
+async def bouw_thumb_urls(gemeente: str = "Almere", user=Depends(require_superadmin)):
     import re, urllib.parse as _up
     from firebase_admin import storage as _storage
 

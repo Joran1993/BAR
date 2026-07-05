@@ -120,7 +120,7 @@ body {
   line-height: 1.4;
 }
 .scan-hero-title {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 1.3rem;
   font-weight: 600;
   color: #444;
@@ -230,18 +230,18 @@ body {
   border-radius: 10px;
 }
 .result-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 1.5rem; font-weight: 900;
   margin-bottom: 4px;
 }
 .result-weight {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 1.1rem; font-weight: 700;
   color: var(--orange); margin-bottom: 4px;
 }
 .result-detail { font-size: 0.83rem; color: var(--muted); line-height: 1.6; }
 .result-co2 {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 1rem; font-weight: 700;
   color: #2e7d32; margin-bottom: 4px;
 }
@@ -377,11 +377,11 @@ body {
   font-size: 0.8rem; color: var(--muted);
 }
 .item-kg {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-weight: 700; font-size: 0.82rem; color: var(--orange);
 }
 .item-co2 {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-weight: 700; font-size: 0.82rem; color: #2e7d32;
 }
 .item-cat {
@@ -419,7 +419,7 @@ body {
 .stat-box.co2-box span  { color: var(--orange); }
 .stat-box span {
   display: block;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 2.6rem; font-weight: 900; line-height: 1;
   margin-bottom: 6px;
 }
@@ -435,7 +435,7 @@ body {
 }
 .cat-name { font-size: 0.9rem; font-weight: 500; }
 .cat-count {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 1.1rem; font-weight: 900; color: var(--orange);
 }
 
@@ -541,11 +541,11 @@ body {
 .msb-niet_nodig { background: #fdecea; color: #b71c1c; }
 .chat-wrap:empty::before { content: "Berichten laden…"; font-size: 0.8rem; color: var(--muted); }
 .modal-body h3 {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 1.5rem; font-weight: 900; margin-bottom: 4px;
 }
 .modal-weight {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 1.1rem; font-weight: 700; color: var(--orange); margin-bottom: 4px;
 }
 .modal-detail { font-size: 0.83rem; color: var(--muted); line-height: 1.6; }

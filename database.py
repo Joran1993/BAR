@@ -267,6 +267,28 @@ def init_db():
                 END IF;
             END $$;
         """)
+        # Profielvelden: bestonden al in productie (handmatig toegevoegd) maar
+        # ontbraken in dit schema — zonder deze regels crasht een verse database
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS contactpersoon TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS telefoon TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS adres TEXT")
+        # Statushistorie van aanbiedingen: basis voor conversie- en kwartaal-
+        # rapportages per gemeente. item/bedrijf staan er denormalized in zodat
+        # de historie blijft bestaan als een aanbieding of bedrijf verdwijnt.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS aanbieding_events (
+                id            SERIAL PRIMARY KEY,
+                aanbieding_id INTEGER REFERENCES aanbiedingen(id) ON DELETE SET NULL,
+                item_id       INTEGER,
+                bedrijf_id    INTEGER,
+                van_status    TEXT,
+                naar_status   TEXT NOT NULL,
+                door_user     INTEGER,
+                ts            timestamptz NOT NULL
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_aanb_events_aanbieding ON aanbieding_events(aanbieding_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_aanb_events_ts ON aanbieding_events(ts)")
     _create_default_admin()
     print("[db] PostgreSQL tabellen gereed")
 
@@ -988,11 +1010,26 @@ def get_bedrijf_by_token(token: str):
 
 def create_aanbieding(item_id: int, bedrijf_id: int, user_id: int = None) -> int:
     with get_cursor() as cur:
+        # Idempotent: een tweede tik op "aanbieden" (of een race) maakt geen
+        # duplicaat maar geeft de bestaande openstaande aanbieding terug
+        cur.execute(
+            "SELECT id FROM aanbiedingen WHERE item_id = %s AND bedrijf_id = %s AND status IN ('open', 'beschikbaar') LIMIT 1",
+            (item_id, bedrijf_id),
+        )
+        bestaand = cur.fetchone()
+        if bestaand:
+            return bestaand["id"]
+        nu = datetime.now(timezone.utc).isoformat(timespec="seconds")
         cur.execute(
             "INSERT INTO aanbiedingen (item_id, bedrijf_id, status, created_at, aangeboden_door) VALUES (%s, %s, 'open', %s, %s) RETURNING id",
-            (item_id, bedrijf_id, datetime.now(timezone.utc).isoformat(timespec="seconds"), user_id),
+            (item_id, bedrijf_id, nu, user_id),
         )
-        return cur.fetchone()["id"]
+        aanbieding_id = cur.fetchone()["id"]
+        cur.execute(
+            "INSERT INTO aanbieding_events (aanbieding_id, item_id, bedrijf_id, van_status, naar_status, door_user, ts) VALUES (%s, %s, %s, NULL, 'open', %s, %s)",
+            (aanbieding_id, item_id, bedrijf_id, user_id, nu),
+        )
+        return aanbieding_id
 
 
 def get_aanbiedingen_voor_item(item_id: int):
@@ -1065,12 +1102,20 @@ def get_aanbiedingen_voor_beheer(gemeente: Optional[str] = None):
         return [dict(r) for r in cur.fetchall()]
 
 
-def update_aanbieding_status(aanbieding_id: int, status: str):
+def update_aanbieding_status(aanbieding_id: int, status: str, door_user: Optional[int] = None):
     with get_cursor() as cur:
+        cur.execute("SELECT status, item_id, bedrijf_id FROM aanbiedingen WHERE id = %s", (aanbieding_id,))
+        oud = cur.fetchone()
+        nu = datetime.now(timezone.utc).isoformat(timespec="seconds")
         cur.execute(
             "UPDATE aanbiedingen SET status = %s, updated_at = %s WHERE id = %s",
-            (status, datetime.now(timezone.utc).isoformat(timespec="seconds"), aanbieding_id),
+            (status, nu, aanbieding_id),
         )
+        if oud and oud["status"] != status:
+            cur.execute(
+                "INSERT INTO aanbieding_events (aanbieding_id, item_id, bedrijf_id, van_status, naar_status, door_user, ts) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (aanbieding_id, oud["item_id"], oud["bedrijf_id"], oud["status"], status, door_user, nu),
+            )
 
 
 def get_bedrijven_for_item(gemeente: Optional[str], category: str, gemeenten: Optional[list] = None):

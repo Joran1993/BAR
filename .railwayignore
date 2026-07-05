@@ -6,3 +6,9 @@ photos/
 .env
 camera.py
 start.sh
+serviceaccount.json
+.claude-log.md
+.backup.log
+.claude/
+rooktest.py
+scripts/

@@ -508,13 +508,11 @@ function getGPSLocation() {
 
 async function getGemeenteFromCoords(lat, lon) {
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`,
-      { headers: { "Accept-Language": "nl" } }
-    );
+    // Via de eigen backend (met cache): geen rechtstreekse Nominatim-afhankelijkheid
+    const res = await apiFetch(`/api/geocode?lat=${lat}&lon=${lon}`, { _stil: true });
+    if (!res || !res.ok) return null;
     const data = await res.json();
-    const addr = data.address || {};
-    return addr.municipality || addr.city || addr.town || addr.village || null;
+    return data.gemeente || null;
   } catch { return null; }
 }
 
@@ -1410,7 +1408,7 @@ async function laadBerichten(aanbiedingId, silent = false) {
   const res = await apiFetch(`/api/aanbiedingen/${aanbiedingId}/berichten`);
   if (!res || !res.ok) return;
   const berichten = await res.json();
-  const mijnId = JSON.parse(atob(token.split(".")[1])).sub;
+  const mijnId = window.currentUserId();
   const wrap = document.getElementById("chat-berichten");
   if (!berichten.length) {
     if (!silent && !wrap.querySelector(".chat-starter")) wrap.innerHTML = _chatStarterHTML();
@@ -1451,7 +1449,7 @@ async function verstuurBericht() {
   if (!tekst || !aanbiedingId) return;
 
   // Optimistic
-  const mijnId = JSON.parse(atob(token.split(".")[1])).sub;
+  const mijnId = window.currentUserId();
   const wrap = document.getElementById("chat-berichten");
   const nu = new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
   if (wrap.querySelector(".chat-empty, .chat-starter")) wrap.innerHTML = "";
@@ -1944,7 +1942,7 @@ window.accToggle = accToggle;
 // Mijn gegevens: alle profielvelden in één keer opslaan
 async function slaProfielOp() {
   const organisatie = document.getElementById("up-organisatie").value.trim();
-  const userId = JSON.parse(atob(token.split(".")[1])).sub;
+  const userId = window.currentUserId();
   try {
     const fd = new FormData();
     fd.append("organisatie", organisatie);
@@ -1971,7 +1969,7 @@ window.slaProfielOp = slaProfielOp;
 async function slaLocatieOp() {
   const gemeente = (document.getElementById("up-gemeente")?.value || "").trim();
   const milieustraat = (document.getElementById("up-milieustraat")?.value || "").trim();
-  const userId = JSON.parse(atob(token.split(".")[1])).sub;
+  const userId = window.currentUserId();
   try {
     if (gemeente && gemeente !== (localStorage.getItem("gemeente") || "")) {
       const fd = new FormData(); fd.append("gemeente", gemeente);
@@ -2057,7 +2055,7 @@ async function slaWachtwoordOp() {
   if (pwd.length < 6)   { st.textContent = "Minimaal 6 tekens."; return; }
   if (pwd !== pwd2)     { st.textContent = "De twee wachtwoorden zijn niet gelijk."; return; }
   const btn = document.querySelector("#pwd-uitklap .btn");
-  const userId = JSON.parse(atob(token.split(".")[1])).sub;
+  const userId = window.currentUserId();
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Opslaan…'; }
   try {
     const fd = new FormData(); fd.append("password", pwd);
@@ -2369,6 +2367,14 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("popstate", () => {
     if (_terugEigen > 0) { _terugEigen--; return; }
     const boven = _terugStack.pop();
+    if (boven) boven.sluiter();
+  });
+
+  // Escape sluit de bovenste overlay (toetsenbord/schermlezer); de observer
+  // hieronder handelt stack en history verder af
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const boven = _terugStack[_terugStack.length - 1];
     if (boven) boven.sluiter();
   });
 

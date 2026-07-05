@@ -41,7 +41,11 @@ async function scanFoto(blob) {
   form.append("gemeente", GEMEENTE);
 
   try {
-    const res = await fetch("/api/kiosk/scan", { method: "POST", body: form });
+    const res = await fetch("/api/kiosk/scan", {
+      method: "POST",
+      body: form,
+      headers: { "X-Kiosk-Key": window._KIOSK_KEY || "" },
+    });
     const data = await res.json();
     toonResultaat(data);
   } catch (e) {

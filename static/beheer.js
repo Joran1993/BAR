@@ -1,7 +1,7 @@
 /* De Bouwkringloop — Beheerpagina */
 
-function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
-function escJs(s){return esc(String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/[\r\n]/g," "));}
+// esc/escJs komen uit cirqo-core.js (window._esc / window.escJs)
+const esc = window._esc, escJs = window.escJs;
 
 const CATEGORIES = ["Hout", "Metaal", "Beton / steen", "Glas", "Kunststof", "Gevaarlijk afval", "Overig",
   "kringloop", "meubels", "fietsen", "bouwmateriaal", "diversen"];
@@ -32,7 +32,7 @@ if (role === "admin") {
 
 async function loginAls(userId) {
   const res = await apiFetch(`/api/auth/impersonate/${userId}`, { method: "POST" });
-  if (!res || !res.ok) { alert("Kon niet inloggen als deze gebruiker."); return; }
+  if (!res || !res.ok) { (window.uxToast || alert)("Kon niet inloggen als deze gebruiker.", "error"); return; }
   const data = await res.json();
   const params = new URLSearchParams({
     _imp_token:       data.token,
@@ -245,7 +245,7 @@ async function slaRolOp(userId) {
   if (bedrijfId) fd.append("bedrijf_id", bedrijfId);
 
   const res = await apiFetch(`/api/users/${userId}/role`, { method: "PATCH", body: fd });
-  if (!res || !res.ok) { alert("Opslaan mislukt"); return; }
+  if (!res || !res.ok) { (window.uxToast || alert)("Opslaan mislukt", "error"); return; }
   loadUsers();
 }
 
@@ -280,9 +280,9 @@ async function gebruikerToevoegen() {
 }
 
 async function deleteUser(id, naam) {
-  if (!confirm(`Gebruiker "${naam}" verwijderen?`)) return;
+  if (!(await (window.uxBevestig ? uxBevestig(`Gebruiker "${naam}" verwijderen?`, "Dit kan niet ongedaan worden gemaakt.") : Promise.resolve(confirm(`Gebruiker "${naam}" verwijderen?`))))) return;
   const res = await apiFetch(`/api/users/${id}`, { method: "DELETE" });
-  if (!res || !res.ok) { alert("Verwijderen mislukt"); return; }
+  if (!res || !res.ok) { (window.uxToast || alert)("Verwijderen mislukt", "error"); return; }
   loadUsers();
 }
 
@@ -311,7 +311,7 @@ async function loadBedrijven() {
       <div style="margin:10px 0 8px;font-size:0.72rem;color:var(--muted);">
         Link voor bedrijf:
         <a href="${esc(link)}" target="_blank" style="color:var(--orange);word-break:break-all;">${esc(link)}</a>
-        <button class="btn-sm" style="margin-left:6px;" onclick="navigator.clipboard.writeText('${escJs(link)}').then(()=>alert('Gekopieerd!'))">Kopieer</button>
+        <button class="btn-sm" style="margin-left:6px;" onclick="navigator.clipboard.writeText('${escJs(link)}').then(()=>(window.uxToast || alert)('Gekopieerd!', 'success'))">Kopieer</button>
       </div>
       <button class="btn-del" onclick="deleteBedrijf(${b.id}, '${escJs(b.naam)}')">Verwijder</button>
     </div>`;
@@ -355,9 +355,9 @@ async function bedrijfToevoegen() {
 }
 
 async function deleteBedrijf(id, naam) {
-  if (!confirm(`Bedrijf "${naam}" verwijderen?`)) return;
+  if (!(await (window.uxBevestig ? uxBevestig(`Bedrijf "${naam}" verwijderen?`, "Aanbiedingen en berichten van dit bedrijf verdwijnen mee.") : Promise.resolve(confirm(`Bedrijf "${naam}" verwijderen?`))))) return;
   const res = await apiFetch(`/api/bedrijven/${id}`, { method: "DELETE" });
-  if (!res || !res.ok) { alert("Verwijderen mislukt"); return; }
+  if (!res || !res.ok) { (window.uxToast || alert)("Verwijderen mislukt", "error"); return; }
   loadBedrijven();
 }
 

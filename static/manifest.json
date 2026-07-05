@@ -1,20 +1,13 @@
 {
   "name": "CIRQO",
   "short_name": "CIRQO",
-  "description": "Van bouwafval naar bruikbaar materiaal",
+  "description": "Digitaal productuitwisselingsnetwerk — van afval naar hergebruik",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f7f5f0",
-  "theme_color": "#86bc97",
+  "theme_color": "#e67026",
   "orientation": "portrait",
   "id": "/",
-  "prefer_related_applications": false,
-  "related_applications": [
-    {
-      "platform": "webapp",
-      "url": "https://app.cirqo.nl/static/manifest.json"
-    }
-  ],
   "icons": [
     {
       "src": "/static/icon-cirqo-192.png",

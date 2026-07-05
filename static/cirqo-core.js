@@ -52,4 +52,13 @@
     return window._esc(String(s == null ? "" : s)
       .replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/[\r\n]/g, " "));
   };
+
+  // Eén plek om de eigen user-id uit de token te halen (met try/catch —
+  // een corrupte token mag nooit een pagina laten crashen).
+  window.currentUserId = function () {
+    try {
+      const t = localStorage.getItem("token");
+      return t ? JSON.parse(atob(t.split(".")[1])).sub : null;
+    } catch (e) { return null; }
+  };
 })();

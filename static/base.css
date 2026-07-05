@@ -227,3 +227,12 @@ body {
   color: var(--muted);
   margin-bottom: 16px;
 }
+
+/* ── Toetsenbord-focus ─────────────────────────────────────────────────────
+   outline:none staat verspreid op knoppen/velden voor muis en touch;
+   :focus-visible geeft toetsenbordgebruikers de ring terug. */
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--orange) !important;
+  outline-offset: 2px;
+}

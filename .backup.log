@@ -27,3 +27,13 @@ To github.com:Joran1993/BAR.git
    1d2f51b..e5a747e  main -> main
 gepusht naar GitHub ✓
 ── 2026-07-05 18:00 ──
+[main e83e742] Automatische dagelijkse back-up 2026-07-05
+ 30 files changed, 2372 insertions(+), 470 deletions(-)
+ create mode 100644 rooktest.py
+ create mode 100644 static/cirqo-core.js
+ create mode 100644 static/voorwaarden.html
+ create mode 100644 static/waardlanden-globe.png
+ create mode 100644 static/waardlanden-logo.svg
+To github.com:Joran1993/BAR.git
+   e5a747e..e83e742  main -> main
+gepusht naar GitHub ✓
