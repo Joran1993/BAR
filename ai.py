@@ -82,7 +82,7 @@ def analyse_photo(image_b64: str, inzamellijst: Optional[list] = None) -> tuple[
     for poging in range(3):
         try:
             message = client.messages.create(
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-5",
                 max_tokens=256,
                 system=system,
                 messages=[{
@@ -160,7 +160,7 @@ def heranalyseer_gewicht(photo_url: str, label: str) -> Optional[float]:
     for poging in range(2):
         try:
             msg = client.messages.create(
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-5",
                 max_tokens=64,
                 messages=[{"role": "user", "content": [
                     {"type": "image", "source": {"type": "base64", "media_type": ct, "data": img_data}},
