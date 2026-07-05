@@ -15,7 +15,7 @@
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap"></noscript>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/base.css?v=5">
+  <link rel="stylesheet" href="/static/base.css?v=6">
   <style>
     body { display: flex; flex-direction: column; min-height: 100dvh; }
 
@@ -160,7 +160,7 @@
     }
   </style>
   <link rel="stylesheet" href="/brand.css">
-  <link rel="stylesheet" href="/static/ux.css">
+  <link rel="stylesheet" href="/static/ux.css?v=2">
 </head>
 <body>
 
@@ -227,7 +227,8 @@
     </div>
   </div>
 
-  <script>
+  <script src="/static/cirqo-core.js?v=1"></script>
+    <script>
     function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
     function escJs(s){return esc(String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/[\r\n]/g," "));}
 
@@ -386,14 +387,7 @@
     }
 
     // ── API ────────────────────────────────────────────────────────────────────
-    async function apiFetch(url, opts = {}) {
-      const res = await fetch(url, {
-        ...opts,
-        headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) }
-      });
-      if (res.status === 401) { uitloggen(); return null; }
-      return res;
-    }
+    window.onAuthFail = uitloggen;  // apiFetch komt uit cirqo-core.js
 
     async function laadAanbiedingen() {
       const list = document.getElementById("aanbiedingen-list");
@@ -516,7 +510,7 @@
     // Ververst elke 5s als ingelogd
     setInterval(() => { if (token) laadAanbiedingen(); }, 5000);
   </script>
-  <script src="/static/ux.js"></script>
+  <script src="/static/ux.js?v=2"></script>
   <script src="/static/install-gids.js"></script>
 </body>
 </html>

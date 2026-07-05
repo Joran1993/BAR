@@ -14,24 +14,36 @@ const token = localStorage.getItem("token");
 if (!token) location.href = "/login?redirect=/";
 document.documentElement.style.visibility = '';
 
-async function apiFetch(url, opts = {}) {
-  const res = await fetch(url, {
-    cache: "no-store",   // nooit de browser-HTTP-cache: lijsten moeten live zijn
-    ...opts,
-    headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) }
-  });
-  if (res.status === 401) { localStorage.clear(); location.href = _BP + "/login"; return null; }
-  return res;
-}
-
-function logout() { localStorage.clear(); location.href = _BP + "/login"; }
+// apiFetch, logout, _esc en escJs komen uit cirqo-core.js (gedeelde kern).
 
 // Toon ingelogde gebruiker en beheer-link
 const _role     = localStorage.getItem("role") || "user";
 const _username = localStorage.getItem("username") || "";
 const _gemeente = localStorage.getItem("gemeente") || "";
-const _hdrUser  = document.getElementById("hdr-username");
-if (_hdrUser && _username) _hdrUser.textContent = _username + (_gemeente ? ` · ${_gemeente}` : "");
+// Gemeenten die onder Waardlanden vallen → dan het Waardlanden-logo in de avatar
+const _WAARDLANDEN_GEMEENTEN = new Set([
+  "waardlanden", "Gorinchem", "Hardinxveld-Giessendam", "Vijfheerenlanden", "Molenlanden",
+]);
+function _isWaardlanden() {
+  const g = (localStorage.getItem("gemeente") || "").trim();
+  // Alleen de milieustraat-kant (scanner/beheerder), niet externe afnemers
+  return _WAARDLANDEN_GEMEENTEN.has(g) && (_role === "user" || _role === "admin");
+}
+function _zetHeaderAccount() {
+  const org = localStorage.getItem("organisatie") || _username || "";
+  const naamEl = document.getElementById("hdr-orgnaam");
+  const avEl = document.getElementById("hdr-avatar");
+  if (naamEl) naamEl.textContent = org;
+  if (!avEl) return;
+  if (_isWaardlanden()) {
+    avEl.classList.add("hdr-avatar-logo");
+    avEl.innerHTML = '<img src="/static/waardlanden-globe.png" alt="Waardlanden">';
+  } else {
+    avEl.classList.remove("hdr-avatar-logo");
+    avEl.textContent = (org || "?").charAt(0).toUpperCase();
+  }
+}
+_zetHeaderAccount();
 if (_role === "superadmin") {
   const bl = document.getElementById("beheer-link");
   if (bl) bl.classList.remove("hidden");
@@ -308,6 +320,8 @@ async function aanbiedenAanSelectie(itemId) {
     const data = await res.json();
     const gekozen = _scanBedrijven.filter(b => ids.includes(b.id));
     const label = gekozen.length === 1 ? gekozen[0].naam : `${gekozen.length} bedrijven`;
+    // Snelmodus: onthoud deze keuze per categorie voor de volgende scan
+    try { localStorage.setItem("snel_selectie_" + (_huidigCategory || "alle"), JSON.stringify(ids)); } catch (e) {}
     _markeerAangeboden(itemId, label, data?.ids?.[0]);
     syncItems();
     _toonSucces("Aangeboden!", `Het item is aangeboden aan: ${gekozen.map(b => b.naam).join(", ")}.`);
@@ -335,31 +349,72 @@ function _renderBedrijvenLijst(itemId, external) {
     bedrijvenCard.classList.remove("hidden");
     return;
   }
+
+  // Snelmodus: is er een onthouden keuze voor deze categorie die nog geldig is?
+  let onthouden = [];
+  try { onthouden = JSON.parse(localStorage.getItem("snel_selectie_" + (_huidigCategory || "alle")) || "[]"); } catch (e) {}
+  const geldigeIds = new Set(_scanBedrijven.map(b => b.id));
+  onthouden = onthouden.filter(id => geldigeIds.has(id));
+  const snelmodus = onthouden.length > 0;
+  const onthoudenNamen = _scanBedrijven.filter(b => onthouden.includes(b.id)).map(b => b.naam);
+  const snelLabel = onthoudenNamen.length <= 2
+    ? onthoudenNamen.join(" en ")
+    : `${onthoudenNamen.slice(0, 2).join(", ")} +${onthoudenNamen.length - 2}`;
+
+  // Voorvinken: in snelmodus exact de onthouden keuze, anders de bestaande logica
+  const isVoorgevinkt = (b) => snelmodus
+    ? onthouden.includes(b.id)
+    : (_ALLES_VOORAF_AAN || b.historie_count > 0 || b.categorie_match);
+
   bedrijvenLijst.innerHTML = `
+    ${snelmodus ? `
+    <button id="btn-aanbied-selectie" class="btn btn-primary" style="width:100%;display:flex;flex-direction:column;gap:2px;padding:14px;"
+      onclick="aanbiedenAanSelectie(${itemId})">
+      <span>Direct aanbieden</span>
+      <span style="font-size:0.8rem;font-weight:600;opacity:.85;text-transform:none;letter-spacing:0;">aan ${_esc(snelLabel)} — zoals vorige keer</span>
+    </button>
+    <button type="button" onclick="_scanToonKeuze()" id="scan-keuze-toggle"
+      style="width:100%;margin-top:8px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:0.82rem;font-weight:600;color:var(--muted);padding:8px;">
+      Andere bedrijven kiezen ▾
+    </button>` : ""}
+    <div id="scan-keuze-lijst" style="${snelmodus ? "display:none;" : ""}">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <span style="font-size:0.72rem;color:var(--muted);">Kies één of meer bedrijven</span>
-      <span style="font-size:0.72rem;">
-        <a onclick="_scanToggleAlle(true)" style="color:var(--orange);cursor:pointer;font-weight:600;">Alles</a>
-        &nbsp;·&nbsp;
-        <a onclick="_scanToggleAlle(false)" style="color:var(--muted);cursor:pointer;">Geen</a>
+      <span style="font-size:0.8rem;color:var(--muted);">Kies één of meer bedrijven</span>
+      <span style="font-size:0.8rem;">
+        <button type="button" onclick="_scanToggleAlle(true)" style="background:none;border:none;cursor:pointer;font-family:inherit;color:var(--orange);font-weight:600;font-size:0.8rem;padding:4px;">Alles</button>
+        ·
+        <button type="button" onclick="_scanToggleAlle(false)" style="background:none;border:none;cursor:pointer;font-family:inherit;color:var(--muted);font-size:0.8rem;padding:4px;">Geen</button>
       </span>
     </div>
     ${_scanBedrijven.map((b) => `
     <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;">
-      <input type="checkbox" class="scan-bedrijf-check" value="${b.id}" ${(_ALLES_VOORAF_AAN || b.historie_count > 0 || b.categorie_match) ? "checked" : ""} style="width:18px;height:18px;flex-shrink:0;accent-color:var(--orange);">
+      <input type="checkbox" class="scan-bedrijf-check" value="${b.id}" ${isVoorgevinkt(b) ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;accent-color:var(--orange);">
       <span style="flex:1;">
         <span style="font-weight:600;font-size:0.88rem;">${_esc(b.naam)}</span>
-        ${b.historie_count > 0 ? `<span style="font-size:0.6rem;font-weight:700;background:#fff3e0;color:#b4531a;padding:2px 7px;border-radius:100px;margin-left:6px;">★ haalde dit ${b.historie_count}× eerder op</span>`
-          : (b.categorie_match ? `<span style="font-size:0.6rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;margin-left:6px;">Match</span>` : "")}
-        ${(b.contactpersoon || b.telefoon) ? `<span style="display:block;font-size:0.75rem;color:var(--muted);margin-top:2px;">${b.contactpersoon ? _esc(b.contactpersoon) : ""}${b.telefoon ? ` · ${_esc(b.telefoon)}` : ""}</span>` : ""}
+        ${b.historie_count > 0 ? `<span style="font-size:0.7rem;font-weight:700;background:#fff3e0;color:#b4531a;padding:2px 7px;border-radius:100px;margin-left:6px;">★ haalde dit ${b.historie_count}× eerder op</span>`
+          : (b.categorie_match ? `<span style="font-size:0.7rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;margin-left:6px;">Match</span>` : "")}
+        ${(b.contactpersoon || b.telefoon) ? `<span style="display:block;font-size:0.8rem;color:var(--muted);margin-top:2px;">${b.contactpersoon ? _esc(b.contactpersoon) : ""}${b.telefoon ? ` · ${_esc(b.telefoon)}` : ""}</span>` : ""}
       </span>
     </label>`).join("")}
-    <button id="btn-aanbied-selectie" class="btn btn-primary" style="width:100%;margin-top:14px;"
-      onclick="aanbiedenAanSelectie(${itemId})">
+    ${snelmodus ? `
+    <button class="btn btn-primary" style="width:100%;margin-top:14px;" onclick="aanbiedenAanSelectie(${itemId})">
       Aanbieden aan geselecteerde bedrijven
-    </button>`;
+    </button>` : `
+    <button id="btn-aanbied-selectie" class="btn btn-primary" style="width:100%;margin-top:14px;" onclick="aanbiedenAanSelectie(${itemId})">
+      Aanbieden aan geselecteerde bedrijven
+    </button>`}
+    </div>`;
   bedrijvenCard.classList.remove("hidden");
 }
+
+// Snelmodus: keuzelijst tonen (en de snelknop laten staan voor wie zich bedenkt)
+function _scanToonKeuze() {
+  const lijst = document.getElementById("scan-keuze-lijst");
+  const toggle = document.getElementById("scan-keuze-toggle");
+  if (lijst) lijst.style.display = "";
+  if (toggle) toggle.style.display = "none";
+}
+window._scanToonKeuze = _scanToonKeuze;
 
 
 // ── Camera ─────────────────────────────────────────────────────────────────────
@@ -541,10 +596,25 @@ analyseBtn.addEventListener("click", async () => {
     const fd = new FormData();
     gecomprimeerd.forEach(f => fd.append("files", f));
     if (detectedGemeente) fd.append("gemeente_override", detectedGemeente);
-    const res = await apiFetch("/api/upload", { method: "POST", body: fd });
-    if (!res || !res.ok) {
-      const err = res ? await res.json().catch(() => ({ detail: res.statusText })) : { detail: "Geen verbinding" };
-      throw new Error(err.detail || res?.statusText);
+    const res = await apiFetch("/api/upload", { method: "POST", body: fd, _stil: true });
+    if (!res) {
+      // Geen verbinding: scan lokaal bewaren — wordt automatisch verstuurd
+      // zodra de verbinding terug is (zie offline-scanwachtrij onderaan)
+      await _wachtrijTx(true, s => s.add({ fotos: gecomprimeerd, gemeente: detectedGemeente || null, tijd: Date.now() }));
+      _wachtrijToon();
+      pendingFiles = [];
+      cameraInput.value = "";
+      if (addPhotoInput) addPhotoInput.value = "";
+      previewThumbs.innerHTML = "";
+      previewWrap.classList.add("hidden");
+      analyseBtn.classList.add("hidden");
+      scanHero.classList.remove("hidden");
+      (window.uxToast || alert)("Geen verbinding — scan bewaard, wordt automatisch verstuurd", "info");
+      return;
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || res.statusText);
     }
     const item = await res.json();
     document.getElementById("result-label").value = item.ai_label || "";
@@ -564,6 +634,7 @@ analyseBtn.addEventListener("click", async () => {
     acceptatieBadge.className = "result-acceptatie hidden";
 
     resultCard.classList.remove("hidden");
+    (window.uxHaptic || (() => {}))("licht");
 
     // Toon gekoppelde bedrijven met aanbieden-knop (scope = account/organisatie)
     _huidigItemId   = item.id;
@@ -634,6 +705,7 @@ function _toonSucces(titel, tekst) {
   document.getElementById("succes-tekst").textContent = tekst;
   const el = document.getElementById("succes-overlay");
   el.style.display = "flex";
+  (window.uxHaptic || (() => {}))("succes");
   setTimeout(() => _confettiBurst(el.querySelector(".succes-cirkel")), 220);
 }
 
@@ -901,12 +973,12 @@ function renderItems() {
     nav.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:14px 16px 4px;gap:8px;";
     nav.innerHTML = `
       <button onclick="_goPagina(${_listPage - 1})" ${_listPage === 0 ? "disabled" : ""}
-        style="padding:9px 18px;border:1px solid var(--border);border-radius:100px;background:none;font-family:'Inter',sans-serif;font-size:0.72rem;font-weight:700;color:var(--muted);cursor:pointer;${_listPage === 0 ? "opacity:0.3;cursor:default;" : ""}">
+        style="padding:9px 18px;border:1px solid var(--border);border-radius:100px;background:none;font-family:'Inter',sans-serif;font-size:0.8rem;font-weight:700;color:var(--muted);cursor:pointer;${_listPage === 0 ? "opacity:0.3;cursor:default;" : ""}">
         ← Vorige
       </button>
-      <span style="font-size:0.7rem;color:var(--muted);">${from}–${to} van ${filtered.length}</span>
+      <span style="font-size:0.8rem;color:var(--muted);">${from}–${to} van ${filtered.length}</span>
       <button onclick="_goPagina(${_listPage + 1})" ${_listPage >= totalPages - 1 ? "disabled" : ""}
-        style="padding:9px 18px;border:1px solid var(--border);border-radius:100px;background:none;font-family:'Inter',sans-serif;font-size:0.72rem;font-weight:700;color:var(--muted);cursor:pointer;${_listPage >= totalPages - 1 ? "opacity:0.3;cursor:default;" : ""}">
+        style="padding:9px 18px;border:1px solid var(--border);border-radius:100px;background:none;font-family:'Inter',sans-serif;font-size:0.8rem;font-weight:700;color:var(--muted);cursor:pointer;${_listPage >= totalPages - 1 ? "opacity:0.3;cursor:default;" : ""}">
         Volgende →
       </button>`;
     list.appendChild(nav);
@@ -1167,17 +1239,17 @@ async function openModal(id, scrollToChat = false) {
       // Meerdere gesprekken mogelijk (één per bedrijf) → de lijst is de chat-ingang;
       // de generieke "Gesprek openen"-knop verdwijnt dan
       chatWrap.style.display = "none";
-      const slabel = { open: "In afwachting", ophalen: "Wordt opgehaald", niet_nodig: "Niet nodig" };
+      const slabel = { open: "Wacht op reactie", ophalen: "Match — wordt opgehaald", niet_nodig: "Niet nodig" };
       const scls   = { open: "color:#e67e00", ophalen: "color:#2e7d32", niet_nodig: "color:#c0392b" };
       aList.innerHTML = aanbiedingen.map(a => `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;font-size:0.86rem;">${_esc(a.bedrijf_naam || "—")}</div>
-            <div style="font-size:0.75rem;${scls[a.status]||''};margin-top:2px;">${slabel[a.status]||a.status}</div>
+            <div style="font-size:0.8rem;${scls[a.status]||''};margin-top:2px;">${slabel[a.status]||a.status}</div>
           </div>
           <button onclick="openChatScherm(${a.id}, '${escJs(a.bedrijf_naam || "")}')"
             title="Chat openen"
-            style="padding:7px 10px;border-radius:100px;border:1.5px solid var(--border);background:none;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:5px;font-size:0.75rem;">
+            style="padding:7px 10px;border-radius:100px;border:1.5px solid var(--border);background:none;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:5px;font-size:0.8rem;">
             ${SVG.chat} Chat
           </button>
         </div>`).join("");
@@ -1201,6 +1273,7 @@ async function reagerenOpAanbieding(aanbiedingId, status, itemId) {
   const res = await apiFetch(`/api/mijn-aanbiedingen/${aanbiedingId}`, { method: "PATCH", body: fd });
   if (!res || !res.ok) { (window.uxToast || alert)("Opslaan mislukt — probeer het opnieuw", "error"); return; }
   if (item) item.aanbieding_status = status;
+  (window.uxHaptic || (() => {}))(status === "ophalen" ? "succes" : "licht");
   _bewaarItemsCache();
   renderItems();
   _updateAanbodTeller();
@@ -1220,7 +1293,7 @@ async function reagerenOpAanbieding(aanbiedingId, status, itemId) {
   } else {
     wrap.innerHTML = `<hr class="divider">
       <div class="match-titel">Genoteerd — niet nodig.</div>
-      <p style="font-size:0.78rem;color:var(--muted);margin:6px 0 10px;">Mogen we weten waarom? Dat helpt de milieustraat gerichter aanbieden (optioneel).</p>
+      <p style="font-size:0.8rem;color:var(--muted);margin:6px 0 10px;">Mogen we weten waarom? Dat helpt de milieustraat gerichter aanbieden (optioneel).</p>
       <div class="reden-chips">
         ${["Te groot", "Geen ruimte", "Verkeerde soort", "Anders"].map(r =>
           `<button class="reden-chip" onclick="_stuurReden(${aanbiedingId}, '${escJs(r)}', this)">${r}</button>`).join("")}
@@ -1300,12 +1373,38 @@ function _stopChatPoll() {
   _chatRenderedCount = 0;
 }
 
-function _esc(s) {
-  return String(s == null ? "" : s)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+// _esc en escJs komen uit cirqo-core.js.
+
+// Lege chat: uitnodigende start met rolbewuste openingszinnen (één tik = versturen)
+function _chatStarterHTML() {
+  const isAfnemer = _role === "bedrijf";
+  const openers = isAfnemer
+    ? ["Hoi! Ik heb hier interesse in.",
+       "Is dit nog beschikbaar?",
+       "Wanneer kan ik het ophalen?"]
+    : ["Hoi! Dit ligt voor je klaar.",
+       "Interesse? Ik hoor het graag.",
+       "Wanneer komt ophalen je uit?"];
+  const chips = openers.map(t =>
+    `<button type="button" class="chat-opener" onclick="_chatStart('${escJs(t)}')">${_esc(t)}</button>`
+  ).join("");
+  return `<div class="chat-starter">
+    <span class="chat-starter-ico" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2c6e3f" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </span>
+    <div class="chat-starter-titel">Begin het gesprek</div>
+    <div class="chat-starter-sub">Kies een opener of typ zelf iets hieronder.</div>
+    <div class="chat-openers">${chips}</div>
+  </div>`;
 }
-function escJs(s){return _esc(String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/[\r\n]/g," "));}
+
+// Opener-tik: zet de tekst in het invoerveld en verstuur meteen
+function _chatStart(tekst) {
+  const input = document.getElementById("chat-input");
+  input.value = tekst;
+  verstuurBericht();
+}
+window._chatStart = _chatStart;
 
 async function laadBerichten(aanbiedingId, silent = false) {
   const res = await apiFetch(`/api/aanbiedingen/${aanbiedingId}/berichten`);
@@ -1314,7 +1413,7 @@ async function laadBerichten(aanbiedingId, silent = false) {
   const mijnId = JSON.parse(atob(token.split(".")[1])).sub;
   const wrap = document.getElementById("chat-berichten");
   if (!berichten.length) {
-    if (!silent) wrap.innerHTML = `<div class="chat-empty">Nog geen berichten — start het gesprek</div>`;
+    if (!silent && !wrap.querySelector(".chat-starter")) wrap.innerHTML = _chatStarterHTML();
     return;
   }
   // Alleen herschrijven als er nieuwe berichten zijn
@@ -1355,15 +1454,22 @@ async function verstuurBericht() {
   const mijnId = JSON.parse(atob(token.split(".")[1])).sub;
   const wrap = document.getElementById("chat-berichten");
   const nu = new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
-  if (wrap.querySelector(".chat-empty")) wrap.innerHTML = "";
+  if (wrap.querySelector(".chat-empty, .chat-starter")) wrap.innerHTML = "";
   wrap.innerHTML += `<div class="chat-spacer"></div>
     <div class="chat-msg mine">${_esc(tekst)}<div class="chat-msg-tijd">${nu}</div></div>`;
   wrap.scrollTop = wrap.scrollHeight;
   input.value = "";
+  (window.uxHaptic || (() => {}))("licht");
 
   const fd = new FormData(); fd.append("tekst", tekst);
   const res = await apiFetch(`/api/aanbiedingen/${aanbiedingId}/berichten`, { method: "POST", body: fd });
-  if (!res || !res.ok) { (window.uxToast || alert)("Bericht niet verzonden", "error"); laadBerichten(aanbiedingId); return; }
+  if (!res || !res.ok) {
+    // Verzending mislukt: zet de getypte tekst terug zodat niets verloren gaat
+    (window.uxToast || alert)("Bericht niet verzonden — je tekst staat er nog", "error");
+    if (!input.value.trim()) input.value = tekst;
+    laadBerichten(aanbiedingId);
+    return;
+  }
   const data = await res.json();
   if (data?.created_at) localStorage.setItem(`chat_read_${aanbiedingId}`, data.created_at);
 }
@@ -1525,102 +1631,95 @@ function formatTime(ts) {
 let _swReg = null;
 
 async function initPush() {
-  const btn    = document.getElementById("push-btn");
   const status = document.getElementById("push-status");
-  // Native schil: status tonen op basis van het app-kanaal
+  const standaardSub = "Bericht bij nieuw aanbod en reacties";
+  // Native schil: status via het app-kanaal
   if (_isNativeSchil()) {
     try {
       const PN = window.Capacitor?.Plugins?.PushNotifications;
       const perm = PN ? await PN.checkPermissions() : null;
       if (perm && perm.receive === "granted") {
-        status.textContent = "✓ Meldingen staan aan voor dit account";
-        status.style.display = "block";
-        btn.style.display = "none";
+        _zetPushChip("aan");
+        status.textContent = "Meldingen staan aan voor dit account";
         document.querySelector("#user-panel .acc-rij-ico")?.classList.add("actief");
+      } else if (perm && perm.receive === "denied") {
+        _zetPushChip("blok");
+        status.textContent = "Sta meldingen toe via de toestelinstellingen";
       } else {
-        btn.style.display = "block";
+        _zetPushChip("uit");
+        status.textContent = standaardSub;
       }
-    } catch (e) { btn.style.display = "block"; }
+    } catch (e) { _zetPushChip("uit"); }
     return;
   }
-  if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
+  if (!("serviceWorker" in navigator) || !("Notification" in window)) { _zetPushChip("uit"); return; }
   try {
     _swReg = await navigator.serviceWorker.register("/sw.js");
-  } catch (e) { return; }
+  } catch (e) { _zetPushChip("uit"); return; }
 
   const Notif = window.Notification;
-  if (!Notif) return;
+  if (!Notif) { _zetPushChip("uit"); return; }
   if (Notif.permission === "granted") {
     try {
-      // Bestaat er al een subscription? Die is bij app-start al aan dit account
-      // gekoppeld (_ensurePushRegistered) — toon dan direct ✓ zonder netwerk.
       const bestaand = await _swReg.pushManager.getSubscription();
       if (!bestaand) await _abonneerPush();
-      status.textContent = "✓ Meldingen staan aan voor dit account";
-      status.style.display = "block";
-      btn.style.display = "none";
+      _zetPushChip("aan");
+      status.textContent = "Meldingen staan aan voor dit account";
       document.querySelector("#user-panel .acc-rij-ico")?.classList.add("actief");
     } catch (e) {
-      // Geen/kapotte subscription — laat de gebruiker 'm via een tik (her)activeren.
-      status.textContent = "Tik op de knop om meldingen voor dit account te activeren.";
-      status.style.display = "block";
-      btn.innerHTML = `${SVG.bell} Meldingen activeren`;
-      btn.disabled = false;
-      btn.style.display = "block";
+      _zetPushChip("uit");
+      status.textContent = "Tik om meldingen opnieuw te activeren";
     }
   } else if (Notif.permission === "denied") {
-    status.textContent = "Meldingen staan geblokkeerd in je iPhone-instellingen.";
-    status.style.display = "block";
+    _zetPushChip("blok");
+    status.textContent = "Meldingen staan geblokkeerd in je browserinstellingen";
   } else {
-    btn.style.display = "block";
+    _zetPushChip("uit");
+    status.textContent = standaardSub;
   }
 }
 
 async function meldingInschakelen() {
-  const btn    = document.getElementById("push-btn");
   const status = document.getElementById("push-status");
-  btn.disabled = true; btn.textContent = "Bezig…";
+  status.textContent = "Bezig…";
   // Native schil: meldingen via het app-kanaal (FCM/APNs) i.p.v. web push
   if (_isNativeSchil()) {
     try {
       await _registreerNativePush();
-      btn.style.display = "none";
+      _zetPushChip("aan");
+      status.textContent = "Meldingen staan aan voor dit account";
+      document.querySelector("#user-panel .acc-rij-ico")?.classList.add("actief");
       _toonPushGelukt();
     } catch (e) {
-      btn.innerHTML = `${SVG.bell} Meldingen inschakelen`;
-      btn.disabled = false;
+      _zetPushChip("uit");
       status.textContent = e.message || "Meldingen inschakelen is niet gelukt.";
-      status.style.display = "block";
     }
     return;
   }
   const Notif = window.Notification;
   if (!Notif) {
-    btn.innerHTML = `${SVG.bell} Meldingen inschakelen`;
+    _zetPushChip("uit");
     status.textContent = "Push wordt niet ondersteund in deze browser.";
-    status.style.display = "block";
     return;
   }
   try {
     const perm = await Notif.requestPermission();
     if (perm === "granted") {
       await _abonneerPush();
-      btn.style.display = "none";
+      _zetPushChip("aan");
+      status.textContent = "Meldingen staan aan voor dit account";
+      document.querySelector("#user-panel .acc-rij-ico")?.classList.add("actief");
       _toonPushGelukt();
     } else {
-      btn.textContent = "Toestemming geweigerd";
+      _zetPushChip("blok");
       status.textContent = "Sta meldingen toe via de browserinstellingen.";
-      status.style.display = "block";
     }
   } catch (e) {
-    btn.innerHTML = `${SVG.bell} Meldingen inschakelen`;
-    btn.disabled = false;
-    (window.uxToast || alert)("Meldingen inschakelen mislukt: " + (e.message || e.name || "onbekende fout"), "error", 4000);
+    _zetPushChip("uit");
+    status.textContent = "Inschakelen is niet gelukt — probeer het opnieuw.";
   }
 }
 
-// Bevestigingsmoment als meldingen zojuist zijn aangezet: vinkje dat zichzelf
-// tekent + korte uitleg, wegklikbaar met "Begrepen"
 function _toonPushGelukt() {
   const status = document.getElementById("push-status");
   status.textContent = "✓ Meldingen staan aan voor dit account";
@@ -1761,10 +1860,9 @@ async function openUserPanel() {
   });
   const orgInit = localStorage.getItem("organisatie") || _username || "";
   document.getElementById("up-organisatie").value = orgInit;
-  document.getElementById("up-status").textContent = "";
-  // Wachtwoord-sectie altijd dichtgeklapt bij openen
-  const pwdUit = document.getElementById("pwd-uitklap");
-  if (pwdUit && pwdUit.style.display !== "none") toggleWachtwoord();
+  _zetAccWaardes(orgInit);
+  // Alle uitklap-secties dicht bij openen
+  ["org", "loc", "pwd"].forEach(k => accToggle(k, true));
   document.getElementById("up-pwd").value = "";
   const pwd2 = document.getElementById("up-pwd2"); if (pwd2) pwd2.value = "";
   // Identiteitskop: naam, avatar-initiaal en rol-pill
@@ -1777,23 +1875,164 @@ async function openUserPanel() {
     const me = await res.json();
     const org = me.organisatie || me.username || _username || "";
     document.getElementById("up-organisatie").value = org;
+    document.getElementById("up-email").value = me.email || "";
+    document.getElementById("up-contactpersoon").value = me.contactpersoon || "";
+    document.getElementById("up-telefoon").value = me.telefoon || "";
+    document.getElementById("up-adres").value = me.adres || "";
     localStorage.setItem("organisatie", org);
     _vulAccountKop(org, rolLabels[_role] || _role);
+    _zetAccWaardes(org);
+    _zetHeaderAccount();
+    _zetDigestUI(!!me.melding_digest);
   }
+}
+
+// ── Meldingsritme: direct of één samenvatting per dag (S3.8) ──────────────────
+function _zetDigestUI(dagelijks) {
+  document.getElementById("digest-direct")?.classList.toggle("actief", !dagelijks);
+  document.getElementById("digest-dag")?.classList.toggle("actief", dagelijks);
+  const sub = document.getElementById("digest-sub");
+  if (sub) sub.textContent = dagelijks
+    ? "Eén samenvatting per dag, rond 16:00"
+    : "Direct bij nieuw aanbod en berichten";
+}
+async function zetDigest(dagelijks) {
+  const fd = new FormData();
+  fd.append("melding_digest", dagelijks ? "true" : "false");
+  const res = await apiFetch(`/api/users/${_userId}/profiel`, { method: "PATCH", body: fd });
+  if (res && res.ok) {
+    _zetDigestUI(dagelijks);
+    (window.uxHaptic || (() => {}))("licht");
+    (window.uxToast || (() => {}))(dagelijks
+      ? "Je krijgt voortaan 1 samenvatting per dag"
+      : "Je krijgt meldingen weer direct", "success");
+  }
+}
+window.zetDigest = zetDigest;
+
+// Waarde-labels rechts in de rijen: de pagina leest als een overzicht
+function _zetAccWaardes(org) {
+  const orgW = document.getElementById("org-waarde");
+  if (orgW) orgW.textContent = org || "—";
+  const locW = document.getElementById("loc-waarde");
+  if (locW) {
+    const gem = localStorage.getItem("gemeente") || "";
+    const mil = localStorage.getItem("milieustraat") || "";
+    locW.textContent = mil || gem || "—";
+  }
+}
+
+// Uitklap-secties (accordeon): één tegelijk open
+function accToggle(key, forceDicht) {
+  const uit = document.getElementById(`${key}-uitklap`);
+  const chevron = document.getElementById(`${key}-chevron`);
+  if (!uit) return;
+  const isOpen = uit.classList.contains("open");
+  if (forceDicht === true || isOpen) {
+    uit.classList.remove("open");
+    if (chevron) chevron.style.transform = "";
+    return;
+  }
+  ["org", "loc", "pwd"].filter(k => k !== key).forEach(k => accToggle(k, true));
+  uit.classList.add("open");
+  if (chevron) chevron.style.transform = "rotate(90deg)";
+  if (key === "org") setTimeout(() => document.getElementById("up-organisatie").focus(), 60);
+  if (key === "pwd") setTimeout(() => document.getElementById("up-pwd").focus(), 60);
+}
+window.accToggle = accToggle;
+
+// Mijn gegevens: alle profielvelden in één keer opslaan
+async function slaProfielOp() {
+  const organisatie = document.getElementById("up-organisatie").value.trim();
+  const userId = JSON.parse(atob(token.split(".")[1])).sub;
+  try {
+    const fd = new FormData();
+    fd.append("organisatie", organisatie);
+    fd.append("contactpersoon", document.getElementById("up-contactpersoon").value.trim());
+    fd.append("telefoon", document.getElementById("up-telefoon").value.trim());
+    fd.append("adres", document.getElementById("up-adres").value.trim());
+    const res = await apiFetch(`/api/users/${userId}/profiel`, { method: "PATCH", body: fd });
+    if (!res || !res.ok) throw new Error();
+    if (organisatie) {
+      localStorage.setItem("organisatie", organisatie);
+      _vulAccountKop(organisatie, document.getElementById("up-rol-label")?.textContent);
+      _zetHeaderAccount();
+    }
+    _zetAccWaardes(organisatie || _username);
+    accToggle("org", true);
+    (window.uxToast || (() => {}))("Gegevens opgeslagen", "success");
+  } catch (e) {
+    (window.uxToast || (() => {}))("Opslaan is niet gelukt — probeer opnieuw", "error");
+  }
+}
+window.slaProfielOp = slaProfielOp;
+
+// Locatie: wijzigingen in de dropdowns worden direct opgeslagen
+async function slaLocatieOp() {
+  const gemeente = (document.getElementById("up-gemeente")?.value || "").trim();
+  const milieustraat = (document.getElementById("up-milieustraat")?.value || "").trim();
+  const userId = JSON.parse(atob(token.split(".")[1])).sub;
+  try {
+    if (gemeente && gemeente !== (localStorage.getItem("gemeente") || "")) {
+      const fd = new FormData(); fd.append("gemeente", gemeente);
+      const res = await apiFetch(`/api/users/${userId}/gemeente`, { method: "PATCH", body: fd });
+      if (res && res.ok) {
+        const data = await res.json();
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("gemeente", data.gemeente);
+      }
+      const upMil = document.getElementById("up-milieustraat");
+      if (upMil) _vulMilieustraatSelect(upMil, gemeente, "");
+    }
+    if (milieustraat) localStorage.setItem("milieustraat", milieustraat);
+    _zetAccWaardes(localStorage.getItem("organisatie") || _username);
+    _zetHeaderAccount();
+    (window.uxToast || (() => {}))("Locatie opgeslagen", "success");
+  } catch (e) {
+    (window.uxToast || (() => {}))("Opslaan is niet gelukt — probeer opnieuw", "error");
+  }
+}
+window.slaLocatieOp = slaLocatieOp;
+
+// Meldingen-rij: alleen actie als ze nog niet aanstaan
+function meldingRijKlik() {
+  const chip = document.getElementById("push-chip");
+  if (chip && chip.classList.contains("aan")) return;
+  meldingInschakelen();
+}
+window.meldingRijKlik = meldingRijKlik;
+
+function _zetPushChip(staat) {
+  const digestRij = document.getElementById("digest-rij");
+  if (digestRij) digestRij.style.display = staat === "aan" ? "" : "none";
+  const chip = document.getElementById("push-chip");
+  if (!chip) return;
+  chip.classList.remove("aan", "uit", "blok");
+  if (staat === "aan")      { chip.textContent = "Aan";         chip.classList.add("aan"); }
+  else if (staat === "blok"){ chip.textContent = "Geblokkeerd"; chip.classList.add("blok"); }
+  else                      { chip.textContent = "Zet aan";     chip.classList.add("uit"); }
 }
 
 function _vulAccountKop(naam, rol) {
   const n = (naam || "Mijn account").trim();
   document.getElementById("up-naam").textContent = n;
   const av = document.getElementById("up-avatar");
-  if (av) av.textContent = n.charAt(0).toUpperCase();
+  if (av) {
+    if (_isWaardlanden()) {
+      av.classList.add("hdr-avatar-logo");
+      av.innerHTML = '<img src="/static/waardlanden-globe.png" alt="Waardlanden">';
+    } else {
+      av.classList.remove("hdr-avatar-logo");
+      av.textContent = n.charAt(0).toUpperCase();
+    }
+  }
   const rolEl = document.getElementById("up-rol-label");
   if (rolEl) rolEl.textContent = rol || "";
   // Gemeente-pill + versienummer in de voettekst
   const gemPill = document.getElementById("up-gem-pill");
   const gem = localStorage.getItem("gemeente") || "";
   if (gemPill) {
-    gemPill.textContent = gem ? `📍 ${gem}` : "";
+    gemPill.textContent = gem || "";
     gemPill.style.display = gem ? "" : "none";
   }
   const versieEl = document.getElementById("up-versie");
@@ -1807,21 +2046,7 @@ function closeUserPanel() {
   document.getElementById("user-panel").classList.add("hidden");
 }
 
-// Wachtwoord-sectie in-/uitklappen (staat standaard dicht — minder overweldigend)
-function toggleWachtwoord() {
-  const uit = document.getElementById("pwd-uitklap");
-  const chevron = document.getElementById("pwd-chevron");
-  const open = uit.style.display !== "none";
-  uit.style.display = open ? "none" : "block";
-  if (chevron) chevron.style.transform = open ? "" : "rotate(90deg)";
-  if (open) {
-    document.getElementById("up-pwd").value = "";
-    document.getElementById("up-pwd2").value = "";
-    document.getElementById("pwd-status").textContent = "";
-  } else {
-    setTimeout(() => document.getElementById("up-pwd").focus(), 60);
-  }
-}
+function toggleWachtwoord() { accToggle("pwd"); }
 window.toggleWachtwoord = toggleWachtwoord;
 
 async function slaWachtwoordOp() {
@@ -1839,7 +2064,9 @@ async function slaWachtwoordOp() {
     const res = await apiFetch(`/api/users/${userId}/password`, { method: "PATCH", body: fd });
     if (!res || !res.ok) throw new Error();
     (window.uxToast || (() => {}))("Wachtwoord gewijzigd", "success");
-    toggleWachtwoord();   // sluit + wist de velden
+    accToggle("pwd", true);
+    document.getElementById("up-pwd").value = "";
+    document.getElementById("up-pwd2").value = "";
   } catch (e) {
     st.textContent = "Wijzigen is niet gelukt — probeer het opnieuw.";
   } finally {
@@ -1847,76 +2074,6 @@ async function slaWachtwoordOp() {
   }
 }
 window.slaWachtwoordOp = slaWachtwoordOp;
-
-async function saveUserPanel() {
-  const gemeente    = (document.getElementById("up-gemeente")?.value || "").trim();
-  const milieustraat = (document.getElementById("up-milieustraat")?.value || "").trim();
-  const organisatie = document.getElementById("up-organisatie").value.trim();
-  const statusEl    = document.getElementById("up-status");
-  const opslaanBtn  = document.querySelector(".acc-opslaan");
-  const userId      = JSON.parse(atob(token.split(".")[1])).sub;
-
-  statusEl.textContent = "";
-  if (opslaanBtn) { opslaanBtn.disabled = true; opslaanBtn.innerHTML = '<span class="spinner"></span> Opslaan…'; }
-
-  try {
-    if (gemeente !== (localStorage.getItem("gemeente") || "")) {
-      const fd = new FormData(); fd.append("gemeente", gemeente);
-      const res = await apiFetch(`/api/users/${userId}/gemeente`, { method: "PATCH", body: fd });
-      if (res && res.ok) {
-        const data = await res.json();
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("gemeente", data.gemeente);
-        window.token !== undefined && (window.token = data.token);
-      }
-    }
-    if (milieustraat) localStorage.setItem("milieustraat", milieustraat);
-    if (organisatie !== (localStorage.getItem("organisatie") || "")) {
-      const fd = new FormData(); fd.append("organisatie", organisatie);
-      const res = await apiFetch(`/api/users/${userId}/organisatie`, { method: "PATCH", body: fd });
-      if (res && res.ok) {
-        localStorage.setItem("organisatie", organisatie);
-      }
-    }
-    if (_username) document.getElementById("hdr-username").textContent = _username + (gemeente ? ` · ${gemeente}` : "");
-    _vulAccountKop(organisatie || _username, document.getElementById("up-rol-label")?.textContent);
-    (window.uxToast || (() => {}))("Wijzigingen opgeslagen", "success");
-  } catch (e) {
-    statusEl.textContent = "Opslaan is niet gelukt — controleer je verbinding en probeer opnieuw";
-    statusEl.style.color = "var(--danger)";
-  } finally {
-    if (opslaanBtn) { opslaanBtn.disabled = false; opslaanBtn.textContent = "Wijzigingen opslaan"; }
-  }
-}
-
-// ── Init ───────────────────────────────────────────────────────────────────────
-
-// Scanner-rol: de "Ontvangen"-tab is voor bedrijven — voor scanners altijd leeg,
-// dus verbergen (Aanbieden vult dan de volle breedte)
-if (_role === "user") {
-  const ontvTab = document.querySelector('.list-maintab[data-main="ontvangen"]');
-  if (ontvTab) ontvTab.style.display = "none";
-}
-
-// Bedrijf-rol: standaard op "Ontvangen" starten
-if (_role === "bedrijf") {
-  const ontvangenTab = document.querySelector('.list-maintab[data-main="ontvangen"]');
-  if (ontvangenTab) {
-    document.querySelectorAll(".list-maintab").forEach(b => b.classList.remove("active"));
-    ontvangenTab.classList.add("active");
-  }
-  document.getElementById("subtabs-aanbieden").style.display = "none";
-  document.getElementById("subtabs-ontvangen").style.display = "";
-  document.querySelector('.list-maintab[data-main="aanbieden"]')?.classList.remove("active");
-  document.querySelector('[data-subtab="ontvangen-alles"]')?.classList.add("active");
-  activeMain = "ontvangen";
-  activeSubtab = "ontvangen-alles";
-  document.getElementById("tab-list").dataset.main = "ontvangen";
-}
-
-// ── PWA-installatie (instructie per browser) ───────────────────────────────────
-let _deferredInstallPrompt = null;
-window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); _deferredInstallPrompt = e; });
 
 function _installPlatform() {
   // Native schil (App Store/Play Store-app): installeren is per definitie niet aan de orde
@@ -2011,6 +2168,21 @@ _laadItemsUitCache();                        // toon direct de laatst bekende li
 syncAll();                                    // items verversen — wacht op níéts anders
 setTimeout(_zorgGemeentenGeladen, 2500);      // paneel-data rustig ná de start-drukte
 _ensurePushRegistered();
+// Gebruikskanaal melden (update-adoptie zichtbaar voor beheer) — stil, na de start-drukte
+setTimeout(() => {
+  let kanaal = "browser";
+  if (_isNativeSchil()) {
+    const p = window.Capacitor?.getPlatform?.();
+    kanaal = p === "ios" ? "native-ios" : "native-android";
+  } else if ((window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true) {
+    kanaal = "pwa";
+  }
+  const fd = new FormData(); fd.append("kanaal", kanaal);
+  apiFetch("/api/gebruik", { method: "POST", body: fd, _stil: true })
+    .then(r => r && r.ok ? r.json() : null)
+    .then(d => { if (d && d.vernieuwd_token) localStorage.setItem("token", d.vernieuwd_token); })
+    .catch(() => {});
+}, 4000);
 // Poll: 12s zolang de app zichtbaar is (fingerprint voorkomt onnodig hertekenen;
 // warme servercache maakt de call ~200ms). Push + focus-sync dekken de rest.
 setInterval(() => { if (!document.hidden) syncItems(); }, 12000);
@@ -2049,3 +2221,250 @@ function _pasUpdateToe() {
 }
 setInterval(_checkAppVersie, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { _checkAppVersie(); _pasUpdateToe(); } });
+
+
+// ── Over CIRQO ─────────────────────────────────────────────────────────────────
+const _OVER_ICOON = {
+  info:    '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  deel:    '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/>',
+  vraag:   '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  tel:     '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.5 2.8.7a2 2 0 0 1 1.7 2z"/>',
+  gebouw:  '<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-4h6v4"/>',
+  schild:  '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  lijst:   '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10"/><path d="M7 12h10"/><path d="M7 16h6"/>',
+};
+function _overRij(icoon, titel, actie) {
+  return `<button type="button" class="acc-actie-rij" onclick="${actie}">
+    <span class="acc-rij-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${_OVER_ICOON[icoon]}</svg></span>
+    <div class="acc-rij-tekst"><span class="acc-rij-titel">${titel}</span></div>
+    <span class="acc-chevron">›</span></button>`;
+}
+function openOverCirqo() {
+  const menu = document.getElementById("over-menu");
+  menu.innerHTML = [
+    _overRij("info",   "Wat doet CIRQO",             "overSub('wat')"),
+    _overRij("deel",   "Anderen uitnodigen",         "overDelen()"),
+    _overRij("vraag",  "Veelgestelde vragen",        "overSub('faq')"),
+    _overRij("tel",    "Contact met CIRQO",          "overSub('contact')"),
+    _overRij("gebouw", "Deelnemende organisaties",   "overSub('organisaties')"),
+    _overRij("schild", "Privacy- en cookieverklaring", "overPagina('/privacy', 'Privacy- en cookieverklaring')"),
+    _overRij("lijst",  "Algemene voorwaarden",       "overPagina('/voorwaarden', 'Algemene voorwaarden')"),
+  ].join("");
+  document.getElementById("over-panel").classList.remove("hidden");
+}
+window.openOverCirqo = openOverCirqo;
+
+const _OVER_INHOUD = {
+  wat: ["Wat doet CIRQO", `
+    <p><b>CIRQO geeft spullen een tweede leven.</b></p>
+    <p style="margin-top:10px;">Milieustraatmedewerkers scannen binnengebrachte materialen met één foto.
+    Slimme herkenning maakt er direct een aanbieding van, en lokale afnemers — kringloopwinkels,
+    scholen, sociale werkplaatsen — krijgen meteen een melding.</p>
+    <p style="margin-top:10px;">Reageren kost één tik, de ophaling stem je af via de chat, en het
+    dashboard laat zien hoeveel kilo's en CO₂ er samen bespaard zijn.</p>
+    <p style="margin-top:10px;">Zo blijft bruikbaar materiaal in de regio, in plaats van in de container.</p>`],
+  faq: ["Veelgestelde vragen", `
+    <p><b>Hoe bied ik iets aan?</b><br>Tik op Scannen, maak een foto en kies aan wie je het aanbiedt.
+    CIRQO herkent het item en vult omschrijving en gewicht automatisch in.</p>
+    <p style="margin-top:12px;"><b>Wie ziet mijn aanbod?</b><br>Alleen de afnemers die jij selecteert
+    binnen jouw regio.</p>
+    <p style="margin-top:12px;"><b>Hoe snel krijg ik reactie?</b><br>Afnemers krijgen direct een
+    melding. Reageren ze, dan zie jij dat meteen in de app — met een melding als je die aan hebt staan.</p>
+    <p style="margin-top:12px;"><b>Hoe regel ik de ophaling?</b><br>Via het chatgesprek bij de
+    aanbieding. Moment en plek stem je onderling af.</p>
+    <p style="margin-top:12px;"><b>Krijg ik geen meldingen?</b><br>Zet ze aan via Mijn account →
+    Meldingen. Staan ze geblokkeerd, sta ze dan toe via de instellingen van je toestel.</p>
+    <p style="margin-top:12px;"><b>Ik wil een extra account voor een collega.</b><br>Vraag het aan
+    via je eigen organisatie of mail naar info@cirqo.nl.</p>`],
+  contact: ["Contact met CIRQO", `
+    <p>Vragen, ideeën of hulp nodig? We horen het graag.</p>
+    <p style="margin-top:12px;"><b>E-mail</b><br><a href="mailto:info@cirqo.nl" style="color:#2c6e3f;">info@cirqo.nl</a></p>
+    <p style="margin-top:12px;"><b>Website</b><br><a href="https://www.cirqo.nl" target="_blank" rel="noopener" style="color:#2c6e3f;">www.cirqo.nl</a></p>
+    <p style="margin-top:12px;">We reageren doorgaans binnen één werkdag.</p>`],
+  organisaties: ["Deelnemende organisaties", `
+    <p>CIRQO wordt gebruikt door milieustraten en lokale afnemers die samen materialen in de
+    regio houden.</p>
+    <p style="margin-top:10px;"><b>Milieustraten</b><br>De milieustraten van afvalbeheerder
+    Waardlanden — actief voor de gemeenten Gorinchem, Hardinxveld-Giessendam, Molenlanden en
+    Vijfheerenlanden.</p>
+    <p style="margin-top:10px;"><b>Afnemers</b><br>Lokale kringloopwinkels, scholen,
+    sociale werkplaatsen en maatschappelijke organisaties uit de regio.</p>
+    <p style="margin-top:10px;">Ook meedoen met jouw organisatie? Mail naar
+    <a href="mailto:info@cirqo.nl" style="color:#2c6e3f;">info@cirqo.nl</a>.</p>`],
+};
+function overSub(key) {
+  const [titel, inhoud] = _OVER_INHOUD[key];
+  document.getElementById("over-sub-titel").textContent = titel;
+  document.getElementById("over-sub-inhoud").innerHTML = inhoud;
+  document.getElementById("over-sub").classList.remove("hidden");
+}
+window.overSub = overSub;
+
+// Privacy/voorwaarden: pagina-inhoud in de sheet laden (geen navigatie weg uit de app)
+async function overPagina(pad, titel) {
+  document.getElementById("over-sub-titel").textContent = titel;
+  const doel = document.getElementById("over-sub-inhoud");
+  doel.innerHTML = "Laden…";
+  document.getElementById("over-sub").classList.remove("hidden");
+  try {
+    const res = await fetch(pad);
+    const html = await res.text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const kaart = doc.querySelector(".kaart");
+    doel.innerHTML = kaart ? kaart.innerHTML.replace(/<h1[^>]*>.*?<\/h1>/s, "").replace(/<p class="datum".*?<\/p>/s, "") : "Kon de pagina niet laden.";
+  } catch (e) {
+    doel.innerHTML = "Kon de pagina niet laden — controleer je verbinding.";
+  }
+}
+window.overPagina = overPagina;
+
+// Uitnodigen: native deelvenster met terugval naar kopiëren
+async function overDelen() {
+  const tekst = "Bekijk CIRQO — samen geven we spullen een tweede leven: https://app.cirqo.nl/installeren";
+  if (navigator.share) {
+    try { await navigator.share({ title: "CIRQO", text: tekst }); } catch (e) {}
+  } else {
+    try {
+      await navigator.clipboard.writeText(tekst);
+      (window.uxToast || (() => {}))("Uitnodigingslink gekopieerd", "success");
+    } catch (e) {}
+  }
+}
+window.overDelen = overDelen;
+
+// ═══ Sprint 2 UX: pull-to-refresh + terugknop-gedrag ═══════════════════════
+// ux.js laadt ná dit script; daarom koppelen we pas bij DOMContentLoaded.
+document.addEventListener("DOMContentLoaded", () => {
+
+  // ── Pull-to-refresh: aanbodlijst en chatscherm (dashboard regelt het
+  //    binnen zijn eigen frame — touches bereiken dit document daar niet)
+  if (window.uxPullRefresh) {
+    uxPullRefresh(document.getElementById("tab-list"), async () => {
+      _lastItemsJson = "";               // forceer herrender, ook zonder wijzigingen
+      await syncItems();
+      renderItems();
+    });
+    uxPullRefresh(document.getElementById("chat-berichten"), async () => {
+      if (window._chatAanbiedingId) await laadBerichten(window._chatAanbiedingId, true);
+    });
+  }
+
+  // ── Terugknop sluit overlays (Android-terugknop, iOS-swipe-back, browser-terug).
+  // Elk open paneel krijgt een history-entry; terug = bovenste overlay dicht in
+  // plaats van de app verlaten. Sluiten via de eigen X consumeert de entry weer.
+  const _terugStack = [];
+  let _terugEigen = 0;
+  function _terugOpen(naam, sluiter) {
+    if (_terugStack.some(o => o.naam === naam)) return;
+    _terugStack.push({ naam, sluiter });
+    try { history.pushState({ cirqo_overlay: naam }, ""); } catch (e) {}
+  }
+  function _terugKlaar(naam) {
+    const i = _terugStack.map(o => o.naam).lastIndexOf(naam);
+    if (i < 0) return;
+    _terugStack.splice(i, 1);
+    _terugEigen++;
+    try { history.back(); } catch (e) { _terugEigen--; }
+  }
+  window.addEventListener("popstate", () => {
+    if (_terugEigen > 0) { _terugEigen--; return; }
+    const boven = _terugStack.pop();
+    if (boven) boven.sluiter();
+  });
+
+  // Overlays via een observer volgen: elk open/dicht-pad (knop, code, timeout)
+  // wordt zo gedekt zonder alle bestaande functies te hoeven verbouwen.
+  const _OVERLAYS = [
+    { id: "modal",          isOpen: el => !el.classList.contains("hidden"),
+      sluit: el => { el.classList.add("hidden"); _stopChatPoll(); window._chatAanbiedingId = null; } },
+    { id: "user-panel",     isOpen: el => !el.classList.contains("hidden"),
+      sluit: el => el.classList.add("hidden") },
+    { id: "over-panel",     isOpen: el => !el.classList.contains("hidden"),
+      sluit: el => el.classList.add("hidden") },
+    { id: "over-sub",       isOpen: el => !el.classList.contains("hidden"),
+      sluit: el => el.classList.add("hidden") },
+    { id: "chat-scherm",    isOpen: el => !el.classList.contains("hidden"),
+      sluit: () => sluitChatScherm() },
+    { id: "succes-overlay", isOpen: el => el.style.display !== "none",
+      sluit: () => sluitSucces() },
+    { id: "ob-sheet",       isOpen: el => el.classList.contains("ob-show"),
+      sluit: el => { el.classList.remove("ob-show"); document.getElementById("ob-backdrop")?.classList.remove("ob-show"); } },
+  ];
+  _OVERLAYS.forEach(cfg => {
+    const el = document.getElementById(cfg.id);
+    if (!el) return;
+    new MutationObserver(() => {
+      const open = cfg.isOpen(el);
+      const geregistreerd = _terugStack.some(o => o.naam === cfg.id);
+      if (open && !geregistreerd) _terugOpen(cfg.id, () => cfg.sluit(el));
+      else if (!open && geregistreerd) _terugKlaar(cfg.id);
+    }).observe(el, { attributes: true, attributeFilter: ["class", "style"] });
+  });
+});
+
+// ═══ Sprint 3: offline-scanwachtrij ═════════════════════════════════════════
+// Scannen zonder verbinding (kelder, vliegtuigstand, storing): de gecomprimeerde
+// foto's gaan in IndexedDB en worden automatisch verstuurd zodra het weer kan.
+// De banner op de scan-tab toont hoeveel er wachten; tikken = direct proberen.
+function _wachtrijDb() {
+  return new Promise((ok, fout) => {
+    const req = indexedDB.open("cirqo-offline", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("scans", { keyPath: "id", autoIncrement: true });
+    req.onsuccess = () => ok(req.result);
+    req.onerror  = () => fout(req.error);
+  });
+}
+function _wachtrijTx(schrijf, werk) {
+  return _wachtrijDb().then(db => new Promise((ok, fout) => {
+    const tx  = db.transaction("scans", schrijf ? "readwrite" : "readonly");
+    const req = werk(tx.objectStore("scans"));
+    req.onsuccess = () => ok(req.result);
+    req.onerror   = () => fout(req.error);
+    tx.oncomplete = () => db.close();
+  }));
+}
+async function _wachtrijToon() {
+  let n = 0;
+  try { n = await _wachtrijTx(false, s => s.count()); } catch (e) {}
+  const banner = document.getElementById("wachtrij-banner");
+  if (banner) {
+    banner.classList.toggle("hidden", n === 0);
+    if (n > 0) document.getElementById("wachtrij-tekst").textContent =
+      n === 1 ? "1 scan wacht op verbinding — tik om nu te versturen"
+              : `${n} scans wachten op verbinding — tik om nu te versturen`;
+  }
+  return n;
+}
+let _wachtrijBezig = false;
+async function _wachtrijVerwerk() {
+  if (_wachtrijBezig) return;
+  _wachtrijBezig = true;
+  const banner = document.getElementById("wachtrij-banner");
+  banner?.classList.add("bezig");
+  let verwerkt = 0;
+  try {
+    const scans = await _wachtrijTx(false, s => s.getAll());
+    for (const s of scans) {
+      const fd = new FormData();
+      (s.fotos || []).forEach((b, i) => fd.append("files", b, `scan-${i}.jpg`));
+      if (s.gemeente) fd.append("gemeente_override", s.gemeente);
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd, _stil: true });
+      if (!res || !res.ok) break;   // nog steeds geen verbinding → volgende poging later
+      await _wachtrijTx(true, st => st.delete(s.id));
+      verwerkt++;
+    }
+  } catch (e) {}
+  banner?.classList.remove("bezig");
+  _wachtrijBezig = false;
+  await _wachtrijToon();
+  if (verwerkt > 0) {
+    (window.uxToast || (() => {}))(
+      verwerkt === 1 ? "Bewaarde scan verstuurd en opgeslagen" : `${verwerkt} bewaarde scans verstuurd`, "success");
+    (window.uxHaptic || (() => {}))("succes");
+    syncItems();
+  }
+}
+window._wachtrijVerwerk = _wachtrijVerwerk;
+window.addEventListener("online", () => setTimeout(_wachtrijVerwerk, 1200));
+setInterval(() => { _wachtrijToon().then(n => { if (n > 0) _wachtrijVerwerk(); }); }, 45000);
+document.addEventListener("DOMContentLoaded", () => { _wachtrijToon().then(n => { if (n > 0) _wachtrijVerwerk(); }); });

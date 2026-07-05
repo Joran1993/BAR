@@ -26,16 +26,9 @@ if (role === "admin") {
   document.getElementById("nu-gemeente-field").classList.add("hidden");
 }
 
-async function apiFetch(url, opts = {}) {
-  const res = await fetch(url, {
-    ...opts,
-    headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) }
-  });
-  if (res.status === 401) { localStorage.clear(); location.href = "/login"; return null; }
-  return res;
-}
+// apiFetch komt uit cirqo-core.js
 
-function logout() { localStorage.clear(); location.href = "/login"; }
+// logout komt uit cirqo-core.js
 
 async function loginAls(userId) {
   const res = await apiFetch(`/api/auth/impersonate/${userId}`, { method: "POST" });
@@ -64,6 +57,7 @@ document.querySelectorAll(".tabbar-btn").forEach(btn => {
     if (btn.dataset.tab === "bedrijven")     loadBedrijven();
     if (btn.dataset.tab === "gemeenten")     loadGemeenten();
     if (btn.dataset.tab === "inzamellijst")  loadInzamellijst();
+    if (btn.dataset.tab === "adoptie")       loadAdoptie();
   });
 });
 
@@ -517,9 +511,7 @@ const BOUWPRODUCTLIJST = [
 let _ilGemeente = gemeente;
 let _autoSaveTimer = null;
 
-function _esc(s) {
-  return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
-}
+// _esc komt uit cirqo-core.js
 
 function renderProductCheckboxes(acceptedSet) {
   const container = document.getElementById("inzamellijst-list");
@@ -709,3 +701,57 @@ async function heranalyseerGewichten() {
 loadGemeenteOptions();
 loadUsers();
 buildCatCheckboxes("nb-cats");
+
+// ── Adoptie: wie draait de nieuwe app al ───────────────────────────────────────
+let _adoptieData = null;
+const _KANAAL_STIJL = {
+  "App Store-app":   { kleur: "#1a7a40", bg: "#e6f9ef" },
+  "Play Store-app":  { kleur: "#1a7a40", bg: "#e6f9ef" },
+  "Beginscherm-app": { kleur: "#2a6f97", bg: "#e6f2f9" },
+  "Browser":         { kleur: "#8a6d1a", bg: "#faf3e0" },
+  "Nog niet gezien in nieuwe app": { kleur: "#8a877f", bg: "#f4f1ea" },
+};
+function _isTestOfBeheer(u) {
+  const n = (u.username || "").toLowerCase();
+  const org = (u.naam || "").toLowerCase();
+  return u.role === "superadmin" || u.gemeente === "Demo" ||
+         /test|demo|cirqo/.test(n) || /demo|test/.test(org);
+}
+async function loadAdoptie() {
+  const lijst = document.getElementById("adoptie-list");
+  lijst.innerHTML = `<div class="empty">Laden…</div>`;
+  const res = await apiFetch("/api/admin/gebruik");
+  if (!res || !res.ok) { lijst.innerHTML = `<div class="empty">Kon gegevens niet laden.</div>`; return; }
+  _adoptieData = (await res.json()).gebruikers || [];
+  renderAdoptie();
+}
+document.getElementById("adoptie-verberg-test")?.addEventListener("change", renderAdoptie);
+function renderAdoptie() {
+  if (!_adoptieData) return;
+  const verberg = document.getElementById("adoptie-verberg-test").checked;
+  const rijen = verberg ? _adoptieData.filter(u => !_isTestOfBeheer(u)) : _adoptieData;
+
+  const telling = {};
+  rijen.forEach(u => { telling[u.kanaal_label] = (telling[u.kanaal_label] || 0) + 1; });
+  const sam = document.getElementById("adoptie-samenvatting");
+  sam.innerHTML = Object.entries(telling).map(([k, n]) => {
+    const s = _KANAAL_STIJL[k] || _KANAAL_STIJL["Nog niet gezien in nieuwe app"];
+    return `<span style="padding:6px 12px;border-radius:999px;font-size:0.78rem;font-weight:700;background:${s.bg};color:${s.kleur};">${k}: ${n}</span>`;
+  }).join("");
+
+  const lijst = document.getElementById("adoptie-list");
+  if (!rijen.length) { lijst.innerHTML = `<div class="empty">Geen gebruikers.</div>`; return; }
+  lijst.innerHTML = rijen.map(u => {
+    const s = _KANAAL_STIJL[u.kanaal_label] || _KANAAL_STIJL["Nog niet gezien in nieuwe app"];
+    const gezien = u.laatst_gezien
+      ? new Date(u.laatst_gezien).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+      : "—";
+    return `<div class="list-item" style="display:flex;align-items:center;gap:10px;padding:12px 14px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:0.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(u.naam || u.username)}</div>
+        <div style="font-size:0.74rem;color:var(--muted);">${esc(u.gemeente || "—")} · laatst: ${gezien}</div>
+      </div>
+      <span style="padding:5px 11px;border-radius:999px;font-size:0.72rem;font-weight:700;background:${s.bg};color:${s.kleur};white-space:nowrap;">${u.kanaal_label}</span>
+    </div>`;
+  }).join("");
+}

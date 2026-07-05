@@ -58,14 +58,32 @@ def _get_db():
             _db = firestore.client()
             print("[firestore] Verbonden met Firebase project")
         except Exception as e:
-            print(f"[firestore] Init mislukt: {e}")
+            print(f"[firestore] Verbinden mislukt: {e}")
             _db = None
     return _db
 
 
-def _run(fn):
-    """Voer fn uit in een achtergrond-thread — blokkeert de request nooit."""
-    t = threading.Thread(target=fn, daemon=True)
+def _run(fn, context: str = "firestore-write"):
+    """Voer fn uit in een achtergrond-thread met herpogingen. Blokkeert de
+    request nooit. Bij definitief falen: log in fout_log zodat een stille
+    divergentie tussen Postgres en Firestore zichtbaar wordt i.p.v. verdwijnt."""
+    def _met_retry():
+        import time as _t
+        laatste = None
+        for poging in range(3):
+            try:
+                fn()
+                return
+            except Exception as e:
+                laatste = e
+                _t.sleep(0.5 * (poging + 1))   # 0.5s, 1s
+        print(f"[firestore] {context} definitief mislukt na 3 pogingen: {laatste}")
+        try:
+            import database as _db_mod
+            _db_mod.registreer_fout(context, f"3x mislukt: {laatste}")
+        except Exception:
+            pass
+    t = threading.Thread(target=_met_retry, daemon=True)
     t.start()
 
 
@@ -78,41 +96,34 @@ def _now():
 def sync_item(item: dict):
     """Schrijf of overschrijf een item in Marketplaceoffers."""
     def _write():
-        try:
-            db = _get_db()
-            if not db:
-                return
-            doc_id = str(item["id"])
-            db.collection("Marketplaceoffers").document(doc_id).set({
-                "cirqo_id":    item["id"],
-                "foto_url":    item.get("photo_url") or "",
-                "label":       item.get("ai_label") or "",
-                "detail":      item.get("ai_detail") or "",
-                "gewicht_kg":  item.get("gewicht_kg"),
-                "categorie":   item.get("category") or "",
-                "opmerking":   item.get("manual_note") or "",
-                "gemeente":    item.get("gemeente") or "",
-                "status":      item.get("status") or "beschikbaar",
-                "geaccepteerd": bool(item.get("geaccepteerd")),
-                "aangemaakt":  item.get("created_at") or _now(),
-                "bron":        "cirqo_web",
-            }, merge=True)
-        except Exception as e:
-            print(f"[firestore] sync_item fout: {e}")
-    _run(_write)
+        db = _get_db()
+        if not db:
+            return
+        db.collection("Marketplaceoffers").document(str(item["id"])).set({
+            "cirqo_id":    item["id"],
+            "foto_url":    item.get("photo_url") or "",
+            "label":       item.get("ai_label") or "",
+            "detail":      item.get("ai_detail") or "",
+            "gewicht_kg":  item.get("gewicht_kg"),
+            "categorie":   item.get("category") or "",
+            "opmerking":   item.get("manual_note") or "",
+            "gemeente":    item.get("gemeente") or "",
+            "status":      item.get("status") or "beschikbaar",
+            "geaccepteerd": bool(item.get("geaccepteerd")),
+            "aangemaakt":  item.get("created_at") or _now(),
+            "bron":        "cirqo_web",
+        }, merge=True)
+    _run(_write, f"firestore-sync-item:{item.get('id')}")
 
 
 def delete_item(item_id: int):
     """Verwijder een item uit Marketplaceoffers."""
     def _del():
-        try:
-            db = _get_db()
-            if not db:
-                return
-            db.collection("Marketplaceoffers").document(str(item_id)).delete()
-        except Exception as e:
-            print(f"[firestore] delete_item fout: {e}")
-    _run(_del)
+        db = _get_db()
+        if not db:
+            return
+        db.collection("Marketplaceoffers").document(str(item_id)).delete()
+    _run(_del, f"firestore-delete-item:{item_id}")
 
 
 # ── Aanbiedingen / ophaalverzoeken ────────────────────────────────────────────
@@ -120,37 +131,30 @@ def delete_item(item_id: int):
 def sync_aanbieding(aanbieding: dict):
     """Schrijf een aanbieding naar ophaalverzoeken."""
     def _write():
-        try:
-            db = _get_db()
-            if not db:
-                return
-            doc_id = str(aanbieding["id"])
-            db.collection("ophaalverzoeken").document(doc_id).set({
-                "cirqo_id":    aanbieding["id"],
-                "item_id":     str(aanbieding.get("item_id") or ""),
-                "bedrijf_id":  str(aanbieding.get("bedrijf_id") or ""),
-                "bedrijf_naam": aanbieding.get("bedrijf_naam") or "",
-                "status":      aanbieding.get("status") or "open",
-                "aangemaakt":  aanbieding.get("created_at") or _now(),
-                "bijgewerkt":  _now(),
-                "bron":        "cirqo_web",
-            }, merge=True)
-        except Exception as e:
-            print(f"[firestore] sync_aanbieding fout: {e}")
-    _run(_write)
+        db = _get_db()
+        if not db:
+            return
+        db.collection("ophaalverzoeken").document(str(aanbieding["id"])).set({
+            "cirqo_id":    aanbieding["id"],
+            "item_id":     str(aanbieding.get("item_id") or ""),
+            "bedrijf_id":  str(aanbieding.get("bedrijf_id") or ""),
+            "bedrijf_naam": aanbieding.get("bedrijf_naam") or "",
+            "status":      aanbieding.get("status") or "open",
+            "aangemaakt":  aanbieding.get("created_at") or _now(),
+            "bijgewerkt":  _now(),
+            "bron":        "cirqo_web",
+        }, merge=True)
+    _run(_write, f"firestore-sync-aanbieding:{aanbieding.get('id')}")
 
 
 def update_aanbieding_status(aanbieding_id: int, status: str):
     """Update alleen de status van een aanbieding."""
     def _update():
-        try:
-            db = _get_db()
-            if not db:
-                return
-            db.collection("ophaalverzoeken").document(str(aanbieding_id)).set({
-                "status":     status,
-                "bijgewerkt": _now(),
-            }, merge=True)
-        except Exception as e:
-            print(f"[firestore] update_aanbieding_status fout: {e}")
-    _run(_update)
+        db = _get_db()
+        if not db:
+            return
+        db.collection("ophaalverzoeken").document(str(aanbieding_id)).set({
+            "status":     status,
+            "bijgewerkt": _now(),
+        }, merge=True)
+    _run(_update, f"firestore-status:{aanbieding_id}")

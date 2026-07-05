@@ -14,13 +14,18 @@ GEWICHT_INSTRUCTIE = """
 - gewicht_kg: schat het gewicht zo nauwkeurig mogelijk op basis van wat je ziet.
   Gebruik visuele aanwijzingen: afmetingen t.o.v. de omgeving, materiaalsoort en dichtheid.
   Voorbeeldgewichten ter referentie (gebruik dit als kalibratie, niet als default):
-  steen/baksteen los ~2 kg, stapel bakstenen ~15–40 kg, deur ~20–35 kg, raam ~8–20 kg,
-  zak cement ~25 kg, dakraam ~8–15 kg, kozijn ~10–25 kg, plank hout ~2–8 kg,
-  radiator ~8–20 kg, toilet ~25–35 kg, wastafel ~10–20 kg, buizen kort ~1–5 kg.
+  bouw: steen los ~2 kg, stapel bakstenen ~15–40 kg, deur ~20–35 kg, raam ~8–20 kg,
+  kozijn ~10–25 kg, plank hout ~2–8 kg, radiator ~8–20 kg, toilet ~25–35 kg, wastafel ~10–20 kg;
+  wonen: eetkamerstoel ~4–7 kg, fauteuil ~15–25 kg, tweezitsbank ~35–55 kg, eettafel ~20–40 kg,
+  kledingkast ~40–80 kg, matras ~15–25 kg;
+  apparaten: magnetron ~10–14 kg, tv plat ~5–15 kg, laptop ~1.5–2.5 kg, wasmachine ~65–80 kg,
+  koelkast ~40–70 kg, stofzuiger ~4–7 kg;
+  overig: fiets ~12–18 kg, kinderfiets ~7–10 kg, doos boeken ~8–15 kg, doos servies ~6–12 kg,
+  vuilniszak kleding ~4–8 kg, doos speelgoed ~3–8 kg.
   Gebruik decimalen voor precisie (bijv. 3.2, 12.5). Nooit een round number tenzij het echt klopt.
   Nooit null, altijd een getal."""
 
-BASE_SYSTEM_PROMPT = f"""Je bent een expert in het herkennen en wegen van bouwmaterialen.
+BASE_SYSTEM_PROMPT = f"""Je bent een allround expert in het herkennen, beoordelen en wegen van tweedehands producten en materialen: van meubels, huisraad, elektronica, textiel, speelgoed en fietsen tot gereedschap en bouwmaterialen — alles wat bij een milieustraat of kringloop binnenkomt.
 Analyseer de foto en geef:
 - label: korte naam van het product/materiaal (max 4 woorden)
 - detail: beknopte beschrijving van het materiaal en staat
@@ -30,7 +35,7 @@ Analyseer de foto en geef:
 Reageer uitsluitend in dit JSON-formaat (geen extra tekst):
 {{"label": "...", "detail": "...", "gewicht_kg": 0.0, "category": "..."}}"""
 
-SYSTEM_PROMPT_MET_LIJST = f"""Je bent een expert in het herkennen en wegen van bouwmaterialen.
+SYSTEM_PROMPT_MET_LIJST = f"""Je bent een allround expert in het herkennen, beoordelen en wegen van tweedehands producten en materialen: van meubels, huisraad, elektronica, textiel, speelgoed en fietsen tot gereedschap en bouwmaterialen — alles wat bij een milieustraat of kringloop binnenkomt.
 Analyseer de foto en geef:
 - label: korte naam van het product/materiaal (max 4 woorden)
 - detail: beknopte beschrijving van het materiaal en staat
@@ -51,10 +56,10 @@ def analyse_photo(image_b64: str, inzamellijst: Optional[list] = None) -> tuple[
     if heeft_lijst:
         producten_tekst = "\n".join(f"- {p}" for p in inzamellijst)
         system = SYSTEM_PROMPT_MET_LIJST + f"\n\nInzamellijst van geaccepteerde producten:\n{producten_tekst}"
-        user_text = "Analyseer dit bouwproduct. Geef label, beschrijving, gewichtsschatting, categorie en of het op de inzamellijst staat."
+        user_text = "Analyseer dit product. Geef label, beschrijving, gewichtsschatting, categorie en of het op de inzamellijst staat."
     else:
         system = BASE_SYSTEM_PROMPT
-        user_text = "Analyseer dit bouwproduct. Geef label, beschrijving, gewichtsschatting en categorie."
+        user_text = "Analyseer dit product. Geef label, beschrijving, gewichtsschatting en categorie."
 
     import anthropic
     import time

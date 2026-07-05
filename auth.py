@@ -9,7 +9,21 @@ SECRET_KEY = os.environ.get("SECRET_KEY")
 if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY ontbreekt als omgevingsvariabele — app weigert te starten (geen onveilige fallback)")
 ALGORITHM = "HS256"
+# Lang geldig: gebruikers blijven ingelogd, óók na maanden niet openen. Veilig
+# omdat get_current_user elke ~60s bij de DB checkt of het account nog bestaat/
+# welke rol het heeft — verwijderen/blokkeren werkt dus binnen een minuut,
+# ongeacht de tokenduur. Het token rolt bovendien bij elke app-start vooruit.
 TOKEN_EXPIRE_DAYS = 365
+
+# Centraal wachtwoordbeleid — één plek zodat elk endpoint dezelfde regel gebruikt
+WACHTWOORD_MIN = 6
+
+
+def wachtwoord_ok(pw: str) -> Optional[str]:
+    """Geeft None als het wachtwoord voldoet, anders een foutmelding (NL)."""
+    if not pw or len(pw) < WACHTWOORD_MIN:
+        return f"Wachtwoord moet minimaal {WACHTWOORD_MIN} tekens zijn."
+    return None
 
 
 def hash_password(password: str) -> str:

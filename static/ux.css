@@ -334,3 +334,21 @@ body { animation: pageIn 0.14s ease-out both; }
 @media (prefers-reduced-motion: reduce) {
   .ux-bevestig, .ux-bevestig-kaart { animation: none; }
 }
+
+/* ── Pull-to-refresh indicator ─────────────────────────────────────────────── */
+.ptr-indicator {
+  position: fixed; top: calc(env(safe-area-inset-top, 0px) + 66px); left: 50%;
+  transform: translateX(-50%) translateY(-16px) scale(.85);
+  z-index: 600; background: #fff; border: 1px solid var(--border, #e6e2da);
+  border-radius: 100px; padding: 9px; box-shadow: 0 6px 18px rgba(0,0,0,0.14);
+  opacity: 0; transition: opacity .15s ease, transform .18s ease; pointer-events: none;
+}
+.ptr-indicator.zichtbaar { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+.ptr-indicator.klaar { border-color: var(--orange, #e67026); }
+.ptr-spinner {
+  display: block; width: 20px; height: 20px; border-radius: 50%;
+  border: 2.5px solid var(--border, #e6e2da); border-top-color: var(--orange, #e67026);
+}
+.ptr-indicator.draait .ptr-spinner { animation: ptr-spin .7s linear infinite; transform: none !important; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ptr-indicator { transition: none; } }

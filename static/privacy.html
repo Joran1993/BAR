@@ -4,75 +4,100 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/static/favicon.ico">
-  <title>Privacyverklaring — CIRQO</title>
+  <title>Privacy- en cookieverklaring — CIRQO</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, 'Segoe UI', system-ui, sans-serif; color: #1a1a1a;
            background: #f8f4ef; line-height: 1.65; -webkit-font-smoothing: antialiased; }
     .vel { max-width: 680px; margin: 0 auto; padding: 40px 22px 60px; }
     .logo { height: 34px; margin-bottom: 26px; }
-    h1 { font-size: 1.6rem; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 6px; }
-    .datum { font-size: 0.8rem; color: #8a877f; margin-bottom: 26px; }
-    h2 { font-size: 1.02rem; font-weight: 800; margin: 26px 0 8px; }
-    p, li { font-size: 0.92rem; color: #3a3935; }
+    h1 { font-size: 1.5rem; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .datum { font-size: 0.8rem; color: #8a877f; margin-bottom: 22px; }
+    h2 { font-size: 1rem; font-weight: 800; margin: 26px 0 8px; }
+    p, li { font-size: 0.9rem; color: #3a3935; }
+    ol.leden { padding-left: 22px; margin: 6px 0; }
+    ol.leden > li { margin-bottom: 8px; }
     ul { padding-left: 20px; margin: 6px 0; }
+    ul > li { margin-bottom: 4px; }
     a { color: #4e8a66; }
     .kaart { background: #fff; border-radius: 16px; padding: 26px 24px; border: 1px solid #ece9e2; }
+    .gegevens { margin-top: 22px; padding-top: 16px; border-top: 1px solid #ece9e2; font-size: 0.85rem; color: #67676e; }
   </style>
 </head>
 <body>
   <div class="vel">
     <img class="logo" src="/static/cirqo-logo.webp" alt="CIRQO">
     <div class="kaart">
-      <h1>Privacyverklaring</h1>
-      <p class="datum">Laatst bijgewerkt: 4 juli 2026</p>
-
-      <p>CIRQO is een platform waarmee milieustraten herbruikbare materialen aanbieden aan
-      lokale afnemers (kringloopwinkels, sociale werkplaatsen, scholen en bedrijven).
-      Deze verklaring beschrijft welke gegevens we verwerken en waarom.</p>
-
-      <h2>Welke gegevens we verwerken</h2>
-      <ul>
-        <li><b>Accountgegevens</b> — gebruikersnaam, organisatienaam, e-mailadres en gemeente.
-        Accounts worden verstrekt door de deelnemende organisatie; er is geen open registratie.</li>
-        <li><b>Itemgegevens</b> — foto's en beschrijvingen van aangeboden materialen, inclusief
-        de gemeente van de innamelocatie. Bij het scannen kan (met jouw toestemming) de locatie
-        van je toestel worden gebruikt om de juiste milieustraat te bepalen; deze wordt niet
-        doorlopend gevolgd of opgeslagen als bewegingsprofiel.</li>
-        <li><b>Berichten</b> — chatberichten tussen aanbieder en afnemer over een aanbieding.</li>
-        <li><b>Meldingsregistraties</b> — een technisch token om pushmeldingen te bezorgen,
-        als je meldingen aanzet. Dit kun je op elk moment uitzetten via je toestelinstellingen.</li>
-      </ul>
-
-      <h2>Waarvoor we ze gebruiken</h2>
-      <ul>
-        <li>Het matchen van aangeboden materialen met lokale afnemers;</li>
-        <li>Communicatie over aanbiedingen (meldingen en chat);</li>
-        <li>Geanonimiseerde statistieken over hergebruik (aantallen, gewichten, CO₂-indicatie)
-        voor de deelnemende gemeenten en organisaties.</li>
-      </ul>
-
-      <h2>Wat we níét doen</h2>
-      <ul>
-        <li>Geen verkoop of verstrekking van gegevens aan derden voor marketing;</li>
-        <li>Geen advertenties, geen tracking voor advertentiedoeleinden;</li>
-        <li>Geen gegevensverwerking buiten wat hierboven staat.</li>
-      </ul>
-
-      <h2>Bewaren en beveiliging</h2>
-      <p>Gegevens worden opgeslagen binnen de Europese Unie. Wachtwoorden worden versleuteld
-      opgeslagen (bcrypt). Itemgegevens blijven bewaard voor de hergebruikstatistieken van de
-      deelnemende organisaties; verwijderde items verdwijnen uit alle lijsten.</p>
-
-      <h2>Jouw rechten</h2>
-      <p>Je kunt inzage, correctie of verwijdering van je gegevens vragen. Omdat accounts door
-      de deelnemende organisatie worden verstrekt, loopt dit via je eigen organisatie of
-      rechtstreeks via ons. Neem contact op via
-      <a href="mailto:info@cirqo.nl">info@cirqo.nl</a> — we reageren binnen 30 dagen.</p>
-
-      <h2>Contact</h2>
-      <p>CIRQO · <a href="https://app.cirqo.nl">app.cirqo.nl</a> ·
-      <a href="mailto:info@cirqo.nl">info@cirqo.nl</a></p>
+<h1>Privacy- en cookieverklaring</h1>
+<p class="datum">Versie d.d. 02-09-2024</p>
+<p style='margin-bottom:8px;'>WWIZ B.V. (Want Weggooien Is Zonde, KVK 82637318), is verantwoordelijk voor de verwerking van persoonsgegevens zoals weergegeven in deze privacyverklaring.</p>
+<p style='margin-bottom:8px;'>WWIZ B.V. biedt haar diensten aan onder de handelsnaam CIRQO.</p>
+<h2>Definities</h2>
+<p style='margin-bottom:8px;'>Aanmelder: personen en organisaties die goederen aanmelden via de app;</p>
+<p style='margin-bottom:8px;'>Afnemer: personen en organisaties die goederen beoordelen om af te nemen bij Aanmelders;</p>
+<p style='margin-bottom:8px;'>App: het softwareprogramma dat gebruikt wordt op een computer, laptop of mobiel apparaat;</p>
+<p style='margin-bottom:8px;'>Gebruiker: iedere gebruiker van de Website en App;</p>
+<p style='margin-bottom:8px;'>Privacyverklaring: deze privacyverklaring;</p>
+<p style='margin-bottom:8px;'>Website: de website www.cirqo.nl.</p>
+<h2>Contactgegevens</h2>
+<p style='margin-bottom:8px;'>Website: www.cirqo.nl</p>
+<p style='margin-bottom:8px;'>E-mailadres: <a href="mailto:info@cirqo.nl">info@cirqo.nl</a></p>
+<p style='margin-bottom:8px;'>CIRQO vindt privacy erg belangrijk en spant zich in om de privacy van de Gebruiker te beschermen. In deze Privacyverklaring wordt uitgelegd op welke wijze CIRQO persoonsgegevens verzamelt, gebruikt, verstrekt, bewaart, deelt en beschermt.</p>
+<p style='margin-bottom:8px;'>De meest actuele versie van deze Privacyverklaring is te vinden op de website van CIRQO. CIRQO behoudt zich het recht voor deze Privacyverklaring aan te passen. Iedere aanpassing wordt op de website van CIRQO bekend gemaakt. CIRQO adviseert de Gebruiker regelmatig op deze pagina te kijken of er aanpassingen zijn doorgevoerd. Deze Privacyverklaring is laatst bijgewerkt op bovengenoemde datum.</p>
+<h2>Persoonsgegevens die wij verwerken</h2>
+<p style='margin-bottom:8px;'>CIRQO verwerkt persoonsgegevens van de Gebruiker doordat de Gebruiker gebruik maakt van onze diensten op de Websites en/of Apps en/of omdat de Gebruiker deze gegevens zelf aan ons heeft verstrekt.</p>
+<p style='margin-bottom:8px;'>Hieronder vind je een overzicht van de persoonsgegevens die wij verwerken:</p>
+<ul>
+<li>Voor- en achternaam;</li>
+<li>Geslacht;</li>
+<li>Geboortedatum;</li>
+<li>Adresgegevens;</li>
+<li>Telefoonnummer;</li>
+<li>E-mailadres;</li>
+<li>IP-adres;</li>
+<li>Gegevens over jouw activiteiten op de Website en in de App;</li>
+<li>Overige persoonsgegevens die jij actief verstrekt bijvoorbeeld door een profiel op de Website aan te maken, in correspondentie en telefonisch.</li>
+</ul>
+<p style='margin-bottom:8px;'>Persoonsgegevens die door derden via CIRQO worden aangeboden vallen onder de verantwoordelijkheid van die derde aanbieder.</p>
+<h2>Met welk doel en op basis van welke grondslag wij persoonsgegevens verwerken</h2>
+<p style='margin-bottom:8px;'>CIRQO verwerkt persoonsgegevens voor de volgende doelen:</p>
+<ul>
+<li>Om producten aan te bieden aan mogelijk geïnteresseerde organisaties;</li>
+<li>Om producten en/of diensten bij je op te (laten) halen en af te (laten) leveren en/of daarin te bemiddelen;</li>
+<li>Je de mogelijkheid te bieden een account aan te maken en contact te hebben over het account;</li>
+<li>Het plaatsen van reviews;</li>
+<li>Analyse van jouw gedrag op de Websites en Apps om daarmee de Websites en Apps te verbeteren</li>
+<li>Het aanbod van producten en diensten af te stemmen op jouw voorkeuren;</li>
+<li>Het aanbieden en verzenden van nieuwsbrieven en/of reclame-uitingen;</li>
+<li>Bellen, appen of e-mailen indien dit nodig is om onze dienstverlening uit te kunnen voeren;</li>
+<li>Informeren over wijzigingen van onze diensten en/of producten;</li>
+</ul>
+<p style='margin-bottom:8px;'>Indien je per e-mail, per post of via (web-/app)formulieren persoonsgegevens aan CIRQO verstrekt, worden deze slechts verzameld en gebruikt voor het doel waarvoor je ze achterlaat. Met het verschaffen van jouw persoonsgegevens geef je toestemming voor de verwerking van die gegevens.</p>
+<p style='margin-bottom:8px;'>De wettelijke grondslagen van de verwerking op grond van de Algemene Verordening Gegevensbescherming (AVG) zijn:</p>
+<ul>
+<li>Toestemming;</li>
+<li>Uitvoering van de overeenkomst;</li>
+<li>Voldoen aan een wettelijke verplichting;</li>
+<li>Gerechtvaardigde belangen.</li>
+</ul>
+<h2>Hoe lang we persoonsgegevens bewaren</h2>
+<p style='margin-bottom:8px;'>CIRQO bewaart jouw persoonsgegevens niet langer dan strikt noodzakelijk is om de doelen te realiseren waarvoor jouw gegevens worden verzameld.</p>
+<p style='margin-bottom:8px;'>Persoonsgegevens worden verwijderd nadat de Gebruiker gedurende een periode van zesendertig maanden inactief is en geen gebruik heeft gemaakt van de Website of App, tenzij CIRQO op grond van een wettelijke bepaling verplicht is persoonsgegevens langer te bewaren. Reviews worden bewaard totdat de Gebruiker verzoekt de review te verwijderen.</p>
+<h2>Delen van persoonsgegevens met derden</h2>
+<p style='margin-bottom:8px;'>CIRQO deelt jouw persoonsgegevens met verschillende derden als dit noodzakelijk is voor het uitvoeren van de overeenkomst en om te voldoen aan een eventuele wettelijke verplichting. Met bedrijven die jouw gegevens verwerken in onze opdracht, nemen wij in de overeenkomst met die bedrijven en/of de Algemene Voorwaarden deze privacyregels op om te zorgen voor eenzelfde niveau van beveiliging en vertrouwelijkheid van jouw gegevens. Daarnaast verstrekt CIRQO jouw persoonsgegevens aan andere derden alleen met jouw uitdrukkelijke toestemming.</p>
+<h2>Cookies, of vergelijkbare technieken, die wij gebruiken</h2>
+<p style='margin-bottom:8px;'>CIRQO kan technische en functionele cookies gebruiken. Daarnaast kan CIRQO analytische cookies gebruiken die geen inbreuk maken op jouw privacy. Een cookie is een klein tekstbestand dat bij het eerste bezoek aan de Website en/of App wordt opgeslagen in de browser van jouw computer, tablet of smartphone. De cookies die wij kunnen gebruiken zijn dan noodzakelijk voor de technische verwerking van de Website en App en jouw gebruiksgemak. Deze zorgen ervoor dat de Website en App naar behoren werken, dat bijvoorbeeld jouw voorkeursinstellingen worden onthouden en om deze te kunnen optimaliseren. Daarnaast kunnen we cookies plaatsen die jouw surfgedrag bijhouden zodat we op maat gemaakte content en advertenties kunnen aanbieden.</p>
+<p style='margin-bottom:8px;'>Indien wij cookies gebruiken hebben wij jou bij jouw bezoek aan de Website vooraf geïnformeerd over deze cookies en toestemming gevraagd voor het plaatsen ervan.</p>
+<p style='margin-bottom:8px;'>Je kunt je afmelden voor cookies door jouw internetbrowser zo in te stellen dat deze geen cookies meer opslaat. Daarnaast kun je ook alle informatie die eerder is opgeslagen via de instellingen van jouw browser verwijderen.</p>
+<p style='margin-bottom:8px;'>De technieken voor de app voldoen steeds aan de voorwaarden van de appstores waarin de app is gedownload.</p>
+<h2>Gegevens inzien, aanpassen of verwijderen</h2>
+<p style='margin-bottom:8px;'>Je hebt het recht om jouw persoonsgegevens in te zien, te corrigeren of te (laten) verwijderen. Daarnaast heb je het recht om jouw eventuele toestemming voor de gegevensverwerking in te trekken of bezwaar te maken tegen de verwerking van jouw persoonsgegevens door CIRQO en heb je het recht op gegevensoverdraagbaarheid. Dat betekent dat jij bij ons een verzoek kunt indienen om de persoonsgegevens die wij van jou beschikken in een computerbestand naar jou of een ander door jou genoemde organisatie te sturen.</p>
+<p style='margin-bottom:8px;'>Je kunt een verzoek tot inzage, correctie, verwijdering, gegevensoverdraging van jouw persoonsgegevens of verzoek tot intrekking van jouw toestemming of bezwaar op de verwerking van jouw persoonsgegevens sturen naar <a href="mailto:privacy@cirqo.nl">privacy@cirqo.nl</a>.</p>
+<p style='margin-bottom:8px;'>Om er zeker van te zijn dat het verzoek door jou is gedaan, stellen wij eerst op de minst ingrijpende wijze jouw identiteit vast, bijvoorbeeld aan de hand van gegevens die wij al van jou hebben, zoals jouw account of e-mailadres. Alleen wanneer wij op die manier jouw identiteit niet met voldoende zekerheid kunnen vaststellen, of wanneer jouw verzoek betrekking heeft op bijzondere of gevoelige persoonsgegevens, kunnen wij om aanvullende identificatie vragen. Als daarvoor een kopie van een identiteitsbewijs nodig is, vragen wij je uitdrukkelijk om daarop de pasfoto, de MRZ (de strook met nummers onderaan het document), het documentnummer en het Burgerservicenummer (BSN) af te schermen; je kunt hiervoor de KopieID-app van de Rijksoverheid gebruiken. Een dergelijke kopie bewaren wij niet langer dan noodzakelijk. Wij reageren zo snel mogelijk, maar uiterlijk binnen vier weken, op jouw verzoek.</p>
+<h2>Klachten</h2>
+<p style='margin-bottom:8px;'>Als je een klacht hebt over de naleving van deze privacyverklaring of over een schending van jouw rechten op grond van de wet, kun je contact met ons opnemen via <a href="mailto:privacy@cirqo.nl">privacy@cirqo.nl</a>.</p>
+<h2>Hoe wij persoonsgegevens beveiligen</h2>
+<p style='margin-bottom:8px;'>CIRQO neemt de bescherming van jouw gegevens serieus en neemt passende maatregelen om misbruik, verlies, onbevoegde toegang, ongewenste openbaarmaking en ongeoorloofde wijziging tegen te gaan. Als je de indruk hebt dat jouw gegevens niet goed beveiligd zijn of er aanwijzingen zijn van misbruik, neem dan contact op met onze klantenservice of via <a href="mailto:privacy@cirqo.nl">privacy@cirqo.nl</a>.</p>
     </div>
   </div>
 </body>

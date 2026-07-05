@@ -19,3 +19,11 @@ To github.com:Joran1993/BAR.git
    8c2ddba..1d2f51b  main -> main
 gepusht naar GitHub ✓
 ── 2026-07-04 18:00 ──
+[main e5a747e] Automatische dagelijkse back-up 2026-07-04
+ 13 files changed, 1077 insertions(+), 31 deletions(-)
+ create mode 100644 static/installeren.html
+ create mode 100644 static/privacy.html
+To github.com:Joran1993/BAR.git
+   1d2f51b..e5a747e  main -> main
+gepusht naar GitHub ✓
+── 2026-07-05 18:00 ──

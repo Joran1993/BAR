@@ -15,10 +15,10 @@
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap"></noscript>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/base.css?v=5">
+  <link rel="stylesheet" href="/static/base.css?v=6">
   <link rel="stylesheet" href="/static/beheer.css?v=3">
   <link rel="stylesheet" href="/brand.css">
-  <link rel="stylesheet" href="/static/ux.css">
+  <link rel="stylesheet" href="/static/ux.css?v=2">
   <script>
     (function() {
       var r = localStorage.getItem('role');
@@ -54,7 +54,27 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       <small>Gemeenten</small>
     </button>
+    <button class="tabbar-btn" data-tab="adoptie">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      <small>Adoptie</small>
+    </button>
   </nav>
+
+  <!-- Adoptie tab: wie draait de nieuwe app al -->
+  <section class="tab" id="tab-adoptie">
+    <div class="section-card">
+      <div class="section-title">App-gebruik per gebruiker</div>
+      <p style="font-size:0.82rem;color:var(--muted);line-height:1.5;margin:0 0 12px;">
+        Toont via welk kanaal iedereen de app het laatst opende. Zo zie je wie al is
+        overgestapt naar de App Store- of Play Store-versie.</p>
+      <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer;">
+        <input type="checkbox" id="adoptie-verberg-test" checked>
+        Test- en beheeraccounts verbergen
+      </label>
+    </div>
+    <div id="adoptie-samenvatting" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;"></div>
+    <div id="adoptie-list"></div>
+  </section>
 
   <!-- Gebruikers tab -->
   <section class="tab active" id="tab-gebruikers">
@@ -161,7 +181,8 @@
     <div id="gd-body" class="gd-content"></div>
   </div>
 
-  <script src="/static/beheer.js?v=12"></script>
-  <script src="/static/ux.js"></script>
+  <script src="/static/cirqo-core.js?v=1"></script>
+    <script src="/static/beheer.js?v=13"></script>
+  <script src="/static/ux.js?v=2"></script>
 </body>
 </html>

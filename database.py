@@ -211,8 +211,49 @@ def init_db():
         cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
         cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS photo_urls TEXT")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_items_uploaded_by ON items(uploaded_by)")
+        # Hete filter-/joinpaden die tot nu toe seq scans waren (worden pijnlijk bij groei)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_items_gemeente ON items(gemeente)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_aanbiedingen_item ON aanbiedingen(item_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_aanbiedingen_bedrijf ON aanbiedingen(bedrijf_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_berichten_aanbieding ON berichten(aanbieding_id)")
+        # Foutenlog (lichtgewicht monitoring, zie registreer_fout)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS fout_log (
+                id       SERIAL PRIMARY KEY,
+                ts       TEXT NOT NULL,
+                context  TEXT NOT NULL,
+                detail   TEXT,
+                user_id  INTEGER
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_fout_log_ts ON fout_log(ts)")
+        # Gebruikskanaal per gebruiker (native app / pwa / browser) — update-adoptie
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS gebruik_kanaal (
+                user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                kanaal       TEXT NOT NULL,
+                laatst_gezien timestamptz NOT NULL
+            )
+        """)
+        # Zelfherstellend: tijd-kolommen naar echte timestamptz (idempotent).
+        # Nieuwe installaties beginnen als TEXT via CREATE TABLE; dit tilt ze op.
+        for _tab, _kol in [("items","timestamp"),("aanbiedingen","created_at"),
+                           ("aanbiedingen","updated_at"),("berichten","created_at"),
+                           ("users","created_at"),("bedrijven","created_at"),
+                           ("push_subscriptions","created_at"),("inzamellijst","created_at"),
+                           ("fout_log","ts")]:
+            try:
+                cur.execute("SELECT data_type FROM information_schema.columns WHERE table_name=%s AND column_name=%s", (_tab, _kol))
+                _r = cur.fetchone()
+                if _r and _r["data_type"] == "text":
+                    cur.execute(f'ALTER TABLE {_tab} ALTER COLUMN "{_kol}" TYPE timestamptz USING ("{_kol}"::timestamptz)')
+            except Exception as _e:
+                print(f"[init_db] tijd-kolom {_tab}.{_kol} niet gemigreerd: {_e}")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid TEXT UNIQUE")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT")
+        # Dagelijkse samenvatting i.p.v. losse pushmeldingen (S3.8)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS melding_digest BOOLEAN DEFAULT FALSE")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS digest_verstuurd_op TIMESTAMPTZ")
         # Zorg dat er een UNIQUE constraint op subscription staat (migratie van oude constraint)
         cur.execute("""
             DO $$ BEGIN
@@ -254,15 +295,24 @@ def _create_default_admin():
 
 def get_user_by_username(username: str):
     with get_cursor() as cur:
+        # Exacte match eerst; anders hoofdletterongevoelig (iOS zet ongevraagd
+        # een hoofdletter op het eerste teken — gebruikers merken dat niet op)
         cur.execute("SELECT * FROM users WHERE username = %s", (username,))
         row = cur.fetchone()
+        if not row:
+            cur.execute(
+                "SELECT * FROM users WHERE LOWER(username) = LOWER(%s) LIMIT 2",
+                (username,),
+            )
+            rows = cur.fetchall()
+            row = rows[0] if len(rows) == 1 else None  # bij ambiguïteit: geen match
         return dict(row) if row else None
 
 
 def get_user_by_id(user_id: int):
     with get_cursor() as cur:
         cur.execute(
-            "SELECT id, username, role, gemeente, organisatie, auto_doorsturen, created_at FROM users WHERE id = %s", (user_id,)
+            "SELECT id, username, email, role, gemeente, organisatie, contactpersoon, telefoon, adres, auto_doorsturen, melding_digest, created_at FROM users WHERE id = %s", (user_id,)
         )
         row = cur.fetchone()
         return dict(row) if row else None
@@ -666,7 +716,6 @@ def delete_item(item_id: int):
 
 
 def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None):
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d") + "%"
     filters = []
     params  = []
     if gemeenten:
@@ -679,7 +728,9 @@ def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gem
     with get_cursor() as cur:
         cur.execute(f"SELECT COUNT(*) as n FROM items {where}", params)
         total = cur.fetchone()["n"]
-        cur.execute(f"SELECT COUNT(*) as n FROM items {where} {'AND' if where else 'WHERE'} timestamp LIKE %s", params + [today_str])
+        # Type-ongevoelig: werkt zowel als timestamp TEXT is als timestamptz.
+        # (text→date cast en timestamptz→date cast geven beide de kalenderdag in UTC)
+        cur.execute(f"SELECT COUNT(*) as n FROM items {where} {'AND' if where else 'WHERE'} (timestamp::timestamptz)::date = (now() AT TIME ZONE 'UTC')::date", params)
         today = cur.fetchone()["n"]
         cur.execute(f"SELECT COALESCE(SUM(gewicht_kg), 0) as kg FROM items {where}", params)
         totaal_kg = cur.fetchone()["kg"]
@@ -698,29 +749,29 @@ def get_chart_data(days: int = 30, gemeente: Optional[str] = None, gemeenten: Op
         interval = f"{days} days"
         if gemeenten:
             cur.execute("""
-                SELECT LEFT(timestamp, 10) as dag,
+                SELECT to_char((timestamp::timestamptz) AT TIME ZONE 'UTC', 'YYYY-MM-DD') as dag,
                        COUNT(*) as aantal,
                        COALESCE(SUM(gewicht_kg), 0) as kg
                 FROM items
-                WHERE gemeente = ANY(%s) AND timestamp >= (CURRENT_DATE - INTERVAL %s)::text
+                WHERE gemeente = ANY(%s) AND (timestamp::timestamptz) >= (CURRENT_DATE - INTERVAL %s)
                 GROUP BY dag ORDER BY dag
             """, (gemeenten, interval))
         elif gemeente:
             cur.execute("""
-                SELECT LEFT(timestamp, 10) as dag,
+                SELECT to_char((timestamp::timestamptz) AT TIME ZONE 'UTC', 'YYYY-MM-DD') as dag,
                        COUNT(*) as aantal,
                        COALESCE(SUM(gewicht_kg), 0) as kg
                 FROM items
-                WHERE gemeente = %s AND timestamp >= (CURRENT_DATE - INTERVAL %s)::text
+                WHERE gemeente = %s AND (timestamp::timestamptz) >= (CURRENT_DATE - INTERVAL %s)
                 GROUP BY dag ORDER BY dag
             """, (gemeente, interval))
         else:
             cur.execute("""
-                SELECT LEFT(timestamp, 10) as dag,
+                SELECT to_char((timestamp::timestamptz) AT TIME ZONE 'UTC', 'YYYY-MM-DD') as dag,
                        COUNT(*) as aantal,
                        COALESCE(SUM(gewicht_kg), 0) as kg
                 FROM items
-                WHERE timestamp >= (CURRENT_DATE - INTERVAL %s)::text
+                WHERE (timestamp::timestamptz) >= (CURRENT_DATE - INTERVAL %s)
                 GROUP BY dag ORDER BY dag
             """, (interval,))
         return [dict(r) for r in cur.fetchall()]
@@ -947,7 +998,7 @@ def create_aanbieding(item_id: int, bedrijf_id: int, user_id: int = None) -> int
 def get_aanbiedingen_voor_item(item_id: int):
     with get_cursor() as cur:
         cur.execute("""
-            SELECT a.id, a.status, a.created_at, a.updated_at,
+            SELECT a.id, a.status, a.created_at, a.updated_at, a.bedrijf_id,
                    b.naam as bedrijf_naam,
                    u.username as aangeboden_door_naam,
                    COALESCE(u.organisatie, u.username) as aanbieder_naam
@@ -1122,17 +1173,19 @@ def save_push_subscription(subscription: str, bedrijf_id: int = None, user_id: i
         )
 
 
-def get_push_subscriptions_for_bedrijf(bedrijf_id: int) -> list:
-    """Haalt subscriptions op voor een bedrijf: via bedrijf_id directe koppeling én via users.bedrijf_id."""
+def get_push_subscriptions_for_bedrijf(bedrijf_id: int, ook_digest: bool = False) -> list:
+    """Haalt subscriptions op voor een bedrijf: via bedrijf_id directe koppeling én via users.bedrijf_id.
+    Gebruikers met de dagelijkse samenvatting aan krijgen géén losse pushes (tenzij ook_digest)."""
     with get_cursor() as cur:
         cur.execute("""
             SELECT ps.id, ps.subscription FROM push_subscriptions ps
-            WHERE ps.bedrijf_id = %s
+            LEFT JOIN users u ON u.id = ps.user_id
+            WHERE ps.bedrijf_id = %s AND (%s OR NOT COALESCE(u.melding_digest, FALSE))
             UNION
             SELECT ps.id, ps.subscription FROM push_subscriptions ps
             JOIN users u ON u.id = ps.user_id
-            WHERE u.bedrijf_id = %s
-        """, (bedrijf_id, bedrijf_id))
+            WHERE u.bedrijf_id = %s AND (%s OR NOT COALESCE(u.melding_digest, FALSE))
+        """, (bedrijf_id, ook_digest, bedrijf_id, ook_digest))
         return [dict(r) for r in cur.fetchall()]
 
 
@@ -1160,13 +1213,59 @@ def get_items_voor_bedrijf(bedrijf_id: int) -> list:
         return [dict(r) for r in cur.fetchall()]
 
 
-def get_push_subscriptions_voor_user(user_id: int) -> list:
+def get_push_subscriptions_voor_user(user_id: int, ook_digest: bool = False) -> list:
+    """Subscriptions van één gebruiker. Met de dagelijkse samenvatting aan worden
+    losse pushes overgeslagen (tenzij ook_digest, voor de digest en de testknop)."""
     with get_cursor() as cur:
-        cur.execute(
-            "SELECT id, subscription FROM push_subscriptions WHERE user_id = %s",
-            (user_id,)
-        )
+        cur.execute("""
+            SELECT ps.id, ps.subscription FROM push_subscriptions ps
+            JOIN users u ON u.id = ps.user_id
+            WHERE ps.user_id = %s AND (%s OR NOT COALESCE(u.melding_digest, FALSE))
+        """, (user_id, ook_digest))
         return [dict(r) for r in cur.fetchall()]
+
+
+# ── Dagelijkse samenvatting (digest) ─────────────────────────────────────────
+
+def get_digest_gebruikers() -> list:
+    """Gebruikers met de samenvatting aan die vandaag (NL-tijd) nog geen digest kregen."""
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT id, username, role, bedrijf_id, digest_verstuurd_op FROM users
+            WHERE COALESCE(melding_digest, FALSE)
+              AND (digest_verstuurd_op IS NULL
+                   OR (digest_verstuurd_op AT TIME ZONE 'Europe/Amsterdam')::date
+                      < (now() AT TIME ZONE 'Europe/Amsterdam')::date)
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_digest_samenvatting(user_id: int, bedrijf_id, sinds) -> dict:
+    """Telt wat er sinds `sinds` gebeurde: nieuw aanbod (bedrijfsrol) en nieuwe
+    berichten van de andere partij in aanbiedingen waar de gebruiker partij is."""
+    with get_cursor() as cur:
+        aanbiedingen = 0
+        if bedrijf_id:
+            cur.execute("""
+                SELECT COUNT(*) AS n FROM aanbiedingen a
+                JOIN items i ON i.id = a.item_id
+                WHERE a.bedrijf_id = %s AND (a.created_at::timestamptz) > %s
+                  AND NOT COALESCE(i.verwijderd, FALSE)
+            """, (bedrijf_id, sinds))
+            aanbiedingen = cur.fetchone()["n"]
+        cur.execute("""
+            SELECT COUNT(*) AS n FROM berichten b
+            JOIN aanbiedingen a ON a.id = b.aanbieding_id
+            WHERE b.user_id <> %s AND (b.created_at::timestamptz) > %s
+              AND (a.aangeboden_door = %s OR (%s::integer IS NOT NULL AND a.bedrijf_id = %s))
+        """, (user_id, sinds, user_id, bedrijf_id, bedrijf_id))
+        berichten = cur.fetchone()["n"]
+        return {"aanbiedingen": aanbiedingen, "berichten": berichten}
+
+
+def markeer_digest_verstuurd(user_id: int) -> None:
+    with get_cursor() as cur:
+        cur.execute("UPDATE users SET digest_verstuurd_op = now() WHERE id = %s", (user_id,))
 
 
 def get_aanbiedingen_door_user(user_id: int) -> list:
@@ -1248,3 +1347,38 @@ def export_csv(gemeente: Optional[str] = None) -> str:
                          r["ai_label"] or "", r["ai_detail"] or "",
                          r["gewicht_kg"] or "", r["manual_note"] or "", r["category"] or ""])
     return buf.getvalue()
+
+
+# ── Foutenlog ────────────────────────────────────────────────────────────────
+# Lichtgewicht monitoring in de eigen DB: stille fouten (Firestore-sync, push,
+# onverwachte 500's) worden hier vastgelegd zodat de superadmin ze kan zien
+# i.p.v. dat ze in print() verdwijnen. Bewust simpel: geen externe dienst nodig.
+def registreer_fout(context: str, detail: str, user_id: Optional[int] = None) -> None:
+    try:
+        with get_cursor() as cur:
+            cur.execute(
+                "INSERT INTO fout_log (ts, context, detail, user_id) VALUES (%s, %s, %s, %s)",
+                (datetime.now(timezone.utc).isoformat(), context[:120], (detail or "")[:2000], user_id),
+            )
+    except Exception as e:
+        # Nooit een fout in de foutlogger zelf laten opborrelen
+        print(f"[fout_log] kon fout niet opslaan: {e}")
+
+
+def get_fouten(limit: int = 100):
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT id, ts, context, detail, user_id FROM fout_log ORDER BY id DESC LIMIT %s",
+            (limit,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def tel_fouten_sinds(uren: int = 24) -> int:
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) AS n FROM fout_log WHERE ts >= %s",
+            ((datetime.now(timezone.utc) - __import__('datetime').timedelta(hours=uren)).isoformat(),),
+        )
+        r = cur.fetchone()
+        return r["n"] if r else 0

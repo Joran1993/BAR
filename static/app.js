@@ -3,15 +3,8 @@
 const token = localStorage.getItem("token");
 if (!token) location.href = "/login?redirect=/";
 
-async function apiFetch(url, opts = {}) {
-  const res = await fetch(url, {
-    ...opts,
-    headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) }
-  });
-  if (res.status === 401) { localStorage.clear(); location.href = "/login"; return null; }
-  return res;
-}
-function logout() { localStorage.clear(); location.href = "/login"; }
+// apiFetch komt uit cirqo-core.js
+// logout komt uit cirqo-core.js
 
 // Dashboard-link verbergen voor scanners
 const _role = localStorage.getItem("role") || "user";

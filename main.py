@@ -12,7 +12,7 @@ from typing import Optional, List
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response, RedirectResponse
+from fastapi.responses import HTMLResponse, Response, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -46,9 +46,9 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     hit = _USER_VERS_CACHE.get(uid)
     if not hit or nu - hit[0] > 60:
         try:
-            hit = (nu, db.get_user_by_id(uid))
+            hit = (nu, db.get_user_by_id(uid), False)   # (tijd, rij, db_fout)
         except Exception:
-            hit = (nu, None)   # DB even niet bereikbaar → val terug op token
+            hit = (nu, None, True)   # DB even niet bereikbaar → tijdelijke terugval op token
         _USER_VERS_CACHE[uid] = hit
         if len(_USER_VERS_CACHE) > 5000:
             _USER_VERS_CACHE.clear()
@@ -61,13 +61,19 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             "gemeente": row.get("gemeente") or "",
             "bedrijf_id": row.get("bedrijf_id") if row.get("bedrijf_id") is not None else payload.get("bedrijf_id"),
         }
-    return {
-        "id": uid,
-        "username": payload.get("username", ""),
-        "role": payload.get("role", "user"),
-        "gemeente": payload.get("gemeente", "") or "",
-        "bedrijf_id": payload.get("bedrijf_id"),
-    }
+    # Gebruiker niet in de DB: alleen doorlaten als de DB even onbereikbaar was
+    # (dan gaven we hierboven None-op-exception). Een écht verwijderde gebruiker
+    # (DB bereikbaar, geen rij) mag NIET terugvallen op de token-rol.
+    if hit[2] if len(hit) > 2 else False:
+        # db-fout → tijdelijke terugval op token zodat de app niet plat gaat
+        return {
+            "id": uid,
+            "username": payload.get("username", ""),
+            "role": payload.get("role", "user"),
+            "gemeente": payload.get("gemeente", "") or "",
+            "bedrijf_id": payload.get("bedrijf_id"),
+        }
+    raise HTTPException(status_code=401, detail="Account bestaat niet meer")
 
 
 def get_optional_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -218,6 +224,7 @@ async def lifespan(app: FastAPI):
     print(f"[main] gestart — DEFAULT_BRAND={DEFAULT_BRAND!r}, BRAND_ENV={os.getenv('BRAND')!r}")
     asyncio.create_task(_firestore_sync_loop())
     asyncio.create_task(_prewarm_cache_loop())
+    asyncio.create_task(_digest_loop())
     yield
 
 
@@ -459,6 +466,7 @@ def _sync_firestore_items_now() -> int:
         return imported
     except Exception as e:
         print(f"[firestore-sync] Fout: {e}")
+        db.registreer_fout("firestore-sync", str(e))
         return 0
 
 
@@ -558,6 +566,7 @@ def _sync_single_doc(doc):
             _estimate_weight_background(item_id, foto)
     except Exception as e:
         print(f"[firestore-listener] Fout bij verwerken doc {doc.id}: {e}")
+        db.registreer_fout("firestore-listener", f"doc {doc.id}: {e}")
 
 
 _AANB_STATUS_MAP = {
@@ -738,7 +747,28 @@ async def _firestore_sync_loop():
 
 
 app = FastAPI(title="De Bouwkringloop", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+_CORS_ORIGINS = [o.strip() for o in os.environ.get(
+    "CORS_ORIGINS",
+    "https://app.cirqo.nl,https://www.cirqo.nl,capacitor://localhost,http://localhost",
+).split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=_CORS_ORIGINS,
+                   allow_methods=["*"], allow_headers=["*"])
+
+
+@app.exception_handler(Exception)
+async def _log_onverwachte_fout(request: Request, exc: Exception):
+    """Vang onverwachte 500's, log ze in fout_log en geef een nette melding.
+    HTTPException (403/404/…) gaat hier niet doorheen — dat zijn bewuste antwoorden."""
+    import traceback
+    try:
+        db.registreer_fout(
+            f"500 {request.method} {request.url.path}",
+            traceback.format_exc(),
+        )
+    except Exception:
+        pass
+    print(f"[500] {request.method} {request.url.path}: {exc}")
+    return JSONResponse(status_code=500, content={"detail": "Er ging iets mis aan onze kant. Probeer het opnieuw."})
 
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -958,6 +988,49 @@ async def sync_firestore_manual(user=Depends(require_superadmin)):
     return {"imported": n}
 
 
+@app.get("/api/admin/fouten")
+async def admin_fouten(limit: int = 100, user=Depends(require_superadmin)):
+    """Foutenlog: onverwachte 500's en mislukte achtergrond-syncs. Voor monitoring."""
+    return {"fouten": db.get_fouten(min(limit, 500)), "laatste_24u": db.tel_fouten_sinds(24)}
+
+
+@app.post("/api/gebruik")
+async def meld_gebruik(kanaal: str = Form(...), user=Depends(get_current_user)):
+    """Client meldt bij app-start via welk kanaal hij draait (update-adoptie)."""
+    if kanaal not in ("native-ios", "native-android", "pwa", "browser"):
+        kanaal = "browser"
+    with db.get_cursor() as cur:
+        cur.execute("""
+            INSERT INTO gebruik_kanaal (user_id, kanaal, laatst_gezien) VALUES (%s, %s, now())
+            ON CONFLICT (user_id) DO UPDATE SET kanaal = EXCLUDED.kanaal, laatst_gezien = now()
+        """, (user["id"], kanaal))
+    # Token verversen: bij elke app-start rolt de geldigheid weer naar een vol jaar
+    # vooruit, zodat een actieve gebruiker nooit onverwacht wordt uitgelogd.
+    vers_token = auth_module.create_token(
+        user["id"], user["username"], user["role"],
+        user.get("gemeente") or "", user.get("bedrijf_id"),
+    )
+    return {"ok": True, "vernieuwd_token": vers_token}
+
+
+@app.get("/api/admin/gebruik")
+async def admin_gebruik(user=Depends(require_superadmin)):
+    """Per gebruiker: laatst gezien + kanaal. Wie ontbreekt zit nog in de oude app of web."""
+    with db.get_cursor() as cur:
+        cur.execute("""
+            SELECT u.id, u.username, COALESCE(u.organisatie, u.username) AS naam, u.role, u.gemeente,
+                   g.kanaal, g.laatst_gezien
+            FROM users u LEFT JOIN gebruik_kanaal g ON g.user_id = u.id
+            ORDER BY g.laatst_gezien DESC NULLS LAST, u.username
+        """)
+        rijen = [dict(r) for r in cur.fetchall()]
+    labels = {"native-ios": "App Store-app", "native-android": "Play Store-app",
+              "pwa": "Beginscherm-app", "browser": "Browser"}
+    for r in rijen:
+        r["kanaal_label"] = labels.get(r["kanaal"], "Nog niet gezien in nieuwe app")
+    return {"gebruikers": rijen}
+
+
 @app.post("/api/admin/import-firestore")
 async def import_firestore(user=Depends(require_superadmin)):
     """Eenmalige import van Marketplaceoffers en ophaalverzoeken uit Firestore naar PostgreSQL."""
@@ -1169,7 +1242,12 @@ async def me(user=Depends(get_current_user)):
         "role": user["role"],
         "gemeente": user.get("gemeente") or "",
         "organisatie": organisatie,
+        "email": (db_user or {}).get("email") or ("@" in user["username"] and user["username"] or ""),
+        "contactpersoon": (db_user or {}).get("contactpersoon") or "",
+        "telefoon": (db_user or {}).get("telefoon") or "",
+        "adres": (db_user or {}).get("adres") or "",
         "auto_doorsturen": bool((db_user or {}).get("auto_doorsturen")),
+        "melding_digest": bool((db_user or {}).get("melding_digest")),
     }
 
 
@@ -1234,6 +1312,9 @@ async def create_user(
     role: str = Form("user"),
     admin=Depends(require_admin),
 ):
+    fout = auth_module.wachtwoord_ok(password)
+    if fout:
+        raise HTTPException(status_code=400, detail=fout)
     # Gemeente-admins kunnen alleen users in hun eigen gemeente aanmaken
     if admin["role"] == "admin":
         gemeente = admin["gemeente"]
@@ -1311,6 +1392,9 @@ async def change_password(
     password: str = Form(...),
     user=Depends(get_current_user),
 ):
+    fout = auth_module.wachtwoord_ok(password)
+    if fout:
+        raise HTTPException(status_code=400, detail=fout)
     # Gewone user of bedrijf mag alleen het eigen wachtwoord wijzigen
     if user["role"] in ("user", "bedrijf") and user["id"] != user_id:
         raise HTTPException(status_code=403, detail="Geen rechten")
@@ -1329,6 +1413,7 @@ async def change_password(
             _fb_auth.update_user(target["firebase_uid"], password=password)
         except Exception as e:
             print(f"[change-password] Firebase update fout: {e}")
+            db.registreer_fout("change-password-firebase", str(e), user_id=user_id)
     db.update_user_password(user_id, password)
     return {"ok": True}
 
@@ -1344,6 +1429,35 @@ async def change_organisatie(
     with db.get_cursor() as cur:
         cur.execute("UPDATE users SET organisatie = %s WHERE id = %s", (organisatie.strip(), user_id))
     return {"ok": True, "organisatie": organisatie.strip()}
+
+
+@app.patch("/api/users/{user_id}/profiel")
+async def change_profiel(
+    user_id: int,
+    organisatie: Optional[str] = Form(None),
+    contactpersoon: Optional[str] = Form(None),
+    telefoon: Optional[str] = Form(None),
+    adres: Optional[str] = Form(None),
+    melding_digest: Optional[bool] = Form(None),
+    user=Depends(get_current_user),
+):
+    """Profielgegevens (Mijn gegevens in het accountpaneel)."""
+    if user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="Geen rechten")
+    if melding_digest is not None:
+        with db.get_cursor() as cur:
+            cur.execute("UPDATE users SET melding_digest = %s WHERE id = %s", (melding_digest, user_id))
+    velden = {"organisatie": organisatie, "contactpersoon": contactpersoon,
+              "telefoon": telefoon, "adres": adres}
+    updates = {k: v.strip()[:160] for k, v in velden.items() if v is not None}
+    if not updates:
+        if melding_digest is not None:
+            return {"ok": True, "melding_digest": melding_digest}
+        raise HTTPException(status_code=400, detail="Geen velden om op te slaan")
+    with db.get_cursor() as cur:
+        kolommen = ", ".join(f"{k} = %s" for k in updates)
+        cur.execute(f"UPDATE users SET {kolommen} WHERE id = %s", (*updates.values(), user_id))
+    return {"ok": True, **updates}
 
 
 @app.patch("/api/users/{user_id}/auto-doorsturen")
@@ -1567,10 +1681,10 @@ async def push_subscribe(request: Request, user=Depends(get_current_user)):
 @app.post("/api/push/test")
 async def push_test(user=Depends(get_current_user)):
     """Stuurt een test-pushmelding naar de eigen toestellen van de ingelogde gebruiker."""
-    subs = db.get_push_subscriptions_voor_user(user["id"])
+    subs = db.get_push_subscriptions_voor_user(user["id"], ook_digest=True)
     if user.get("bedrijf_id"):
         seen = {s["id"] for s in subs}
-        for s in db.get_push_subscriptions_for_bedrijf(user["bedrijf_id"]):
+        for s in db.get_push_subscriptions_for_bedrijf(user["bedrijf_id"], ook_digest=True):
             if s["id"] not in seen:
                 subs.append(s); seen.add(s["id"])
     verstuurd = 0
@@ -1984,6 +2098,19 @@ async def get_item(item_id: int, user=Depends(get_current_user)):
 
 @app.get("/api/items/{item_id}/aanbiedingen")
 async def get_item_aanbiedingen(item_id: int, user=Depends(get_current_user)):
+    item = db.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404)
+    # Alleen wie het item beheert (eigenaar/aanbieder of admin-in-scope) mag de
+    # aanbiedingen ervan zien; anders lekken bedrijfsnamen over gemeentegrenzen.
+    if not _mag_item_beheren(user, item):
+        # Bedrijf mag wél zijn eigen aanbieding op dit item zien
+        if user.get("bedrijf_id"):
+            eigen = [a for a in db.get_aanbiedingen_voor_item(item_id)
+                     if a.get("bedrijf_id") == user["bedrijf_id"]]
+            if eigen:
+                return eigen
+        raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
     return db.get_aanbiedingen_voor_item(item_id)
 
 
@@ -2067,6 +2194,51 @@ async def _bouw_netwerk_data(g, gemeenten):
     data = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_netwerk_data(g, gemeenten))
     cache_module.set(f"netwerk:{gemeenten or g}", data, ttl=150)
     return data
+
+
+DIGEST_UUR = 16   # 16:00 NL-tijd — einde werkdag milieustraat
+
+def _verstuur_digests():
+    """Eén samenvattingspush per dag per gebruiker die dat zo heeft ingesteld."""
+    from datetime import datetime, timedelta, timezone
+    for u in db.get_digest_gebruikers():
+        try:
+            sinds = u.get("digest_verstuurd_op") or (datetime.now(timezone.utc) - timedelta(hours=24))
+            samenvatting = db.get_digest_samenvatting(u["id"], u.get("bedrijf_id"), sinds)
+            db.markeer_digest_verstuurd(u["id"])   # ook bij niets: geen herhaalpogingen vandaag
+            delen = []
+            n = samenvatting["aanbiedingen"]
+            if n: delen.append(f"{n} nieuwe aanbieding{'en' if n != 1 else ''}")
+            m = samenvatting["berichten"]
+            if m: delen.append(f"{m} nieuw{'e berichten' if m != 1 else ' bericht'}")
+            if not delen:
+                continue   # stille dag → geen melding
+            body = " en ".join(delen) + " — open de app voor de details."
+            subs = db.get_push_subscriptions_voor_user(u["id"], ook_digest=True)
+            for sub in subs:
+                ok = push_module.send_push(sub["subscription"],
+                    title="Je dagelijkse CIRQO-samenvatting", body=body, url="/")
+                if not ok:
+                    db.delete_push_subscription(sub["subscription"])
+            print(f"[digest] user {u['id']}: {body!r} naar {len(subs)} toestel(len)")
+        except Exception as e:
+            try: db.registreer_fout(f"digest-user:{u['id']}", str(e))
+            except Exception: pass
+
+
+async def _digest_loop():
+    """Controleert elke 10 minuten of de dagelijkse samenvatting eruit moet."""
+    from zoneinfo import ZoneInfo
+    await asyncio.sleep(90)
+    while True:
+        try:
+            nu_nl = datetime.now(ZoneInfo("Europe/Amsterdam"))
+            if nu_nl.hour >= DIGEST_UUR:
+                await asyncio.get_event_loop().run_in_executor(None, _verstuur_digests)
+        except Exception as e:
+            try: db.registreer_fout("digest-loop", str(e))
+            except Exception: pass
+        await asyncio.sleep(600)
 
 
 async def _prewarm_cache_loop():
@@ -2333,6 +2505,12 @@ async def assetlinks():
 async def privacy_page():
     """Privacyverklaring — verplicht veld voor App Store en Play Store."""
     return _render_html("static/privacy.html", DEFAULT_BRAND)
+
+
+@app.get("/voorwaarden", response_class=HTMLResponse)
+async def voorwaarden_page():
+    """Algemene voorwaarden — bereikbaar via Over CIRQO in het accountpaneel."""
+    return _render_html("static/voorwaarden.html", DEFAULT_BRAND)
 
 
 @app.get("/installeren", response_class=HTMLResponse)

@@ -19,8 +19,8 @@
   <link rel="preload" href="/static/bouwkringloop-logo.jpg" as="image">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/base.css?v=5">
-  <link rel="stylesheet" href="/static/scan.css?v=27">
+  <link rel="stylesheet" href="/static/base.css?v=6">
+  <link rel="stylesheet" href="/static/scan.css?v=29">
   <link rel="stylesheet" href="/brand.css">
   <script>
     (function() {
@@ -38,7 +38,7 @@
       if (!localStorage.getItem('token')) { location.replace('/login?redirect=/'); } else { document.documentElement.style.visibility = 'hidden'; }
     })();
   </script>
-  <link rel="stylesheet" href="/static/ux.css">
+  <link rel="stylesheet" href="/static/ux.css?v=2">
   <style>
     #ob-backdrop { position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.52);backdrop-filter:blur(5px);opacity:0;pointer-events:none;transition:opacity .34s ease; }
     #ob-backdrop.ob-show { opacity:1;pointer-events:all; }
@@ -48,7 +48,7 @@
     .ob-progress-fill { height:100%;background:var(--orange,#e67026);border-radius:0 3px 3px 0;transition:width .42s cubic-bezier(.22,.8,.36,1); }
     .ob-top-row { display:flex;align-items:center;justify-content:space-between;padding:14px 20px 0; }
     .ob-handle { width:36px;height:4px;border-radius:2px;background:#E4E4E9;margin:0 auto; }
-    .ob-skip { background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.75rem;font-weight:600;color:#9A9690;padding:4px 0;transition:color .15s; }
+    .ob-skip { background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.8rem;font-weight:600;color:#9A9690;padding:4px 0;transition:color .15s; }
     .ob-skip:hover { color:#555; }
     .ob-viewport { overflow:hidden;touch-action:pan-y; }
     .ob-track { display:flex;will-change:transform; }
@@ -61,7 +61,7 @@
     .ob-slide.ob-active .ob-desc { animation:obItemIn .34s cubic-bezier(.2,.82,.26,1) .27s both; }
     @keyframes obItemIn { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
     .ob-icon-wrap { width:96px;height:96px;border-radius:50%;background:rgba(230,112,38,.1);display:flex;align-items:center;justify-content:center;margin:0 auto 22px; }
-    .ob-step-label { font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--orange,#e67026);margin-bottom:10px; }
+    .ob-step-label { font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--orange,#e67026);margin-bottom:10px; }
     .ob-title { font-family:'Outfit',sans-serif;font-size:1.5rem;font-weight:900;color:#1A1914;line-height:1.2;margin-bottom:12px; }
     .ob-desc { font-size:0.88rem;color:#666;line-height:1.6;max-width:290px;margin:0 auto; }
     .ob-dots { display:flex;justify-content:center;align-items:center;gap:6px;margin:22px 0 18px; }
@@ -135,9 +135,9 @@
     <img src="/static/bouwkringloop-logo.jpg" class="hdr-logo-img" alt="De Bouwkringloop">
     <div class="hdr-actions">
       <a href="/beheer" class="hdr-btn hidden" id="beheer-link">Beheer</a>
-      <button onclick="openUserPanel()" style="background:none;border:none;cursor:pointer;padding:6px;display:flex;align-items:center;gap:6px;color:var(--muted);" title="Account">
-        <span id="hdr-username" style="font-size:0.72rem;font-weight:600;"></span>
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      <button onclick="openUserPanel()" class="hdr-account" title="Mijn account" aria-label="Mijn account">
+        <span id="hdr-orgnaam" class="hdr-orgnaam"></span>
+        <span id="hdr-avatar" class="hdr-avatar" aria-hidden="true"></span>
       </button>
     </div>
   </header>
@@ -159,6 +159,11 @@
 
   <!-- Scan -->
   <section class="tab active" id="tab-scan">
+    <!-- Offline-wachtrij: scans zonder verbinding staan hier tot ze automatisch verstuurd zijn -->
+    <button id="wachtrij-banner" class="wachtrij-banner hidden" onclick="_wachtrijVerwerk()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M2.5 22v-6h6"/><path d="M2 11.5a10 10 0 0 1 18.8-4.3"/><path d="M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+      <span id="wachtrij-tekst">1 scan wacht op verbinding</span>
+    </button>
     <div class="scan-hero" id="scan-hero">
       <p class="scan-hero-intro">Check hier wie jouw overgebleven spullen wil ophalen</p>
       <p class="scan-hero-title">Wat wil je aanbieden?</p>
@@ -169,7 +174,7 @@
         </div>
       </label>
       <button class="scan-hero-reacties-btn" onclick="gaNaarReacties()">Reacties</button>
-      <button onclick="onboardingOpen()" style="display:block;width:100%;margin-top:10px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--muted);padding:4px;text-align:center;">Hoe werkt de app? →</button>
+      <button onclick="onboardingOpen()" style="display:block;width:100%;margin-top:10px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.8rem;color:var(--muted);padding:4px;text-align:center;">Hoe werkt de app? →</button>
     </div>
 
     <div id="preview-wrap" class="preview-wrap hidden">
@@ -185,23 +190,23 @@
     <div id="result-card" class="result-card hidden">
       <div id="result-acceptatie" class="result-acceptatie hidden"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <span style="font-size:1rem;">✏️</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
         <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">AI-suggestie — controleer en pas aan waar nodig</span>
       </div>
       <div class="field" style="margin-bottom:10px;">
-        <label style="font-size:0.7rem;">Titel</label>
+        <label style="font-size:0.8rem;">Titel</label>
         <input id="result-label" type="text" placeholder="Bijv. 12 fietsen" autocomplete="off"
           style="width:100%;font-family:inherit;font-weight:800;font-size:1.02rem;padding:11px 12px;border:1.5px dashed var(--orange);border-radius:12px;background:#fff;">
       </div>
       <div id="result-weight" class="result-weight"></div>
       <div id="result-co2" class="result-co2 hidden"></div>
       <div class="field" style="margin-top:10px;">
-        <label style="font-size:0.7rem;">Beschrijving</label>
+        <label style="font-size:0.8rem;">Beschrijving</label>
         <textarea id="result-detail" class="result-detail" rows="3"
           style="width:100%;font-family:inherit;font-size:0.86rem;line-height:1.5;padding:10px 12px;border:1.5px dashed var(--orange);border-radius:12px;background:#fff;resize:vertical;"></textarea>
       </div>
       <button id="result-bewerk-opslaan" class="btn btn-primary hidden" style="width:100%;margin-top:10px;">✓ Aanpassing opslaan</button>
-      <p style="font-size:0.72rem;color:var(--muted);margin-top:8px;text-align:center;">Tik op een veld om de tekst te verbeteren — de stippellijn betekent: bewerkbaar.</p>
+      <p style="font-size:0.8rem;color:var(--muted);margin-top:8px;text-align:center;">Tik op een veld om de tekst te verbeteren — de stippellijn betekent: bewerkbaar.</p>
     </div>
     <div id="scan-error" class="scan-error hidden"></div>
     <div id="bedrijven-card" class="result-card hidden" style="border-top-color: #6DC4CE;">
@@ -295,9 +300,9 @@
         <!-- Aanbieder (scanner): terugkoppeling reactie, geen actieknoppen -->
         <div id="modal-aanbieder-reactie" style="display:none;">
           <hr class="divider">
-          <p style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;">Reactie bedrijf</p>
+          <p style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;">Reactie bedrijf</p>
           <p id="modal-reactie-bedrijf" style="font-size:0.86rem;font-weight:600;margin-bottom:4px;"></p>
-          <p id="modal-reactie-status" style="font-size:0.78rem;font-weight:700;"></p>
+          <p id="modal-reactie-status" style="font-size:0.8rem;font-weight:700;"></p>
         </div>
 
         <!-- Chat: opent als apart scherm (knop) -->
@@ -312,7 +317,7 @@
         <!-- Aanbiedingen (reacties van bedrijven, zichtbaar voor alle rollen) -->
         <div id="modal-aanbiedingen" style="display:none;">
           <hr class="divider">
-          <p style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:12px;">Reacties van bedrijven</p>
+          <p style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:12px;">Reacties van bedrijven</p>
           <div id="modal-aanbiedingen-list"></div>
         </div>
 
@@ -354,53 +359,110 @@
           </div>
         </div>
 
-        <!-- Gegevens -->
-        <div class="acc-groep-titel">Accountgegevens</div>
+        <!-- Voorkeuren -->
+        <div class="acc-groep-titel">Voorkeuren</div>
         <div class="acc-kaart">
-          <div class="acc-veld">
-            <label for="up-organisatie">Bedrijfsnaam</label>
-            <input type="text" id="up-organisatie" placeholder="bijv. Jansen Sloop" autocomplete="off">
-          </div>
-          <div class="acc-veld">
-            <label for="up-gemeente">Gemeente</label>
-            <select id="up-gemeente"><option value="">— Selecteer gemeente —</option></select>
-            <select id="up-milieustraat" style="display:none;margin-top:8px;"><option value="">— Selecteer milieustraat —</option></select>
-          </div>
-        </div>
-
-        <!-- Meldingen -->
-        <div class="acc-groep-titel">Meldingen</div>
-        <div class="acc-kaart">
-          <div class="acc-rij">
+          <button type="button" class="acc-actie-rij" id="push-rij" onclick="meldingRijKlik()">
             <span class="acc-rij-ico" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             </span>
             <div class="acc-rij-tekst">
-              <span class="acc-rij-titel">Pushmeldingen</span>
-              <span class="acc-rij-sub" id="push-status">Ontvang direct bericht bij nieuw aanbod en reacties</span>
+              <span class="acc-rij-titel">Meldingen</span>
+              <span class="acc-rij-sub" id="push-status">Bericht bij nieuw aanbod en reacties</span>
+            </div>
+            <span class="acc-chip uit" id="push-chip">…</span>
+          </button>
+          <button id="push-btn" style="display:none;" onclick="meldingInschakelen()"></button>
+          <!-- Meldingsritme: direct of 1 samenvatting per dag (alleen zichtbaar als meldingen aan staan) -->
+          <div class="acc-actie-rij digest-rij" id="digest-rij" style="display:none;">
+            <span class="acc-rij-ico" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </span>
+            <div class="acc-rij-tekst">
+              <span class="acc-rij-titel">Wanneer</span>
+              <span class="acc-rij-sub" id="digest-sub">Direct bij nieuw aanbod en berichten</span>
+            </div>
+            <div class="digest-keuze">
+              <button type="button" class="digest-opt actief" id="digest-direct" onclick="zetDigest(false)">Direct</button>
+              <button type="button" class="digest-opt" id="digest-dag" onclick="zetDigest(true)">1× per dag</button>
             </div>
           </div>
-          <button id="push-btn" class="btn btn-primary" onclick="meldingInschakelen()" style="width:100%;margin-top:12px;display:flex;align-items:center;justify-content:center;gap:8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            Meldingen inschakelen
+        </div>
+
+        <!-- Gegevens -->
+        <div class="acc-groep-titel">Gegevens</div>
+        <div class="acc-kaart">
+          <button type="button" class="acc-actie-rij" onclick="accToggle('org')">
+            <span class="acc-rij-ico" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </span>
+            <div class="acc-rij-tekst">
+              <span class="acc-rij-titel">Mijn gegevens</span>
+            </div>
+            <span class="acc-waarde" id="org-waarde"></span>
+            <span class="acc-chevron" id="org-chevron">›</span>
           </button>
+          <div class="acc-uitklap" id="org-uitklap">
+            <div class="acc-veld">
+              <label>E-mailadres</label>
+              <input type="email" id="up-email" disabled style="background:#f4f1ea;color:#67676e;cursor:default;" placeholder="—">
+              <div class="acc-rij-sub" style="margin-top:6px;">Gekoppeld aan je inlog — wijzigen kan via info@cirqo.nl</div>
+            </div>
+            <div class="acc-veld">
+              <label for="up-organisatie">Organisatie</label>
+              <input type="text" id="up-organisatie" placeholder="bijv. Kringloop Gorinchem" autocomplete="organization">
+            </div>
+            <div class="acc-veld">
+              <label for="up-contactpersoon">Contactpersoon</label>
+              <input type="text" id="up-contactpersoon" placeholder="Voor- en achternaam" autocomplete="name">
+            </div>
+            <div class="acc-veld">
+              <label for="up-telefoon">Telefoonnummer</label>
+              <input type="tel" id="up-telefoon" placeholder="Voor ophaalafspraken" autocomplete="tel">
+            </div>
+            <div class="acc-veld">
+              <label for="up-adres">Adres</label>
+              <input type="text" id="up-adres" placeholder="Straat, nummer en plaats" autocomplete="street-address">
+            </div>
+            <div class="acc-uitklap-voet">
+              <button type="button" class="btn btn-primary" onclick="slaProfielOp()">Opslaan</button>
+            </div>
+          </div>
+
+          <button type="button" class="acc-actie-rij" onclick="accToggle('loc')">
+            <span class="acc-rij-ico" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </span>
+            <div class="acc-rij-tekst">
+              <span class="acc-rij-titel">Locatie</span>
+            </div>
+            <span class="acc-waarde" id="loc-waarde"></span>
+            <span class="acc-chevron" id="loc-chevron">›</span>
+          </button>
+          <div class="acc-uitklap" id="loc-uitklap">
+            <div class="acc-veld">
+              <label for="up-gemeente">Gemeente</label>
+              <select id="up-gemeente" onchange="slaLocatieOp()"><option value="">— Selecteer gemeente —</option></select>
+              <select id="up-milieustraat" onchange="slaLocatieOp()" style="display:none;margin-top:8px;"><option value="">— Selecteer milieustraat —</option></select>
+              <div class="acc-rij-sub" style="margin-top:8px;">Wijzigingen worden direct opgeslagen</div>
+            </div>
+          </div>
         </div>
 
         <!-- Beveiliging -->
         <div class="acc-groep-titel">Beveiliging</div>
         <div class="acc-kaart" id="acc-beveiliging">
-          <button type="button" class="acc-actie-rij" id="pwd-toggle" onclick="toggleWachtwoord()">
+          <button type="button" class="acc-actie-rij" id="pwd-toggle" onclick="accToggle('pwd')">
             <span class="acc-rij-ico" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2.5"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </span>
             <div class="acc-rij-tekst">
               <span class="acc-rij-titel">Wachtwoord wijzigen</span>
-              <span class="acc-rij-sub">Stel een nieuw wachtwoord in</span>
             </div>
             <span class="acc-chevron" id="pwd-chevron">›</span>
           </button>
-          <div id="pwd-uitklap" style="display:none;">
-            <div class="acc-veld" style="border-top:1px solid #f0ede7;">
+          <div class="acc-uitklap" id="pwd-uitklap">
+            <div class="acc-veld">
               <label for="up-pwd">Nieuw wachtwoord</label>
               <input type="password" id="up-pwd" placeholder="Minimaal 6 tekens" autocomplete="new-password">
             </div>
@@ -408,17 +470,14 @@
               <label for="up-pwd2">Herhaal wachtwoord</label>
               <input type="password" id="up-pwd2" placeholder="Nogmaals ter controle" autocomplete="new-password">
             </div>
-            <div style="padding:0 16px 16px;">
-              <button type="button" class="btn btn-primary" style="width:100%;text-transform:none;letter-spacing:-0.01em;" onclick="slaWachtwoordOp()">Wachtwoord opslaan</button>
+            <div class="acc-uitklap-voet">
+              <button type="button" class="btn btn-primary" onclick="slaWachtwoordOp()">Wachtwoord opslaan</button>
               <div id="pwd-status" class="acc-status" style="text-align:left;min-height:0;"></div>
             </div>
           </div>
         </div>
 
-        <button class="btn btn-primary acc-opslaan" onclick="saveUserPanel()">Wijzigingen opslaan</button>
-        <div id="up-status" class="acc-status"></div>
-
-        <!-- App op toestel -->
+        <!-- App op toestel (verbergt zichzelf in de native app) -->
         <div class="acc-groep-titel" id="app-install-field">App</div>
         <div class="acc-kaart" id="app-install-kaart">
           <button class="acc-actie-rij" onclick="toonInstallInstructie()">
@@ -426,13 +485,27 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M12 18h.01"/></svg>
             </span>
             <div class="acc-rij-tekst">
-              <span class="acc-rij-titel">Installeer als app</span>
-              <span class="acc-rij-sub">Eigen icoon op je beginscherm, volledig scherm en pushmeldingen — werkt als een echte app</span>
+              <span class="acc-rij-titel">Zet op je beginscherm</span>
+              <span class="acc-rij-sub">Werkt als echte app, met meldingen</span>
             </div>
             <span class="acc-chevron">›</span>
           </button>
           <div id="app-install-steps" style="display:none;font-size:0.88rem;color:var(--ink);line-height:1.55;margin-top:4px;padding:12px 14px;border-top:1px solid var(--lijn-zacht);"></div>
           <button id="app-install-now" class="btn btn-primary" style="display:none;width:calc(100% - 28px);margin:0 14px 14px;" onclick="installNu()">Nu installeren</button>
+        </div>
+
+        <div class="acc-groep-titel">Over</div>
+        <div class="acc-kaart">
+          <button type="button" class="acc-actie-rij" onclick="openOverCirqo()">
+            <span class="acc-rij-ico" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            </span>
+            <div class="acc-rij-tekst">
+              <span class="acc-rij-titel">Over CIRQO</span>
+              <span class="acc-rij-sub">Uitleg, veelgestelde vragen en contact</span>
+            </div>
+            <span class="acc-chevron">›</span>
+          </button>
         </div>
 
         <button class="acc-uitloggen" onclick="logout()">
@@ -441,6 +514,36 @@
         </button>
 
         <p class="acc-footer">CIRQO · versie <span id="up-versie">—</span> · app.cirqo.nl</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Over CIRQO -->
+  <div id="over-panel" class="modal hidden">
+    <div class="modal-sheet">
+      <button class="modal-close" onclick="document.getElementById('over-panel').classList.add('hidden')">&times;</button>
+      <div class="modal-body acc-body">
+        <div class="acc-hero" style="margin-bottom:14px;">
+          <div class="acc-hero-info">
+            <span class="acc-naam">Over CIRQO</span>
+            <span class="acc-rij-sub">Digitaal productuitwisselingsnetwerk</span>
+          </div>
+        </div>
+        <div class="acc-kaart" id="over-menu"></div>
+        <p class="acc-footer">CIRQO · app.cirqo.nl</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inhoudspagina binnen Over CIRQO (uitleg, FAQ, privacy, voorwaarden) -->
+  <div id="over-sub" class="modal hidden">
+    <div class="modal-sheet">
+      <button class="modal-close" onclick="document.getElementById('over-sub').classList.add('hidden')">&times;</button>
+      <div class="modal-body acc-body">
+        <div class="acc-hero" style="margin-bottom:14px;">
+          <div class="acc-hero-info"><span class="acc-naam" id="over-sub-titel"></span></div>
+        </div>
+        <div class="acc-kaart" id="over-sub-inhoud" style="padding:18px 16px;font-size:0.9rem;line-height:1.6;"></div>
       </div>
     </div>
   </div>
@@ -478,7 +581,8 @@
       </button>
     </div>
   </div>
-  <script src="/static/scan.js?v=94"></script>
+  <script src="/static/cirqo-core.js?v=1"></script>
+    <script src="/static/scan.js?v=104"></script>
 
 
   <div id="ob-backdrop"></div>
@@ -516,7 +620,7 @@
             <svg width="54" height="54" viewBox="0 0 52 52" fill="none"><circle class="ob-circle" cx="26" cy="26" r="20" stroke="#4caf50" stroke-width="2.5" fill="rgba(76,175,80,.08)"/><polyline class="ob-check" points="14,26 22,34 38,18" stroke="#4caf50" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
           </div>
           <div class="ob-step-label" style="color:#4caf50;">Stap 4 van 4</div>
-          <div class="ob-title">Materiaal krijgt een tweede leven</div>
+          <div class="ob-title">Spullen krijgen een tweede leven</div>
           <div class="ob-desc">Ophaling wordt geregeld en jouw restmateriaal wordt hergebruikt. Minder afval, meer waarde.</div>
         </div>
       </div>
@@ -586,7 +690,7 @@
   <script>
     window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); });
   </script>
-  <script src="/static/ux.js"></script>
+  <script src="/static/ux.js?v=2"></script>
   <script src="/static/install-gids.js"></script>
 </body>
 </html>

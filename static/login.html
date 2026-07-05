@@ -16,7 +16,7 @@
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap"></noscript>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/base.css?v=5">
+  <link rel="stylesheet" href="/static/base.css?v=6">
   <style>
     body {
       min-height: 100dvh;
@@ -68,7 +68,7 @@
     }
   </style>
   <link rel="stylesheet" href="/brand.css">
-  <link rel="stylesheet" href="/static/ux.css">
+  <link rel="stylesheet" href="/static/ux.css?v=2">
 </head>
 <body>
   <div class="wrap">
@@ -81,7 +81,7 @@
       <form id="form">
         <div class="field">
           <label>E-mail of gebruikersnaam</label>
-          <input type="text" id="login-input" autocomplete="username" required>
+          <input type="text" id="login-input" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
         </div>
         <div class="field">
           <label>Wachtwoord</label>
@@ -552,7 +552,7 @@
             </svg>
           </div>
           <div class="ob-step-label" style="color:#4caf50;">Stap 4 van 4</div>
-          <div class="ob-title">Materiaal krijgt een tweede leven</div>
+          <div class="ob-title">Spullen krijgen een tweede leven</div>
           <div class="ob-desc">Ophaling wordt geregeld en jouw restmateriaal wordt hergebruikt. Minder afval, meer waarde.</div>
         </div>
       </div>
@@ -602,7 +602,7 @@
   <script>
     window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); });
   </script>
-  <script src="/static/ux.js"></script>
+  <script src="/static/ux.js?v=2"></script>
   <script src="/static/install-gids.js"></script>
 </body>
 </html>

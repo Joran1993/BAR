@@ -63,6 +63,80 @@
     }
   };
 
+  /* ── Haptiek ─────────────────────────────────────────────────────────────── */
+  // Capacitor Haptics als de schil die meelevert (volgende store-build); tot die
+  // tijd navigator.vibrate (Android). Op iOS-web bestaat geen trilling-API — stil.
+  window.uxHaptic = function (soort) {
+    try {
+      var H = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Haptics;
+      if (H) {
+        if (soort === 'succes') H.notification({ type: 'SUCCESS' });
+        else H.impact({ style: soort === 'stevig' ? 'MEDIUM' : 'LIGHT' });
+        return;
+      }
+      if (navigator.vibrate) navigator.vibrate(soort === 'succes' ? [12, 40, 12] : 8);
+    } catch (e) {}
+  };
+
+  /* ── Pull-to-refresh ─────────────────────────────────────────────────────── */
+  // Web-implementatie (geen plugin nodig): trek de lijst >90px omlaag vanaf de
+  // bovenkant en laat los. Eén gedeelde indicator; werkt per scroll-container.
+  var _ptrInd = null;
+  function _ptrIndicator() {
+    if (_ptrInd) return _ptrInd;
+    _ptrInd = document.createElement('div');
+    _ptrInd.className = 'ptr-indicator';
+    _ptrInd.innerHTML = '<span class="ptr-spinner"></span>';
+    document.body.appendChild(_ptrInd);
+    return _ptrInd;
+  }
+  window.uxPullRefresh = function (el, onRefresh) {
+    if (!el) return;
+    var startY = null, over = false, bezig = false;
+    function scrollBoven() {
+      var top = (el === document.body || el === document.documentElement)
+        ? (document.scrollingElement || document.documentElement).scrollTop
+        : el.scrollTop;
+      return top <= 0;
+    }
+    el.addEventListener('touchstart', function (e) {
+      startY = (!bezig && scrollBoven()) ? e.touches[0].clientY : null;
+      over = false;
+    }, { passive: true });
+    el.addEventListener('touchmove', function (e) {
+      if (startY === null || bezig) return;
+      if (!scrollBoven()) { startY = null; _ptrIndicator().classList.remove('zichtbaar'); return; }
+      var d = e.touches[0].clientY - startY;
+      var ind = _ptrIndicator();
+      if (d > 28) {
+        var wasOver = over;
+        over = d > 90;
+        ind.classList.add('zichtbaar');
+        ind.classList.toggle('klaar', over);
+        ind.querySelector('.ptr-spinner').style.transform = 'rotate(' + Math.min(d * 2, 360) + 'deg)';
+        if (over && !wasOver) window.uxHaptic('licht');
+      } else {
+        over = false;
+        ind.classList.remove('zichtbaar', 'klaar');
+      }
+    }, { passive: true });
+    el.addEventListener('touchend', function () {
+      if (startY === null || bezig) { startY = null; return; }
+      startY = null;
+      var ind = _ptrIndicator();
+      if (!over) { ind.classList.remove('zichtbaar', 'klaar'); return; }
+      over = false;
+      bezig = true;
+      ind.classList.add('draait');
+      Promise.resolve().then(onRefresh).catch(function () {}).then(function () {
+        setTimeout(function () {
+          ind.classList.remove('zichtbaar', 'klaar', 'draait');
+          bezig = false;
+        }, 350);
+      });
+    });
+  };
+
   document.addEventListener('DOMContentLoaded', function () {
 
     /* ── Header scroll shadow ──────────────────────────────────────────────── */
