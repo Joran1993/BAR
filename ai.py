@@ -25,26 +25,31 @@ GEWICHT_INSTRUCTIE = """
   Gebruik decimalen voor precisie (bijv. 3.2, 12.5). Nooit een round number tenzij het echt klopt.
   Nooit null, altijd een getal."""
 
+# De beschrijving ("detail") is verreweg het langste stuk output en dus de meeste
+# generatietijd. Ze staat standaard uit (het bewerkveld in de app vult de gebruiker
+# zelf), wat de analyse merkbaar versnelt. Zet AI_BESCHRIJVING=1 om hem terug te halen.
+VRAAG_BESCHRIJVING = os.environ.get("AI_BESCHRIJVING", "0") == "1"
+_DETAIL_REGEL = "\n- detail: beknopte beschrijving van het materiaal en staat" if VRAAG_BESCHRIJVING else ""
+_DETAIL_JSON = '"detail": "...", ' if VRAAG_BESCHRIJVING else ""
+
 BASE_SYSTEM_PROMPT = f"""Je bent een allround expert in het herkennen, beoordelen en wegen van tweedehands producten en materialen: van meubels, huisraad, elektronica, textiel, speelgoed en fietsen tot gereedschap en bouwmaterialen — alles wat bij een milieustraat of kringloop binnenkomt.
 Analyseer de foto en geef:
-- label: korte naam van het product/materiaal (max 4 woorden)
-- detail: beknopte beschrijving van het materiaal en staat
+- label: korte naam van het product/materiaal (max 4 woorden){_DETAIL_REGEL}
 - gewicht_kg: {GEWICHT_INSTRUCTIE}
 - category: de productcategorie; kies exact één van: {", ".join(CATEGORIES)}. Bij meerdere producten op één foto: kies de DOMINANTE categorie (meeste stuks, volume of herbruikwaarde). Gebruik "Gemengde partij" alleen als er 3 of meer duidelijk verschillende categorieën zijn en geen enkele domineert.
 
 Reageer uitsluitend in dit JSON-formaat (geen extra tekst):
-{{"label": "...", "detail": "...", "gewicht_kg": 0.0, "category": "..."}}"""
+{{{_DETAIL_JSON}"label": "...", "gewicht_kg": 0.0, "category": "..."}}"""
 
 SYSTEM_PROMPT_MET_LIJST = f"""Je bent een allround expert in het herkennen, beoordelen en wegen van tweedehands producten en materialen: van meubels, huisraad, elektronica, textiel, speelgoed en fietsen tot gereedschap en bouwmaterialen — alles wat bij een milieustraat of kringloop binnenkomt.
 Analyseer de foto en geef:
-- label: korte naam van het product/materiaal (max 4 woorden)
-- detail: beknopte beschrijving van het materiaal en staat
+- label: korte naam van het product/materiaal (max 4 woorden){_DETAIL_REGEL}
 - gewicht_kg: {GEWICHT_INSTRUCTIE}
 - category: de productcategorie; kies exact één van: {", ".join(CATEGORIES)}. Bij meerdere producten op één foto: kies de DOMINANTE categorie (meeste stuks, volume of herbruikwaarde). Gebruik "Gemengde partij" alleen als er 3 of meer duidelijk verschillende categorieën zijn en geen enkele domineert.
 - geaccepteerd: true als het herkende product overeenkomt met een product op de inzamellijst, anders false
 
 Reageer uitsluitend in dit JSON-formaat (geen extra tekst):
-{{"label": "...", "detail": "...", "gewicht_kg": 0.0, "category": "...", "geaccepteerd": true}}"""
+{{{_DETAIL_JSON}"label": "...", "gewicht_kg": 0.0, "category": "...", "geaccepteerd": true}}"""
 
 
 _client = None
@@ -65,25 +70,28 @@ def analyse_photo(image_b64: str, inzamellijst: Optional[list] = None) -> tuple[
     if not api_key:
         return None, "ANTHROPIC_API_KEY niet ingesteld.", None, None, None
 
+    _beschr = "beschrijving, " if VRAAG_BESCHRIJVING else ""
     heeft_lijst = bool(inzamellijst)
     if heeft_lijst:
         producten_tekst = "\n".join(f"- {p}" for p in inzamellijst)
         system = SYSTEM_PROMPT_MET_LIJST + f"\n\nInzamellijst van geaccepteerde producten:\n{producten_tekst}"
-        user_text = "Analyseer dit product. Geef label, beschrijving, gewichtsschatting, categorie en of het op de inzamellijst staat."
+        user_text = f"Analyseer dit product. Geef label, {_beschr}gewichtsschatting, categorie en of het op de inzamellijst staat."
     else:
         system = BASE_SYSTEM_PROMPT
-        user_text = "Analyseer dit product. Geef label, beschrijving, gewichtsschatting en categorie."
+        user_text = f"Analyseer dit product. Geef label, {_beschr}gewichtsschatting en categorie."
 
     import anthropic
     import time
 
     client = _get_client(api_key)
+    # Zonder beschrijving is de output een paar velden JSON → veel minder tokens
+    max_out = 256 if VRAAG_BESCHRIJVING else 96
 
     for poging in range(3):
         try:
             message = client.messages.create(
                 model="claude-sonnet-5",
-                max_tokens=256,
+                max_tokens=max_out,
                 system=system,
                 messages=[{
                     "role": "user",
