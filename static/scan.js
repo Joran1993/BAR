@@ -320,8 +320,6 @@ async function aanbiedenAanSelectie(itemId) {
     const data = await res.json();
     const gekozen = _scanBedrijven.filter(b => ids.includes(b.id));
     const label = gekozen.length === 1 ? gekozen[0].naam : `${gekozen.length} bedrijven`;
-    // Snelmodus: onthoud deze keuze per categorie voor de volgende scan
-    try { localStorage.setItem("snel_selectie_" + (_huidigCategory || "alle"), JSON.stringify(ids)); } catch (e) {}
     _markeerAangeboden(itemId, label, data?.ids?.[0]);
     syncItems();
     _toonSucces("Aangeboden!", `Het item is aangeboden aan: ${gekozen.map(b => b.naam).join(", ")}.`);
@@ -341,6 +339,16 @@ function _scanToggleAlle(aan) {
 // Eén tik op 'Aanbieden' is dan genoeg; uitvinken blijft mogelijk.
 const _ALLES_VOORAF_AAN = (_gemeente === "Molenlanden");
 
+// Klein logo (favicon) van een netwerkpartij, afgeleid uit het e-maildomein.
+// Ontbreekt het domein of laadt de favicon niet, dan verdwijnt het beeld netjes.
+function _bedrijfLogoImg(b) {
+  const email = (b.domain || b.email || "").trim().toLowerCase();
+  const domein = b.domain || (email.includes("@") ? email.split("@").pop() : "");
+  if (!domein) return "";
+  const url = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domein)}&sz=64`;
+  return `<img src="${url}" alt="" loading="lazy" onerror="this.style.display='none'" style="width:24px;height:24px;border-radius:6px;flex-shrink:0;object-fit:contain;background:#fff;border:1px solid var(--border);">`;
+}
+
 function _renderBedrijvenLijst(itemId, external) {
   // external = array als het direct vanuit analyse-resultaat komt (voor achterwaartse compatibiliteit)
   if (external) { _scanBedrijven = external; }
@@ -352,36 +360,12 @@ function _renderBedrijvenLijst(itemId, external) {
     return;
   }
 
-  // Snelmodus: is er een onthouden keuze voor deze categorie die nog geldig is?
-  let onthouden = [];
-  try { onthouden = JSON.parse(localStorage.getItem("snel_selectie_" + (_huidigCategory || "alle")) || "[]"); } catch (e) {}
-  const geldigeIds = new Set(_scanBedrijven.map(b => b.id));
-  onthouden = onthouden.filter(id => geldigeIds.has(id));
-  const snelmodus = onthouden.length > 0;
-  const onthoudenNamen = _scanBedrijven.filter(b => onthouden.includes(b.id)).map(b => b.naam);
-  const snelLabel = onthoudenNamen.length <= 2
-    ? onthoudenNamen.join(" en ")
-    : `${onthoudenNamen.slice(0, 2).join(", ")} +${onthoudenNamen.length - 2}`;
-
-  // Voorvinken: in snelmodus exact de onthouden keuze, anders de bestaande logica
-  const isVoorgevinkt = (b) => snelmodus
-    ? onthouden.includes(b.id)
-    : (_ALLES_VOORAF_AAN || b.historie_count > 0 || b.categorie_match);
+  // Altijd de volledige lijst netwerkpartijen; categorie-matches staan voorgevinkt
+  const isVoorgevinkt = (b) => _ALLES_VOORAF_AAN || b.categorie_match;
 
   bedrijvenLijst.innerHTML = `
-    ${snelmodus ? `
-    <button id="btn-aanbied-selectie" class="btn btn-primary" style="width:100%;display:flex;flex-direction:column;gap:2px;padding:14px;"
-      onclick="aanbiedenAanSelectie(${itemId})">
-      <span>Direct aanbieden</span>
-      <span style="font-size:0.8rem;font-weight:600;opacity:.85;text-transform:none;letter-spacing:0;">aan ${_esc(snelLabel)} — zoals vorige keer</span>
-    </button>
-    <button type="button" onclick="_scanToonKeuze()" id="scan-keuze-toggle"
-      style="width:100%;margin-top:8px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:0.82rem;font-weight:600;color:var(--muted);padding:8px;">
-      Andere bedrijven kiezen ▾
-    </button>` : ""}
-    <div id="scan-keuze-lijst" style="${snelmodus ? "display:none;" : ""}">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <span style="font-size:0.8rem;color:var(--muted);">Kies één of meer bedrijven</span>
+      <span style="font-size:0.8rem;color:var(--muted);">Kies één of meer partijen</span>
       <span style="font-size:0.8rem;">
         <button type="button" onclick="_scanToggleAlle(true)" style="background:none;border:none;cursor:pointer;font-family:inherit;color:var(--orange);font-weight:600;font-size:0.8rem;padding:4px;">Alles</button>
         ·
@@ -391,32 +375,18 @@ function _renderBedrijvenLijst(itemId, external) {
     ${_scanBedrijven.map((b) => `
     <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;">
       <input type="checkbox" class="scan-bedrijf-check" value="${b.id}" ${isVoorgevinkt(b) ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;accent-color:var(--orange);">
+      ${_bedrijfLogoImg(b)}
       <span style="flex:1;">
         <span style="font-weight:600;font-size:0.88rem;">${_esc(b.naam)}</span>
-        ${b.historie_count > 0 ? `<span style="font-size:0.7rem;font-weight:700;background:#fff3e0;color:#b4531a;padding:2px 7px;border-radius:100px;margin-left:6px;">★ haalde dit ${b.historie_count}× eerder op</span>`
-          : (b.categorie_match ? `<span style="font-size:0.7rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;margin-left:6px;">Match</span>` : "")}
+        ${b.categorie_match ? `<span style="font-size:0.7rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;margin-left:6px;">Match</span>` : ""}
         ${(b.contactpersoon || b.telefoon) ? `<span style="display:block;font-size:0.8rem;color:var(--muted);margin-top:2px;">${b.contactpersoon ? _esc(b.contactpersoon) : ""}${b.telefoon ? ` · ${_esc(b.telefoon)}` : ""}</span>` : ""}
       </span>
     </label>`).join("")}
-    ${snelmodus ? `
-    <button class="btn btn-primary" style="width:100%;margin-top:14px;" onclick="aanbiedenAanSelectie(${itemId})">
-      Aanbieden aan geselecteerde bedrijven
-    </button>` : `
     <button id="btn-aanbied-selectie" class="btn btn-primary" style="width:100%;margin-top:14px;" onclick="aanbiedenAanSelectie(${itemId})">
-      Aanbieden aan geselecteerde bedrijven
-    </button>`}
-    </div>`;
+      Aanbieden aan geselecteerde partijen
+    </button>`;
   bedrijvenCard.classList.remove("hidden");
 }
-
-// Snelmodus: keuzelijst tonen (en de snelknop laten staan voor wie zich bedenkt)
-function _scanToonKeuze() {
-  const lijst = document.getElementById("scan-keuze-lijst");
-  const toggle = document.getElementById("scan-keuze-toggle");
-  if (lijst) lijst.style.display = "";
-  if (toggle) toggle.style.display = "none";
-}
-window._scanToonKeuze = _scanToonKeuze;
 
 
 // ── Camera ─────────────────────────────────────────────────────────────────────

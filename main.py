@@ -131,6 +131,13 @@ def _mag_item_beheren(user: dict, item: dict) -> bool:
     return up is not None and up == user["id"]
 
 
+def _bedrijf_domein(b: dict) -> None:
+    """Vervang het e-mailadres door alleen het domein (voor het ophalen van een
+    logo/favicon in de frontend). De e-mail zelf lekt zo niet naar de client."""
+    email = (b.pop("email", None) or "").strip().lower()
+    b["domain"] = email.split("@")[-1] if "@" in email else ""
+
+
 def _scope_gemeenten(user: dict, item: Optional[dict] = None) -> list:
     """Gemeenten waarbinnen deze gebruiker mag handelen (incl. organisatie en item-gemeente)."""
     g = user.get("gemeente")
@@ -1611,6 +1618,7 @@ async def bedrijven_voor_scan(
         b["categorie_match"] = b["id"] in match_ids
         b["historie_count"]  = historie.get(b["id"], 0)
         b["al_aangeboden"]   = b["id"] in already_offered
+        _bedrijf_domein(b)   # e-mail → domein (voor logo), e-mail zelf niet naar client
     # Volgorde: eerder-opgehaald eerst (vaakst bovenaan), dan interesse-match, dan naam
     alle.sort(key=lambda b: (b["al_aangeboden"], -b["historie_count"], not b["categorie_match"], b["naam"]))
     return alle
@@ -2139,6 +2147,7 @@ async def upload(
             match_ids = set()
         for b in alle_bedrijven:
             b["categorie_match"] = b["id"] in match_ids
+            _bedrijf_domein(b)   # e-mail → domein (voor logo), e-mail zelf niet naar client
         alle_bedrijven.sort(key=lambda b: (not b["categorie_match"], b["naam"]))
         item["bedrijven"] = alle_bedrijven
         print(f"[main] Item {item_id}: {label} ({gewicht_kg} kg) [{gemeente}]")
