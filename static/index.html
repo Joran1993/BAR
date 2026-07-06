@@ -190,6 +190,7 @@
     <div id="analyse-progress" class="analyse-progress hidden" aria-hidden="true">
       <div id="analyse-progress-bar" class="analyse-progress-bar"></div>
     </div>
+    <div id="analyse-caption" class="analyse-caption hidden"></div>
     <div id="result-card" class="result-card hidden">
       <div id="result-acceptatie" class="result-acceptatie hidden"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
@@ -207,22 +208,20 @@
       <div id="result-weight" class="result-weight"></div>
       <div id="result-co2" class="result-co2 hidden"></div>
       <div class="field" style="margin-top:10px;">
-        <label style="font-size:0.8rem;">Beschrijving</label>
-        <div class="veld-wis-wrap">
-          <textarea id="result-detail" class="result-detail" rows="3"
-            style="width:100%;font-family:inherit;font-size:16px;line-height:1.5;padding:10px 40px 10px 12px;border:1.5px dashed var(--orange);border-radius:12px;background:#fff;resize:vertical;"></textarea>
-          <button type="button" class="veld-wis veld-wis-top" aria-label="Beschrijving wissen" onclick="_wisVeld('result-detail')">&times;</button>
-        </div>
-      </div>
-      <div class="field" style="margin-top:10px;">
         <label style="font-size:0.8rem;">Staat</label>
-        <select id="result-conditie"
-          style="width:100%;height:46px;font-family:inherit;font-size:16px;padding:0 12px;border:1.5px dashed var(--orange);border-radius:12px;background:#fff;color:var(--ink);">
-          <option value="Nieuw">Nieuw</option>
-          <option value="Zo goed als nieuw">Zo goed als nieuw</option>
-          <option value="Gebruikt">Gebruikt</option>
-          <option value="Reparatie nodig">Reparatie nodig</option>
-        </select>
+        <div class="app-dropdown" id="conditie-dropdown">
+          <input type="hidden" id="result-conditie" value="Gebruikt">
+          <button type="button" class="app-dropdown-trigger" id="conditie-trigger" aria-haspopup="listbox" aria-expanded="false" onclick="_toggleConditie(event)">
+            <span id="conditie-label">Gebruikt</span>
+            <svg class="app-dropdown-caret" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="app-dropdown-menu hidden" id="conditie-menu" role="listbox" aria-label="Staat">
+            <button type="button" class="app-dropdown-optie" role="option" onclick="_kiesConditie('Nieuw')">Nieuw</button>
+            <button type="button" class="app-dropdown-optie" role="option" onclick="_kiesConditie('Zo goed als nieuw')">Zo goed als nieuw</button>
+            <button type="button" class="app-dropdown-optie actief" role="option" onclick="_kiesConditie('Gebruikt')">Gebruikt</button>
+            <button type="button" class="app-dropdown-optie" role="option" onclick="_kiesConditie('Reparatie nodig')">Reparatie nodig</button>
+          </div>
+        </div>
       </div>
       <div class="field" style="margin-top:10px;">
         <label style="font-size:0.8rem;">Eventuele opmerkingen</label>

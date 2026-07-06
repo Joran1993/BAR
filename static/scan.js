@@ -487,16 +487,56 @@ function _wisVeld(id) {
 }
 window._wisVeld = _wisVeld;
 
-["result-label", "result-detail"].forEach(id =>
+["result-label"].forEach(id =>
   document.getElementById(id).addEventListener("input", () => {
     document.getElementById("result-bewerk-opslaan").classList.remove("hidden");
     _updateWisKnop(id);
   }));
-// Conditie (dropdown) en opmerkingen zijn ook bewerkbaar → tonen opslaan-knop
-["result-conditie", "result-opmerking"].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener(id === "result-conditie" ? "change" : "input", () =>
+// Opmerkingen bewerken → toon opslaan-knop
+(function () {
+  const opm = document.getElementById("result-opmerking");
+  if (opm) opm.addEventListener("input", () =>
     document.getElementById("result-bewerk-opslaan").classList.remove("hidden"));
+})();
+
+// ── App-eigen conditie-dropdown (geen systeem-picker) ──────────────────────────
+function _zetConditie(waarde) {
+  const inp = document.getElementById("result-conditie");
+  const lbl = document.getElementById("conditie-label");
+  if (inp) inp.value = waarde;
+  if (lbl) lbl.textContent = waarde;
+  document.querySelectorAll("#conditie-menu .app-dropdown-optie").forEach(o =>
+    o.classList.toggle("actief", o.textContent.trim() === waarde));
+}
+function _sluitConditie() {
+  const dd = document.getElementById("conditie-dropdown");
+  const menu = document.getElementById("conditie-menu");
+  const trig = document.getElementById("conditie-trigger");
+  if (menu) menu.classList.add("hidden");
+  if (dd) dd.classList.remove("open");
+  if (trig) trig.setAttribute("aria-expanded", "false");
+}
+function _toggleConditie(e) {
+  if (e) e.stopPropagation();
+  const dd = document.getElementById("conditie-dropdown");
+  const menu = document.getElementById("conditie-menu");
+  const trig = document.getElementById("conditie-trigger");
+  const open = menu.classList.contains("hidden");   // was verborgen → nu openen
+  menu.classList.toggle("hidden", !open);
+  dd.classList.toggle("open", open);
+  if (trig) trig.setAttribute("aria-expanded", open ? "true" : "false");
+}
+function _kiesConditie(waarde) {
+  _zetConditie(waarde);
+  _sluitConditie();
+  document.getElementById("result-bewerk-opslaan").classList.remove("hidden");
+}
+window._toggleConditie = _toggleConditie;
+window._kiesConditie = _kiesConditie;
+// Klik buiten de dropdown → sluiten
+document.addEventListener("click", (e) => {
+  const dd = document.getElementById("conditie-dropdown");
+  if (dd && !dd.contains(e.target)) _sluitConditie();
 });
 document.getElementById("result-bewerk-opslaan").addEventListener("click", async () => {
   if (!_huidigItemId) return;
@@ -504,7 +544,6 @@ document.getElementById("result-bewerk-opslaan").addEventListener("click", async
   btn.disabled = true; btn.textContent = "Opslaan…";
   const fd = new FormData();
   fd.append("ai_label", document.getElementById("result-label").value.trim());
-  fd.append("ai_detail", document.getElementById("result-detail").value.trim());
   fd.append("conditie", document.getElementById("result-conditie").value);
   fd.append("manual_note", document.getElementById("result-opmerking").value.trim());
   const res = await apiFetch(`/api/items/${_huidigItemId}`, { method: "PATCH", body: fd });
@@ -534,39 +573,64 @@ async function _comprimeer(file, maxPx = 1280, kwaliteit = 0.8) {
   } catch (e) { return file; }   // compressie is best-effort
 }
 
-// ── Voortgangsbalk tijdens analyse ─────────────────────────────────────────────
-// De AI-tijd is niet exact bekend (~2s), dus de balk loopt vlot naar 25%
-// (voorbereiden/uploaden) en daarna rustig naar 90% (AI); bij binnenkomst van
-// het antwoord springt hij naar 100% en verdwijnt. Geeft het gevoel van voortgang.
-let _analyseProgTimer = null;
+// ── Voortgangsbalk + toelichting tijdens analyse ───────────────────────────────
+// De AI-tijd is niet exact bekend (~2,5s). De balk bouwt bewust rustig op en
+// blijft aan het eind heel traag kruipen (i.p.v. parkeren op 90%); bij binnenkomst
+// van het antwoord springt hij naar 100%. Een meelopende toelichting legt uit wat
+// er gebeurt zodat het wachten begrijpelijker voelt.
+let _analyseTimers = [];
+let _capTimer = null;
+const _ANALYSE_STAPPEN = [
+  "Foto verwerken…", "Product herkennen…", "Categorie bepalen…",
+  "Staat inschatten…", "Bijna klaar…",
+];
 function _startAnalyseProgress() {
   const wrap = document.getElementById("analyse-progress");
   const bar = document.getElementById("analyse-progress-bar");
+  const cap = document.getElementById("analyse-caption");
   if (!wrap || !bar) return;
-  clearTimeout(_analyseProgTimer);
+  _analyseTimers.forEach(clearTimeout); _analyseTimers = [];
+  clearInterval(_capTimer);
   wrap.classList.remove("hidden");
   bar.style.transition = "none";
   bar.style.width = "0%";
   void bar.offsetWidth;                      // reset laten 'landen' vóór de animatie
   bar.style.transition = "width 0.3s ease";
-  bar.style.width = "25%";
-  _analyseProgTimer = setTimeout(() => {
-    bar.style.transition = "width 2.2s cubic-bezier(0.15,0.75,0.35,1)";
-    bar.style.width = "90%";
-  }, 320);
+  bar.style.width = "18%";
+  _analyseTimers.push(setTimeout(() => {     // rustige opbouw naar 82%
+    bar.style.transition = "width 3s cubic-bezier(0.1,0.7,0.2,1)";
+    bar.style.width = "82%";
+  }, 300));
+  _analyseTimers.push(setTimeout(() => {     // daarna heel traag blijven kruipen
+    bar.style.transition = "width 7s linear";
+    bar.style.width = "96%";
+  }, 3400));
+  if (cap) {                                 // meelopende toelichting
+    let i = 0;
+    cap.classList.remove("hidden");
+    cap.textContent = _ANALYSE_STAPPEN[0];
+    _capTimer = setInterval(() => {
+      i = Math.min(i + 1, _ANALYSE_STAPPEN.length - 1);
+      cap.textContent = _ANALYSE_STAPPEN[i];
+    }, 950);
+  }
 }
 function _stopAnalyseProgress() {
   const wrap = document.getElementById("analyse-progress");
   const bar = document.getElementById("analyse-progress-bar");
+  const cap = document.getElementById("analyse-caption");
   if (!wrap || !bar) return;
-  clearTimeout(_analyseProgTimer);
-  bar.style.transition = "width 0.2s ease";
+  _analyseTimers.forEach(clearTimeout); _analyseTimers = [];
+  clearInterval(_capTimer);
+  bar.style.transition = "width 0.25s ease";
   bar.style.width = "100%";
+  if (cap) cap.textContent = "Klaar!";
   setTimeout(() => {
     wrap.classList.add("hidden");
+    if (cap) cap.classList.add("hidden");
     bar.style.transition = "none";
     bar.style.width = "0%";
-  }, 300);
+  }, 320);
 }
 
 // ── Analyseren ─────────────────────────────────────────────────────────────────
@@ -575,14 +639,15 @@ analyseBtn.addEventListener("click", async () => {
   analyseBtn.disabled = true;
   _startAnalyseProgress();
   const analyseTxt = document.getElementById("analyse-txt");
-  analyseTxt.textContent = "Voorbereiden…";
+  // De meelopende toelichting onder de balk legt de stappen uit; de knop houdt
+  // één rustige status aan
+  analyseTxt.textContent = "Analyseren…";
   resultCard.classList.add("hidden");
   scanError.classList.add("hidden");
   locatieTxt.classList.add("hidden");
 
   // Alleen compressie — geen locatiebepaling meer (de gemeente volgt het account)
   const gecomprimeerd = await Promise.all(pendingFiles.map(f => _comprimeer(f)));
-  analyseTxt.textContent = "AI analyseert…";
 
   try {
     const fd = new FormData();
@@ -618,15 +683,11 @@ analyseBtn.addEventListener("click", async () => {
     } else {
       co2El.classList.add("hidden");
     }
-    // Beschrijving als AI-suggestie in een bewerkbaar veld
-    document.getElementById("result-detail").value = item.ai_detail || "";
     // Conditie: AI-suggestie voorgevuld, aanpasbaar. Opmerkingen leeg starten.
-    const condSel = document.getElementById("result-conditie");
-    if (condSel) condSel.value = item.conditie || "Gebruikt";
+    _zetConditie(item.conditie || "Gebruikt");
     const opmEl = document.getElementById("result-opmerking");
     if (opmEl) opmEl.value = item.manual_note || "";
     _updateWisKnop("result-label");
-    _updateWisKnop("result-detail");
 
     const acceptatieBadge = document.getElementById("result-acceptatie");
     acceptatieBadge.className = "result-acceptatie hidden";

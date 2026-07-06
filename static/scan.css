@@ -1257,3 +1257,32 @@ body {
   background: linear-gradient(90deg, var(--orange), #f59152);
   transition: width 0.25s ease;
 }
+
+/* ── App-eigen dropdown (i.p.v. de systeem-picker van iOS/Android) ──────────── */
+.app-dropdown { position: relative; }
+.app-dropdown-trigger {
+  width: 100%; height: 46px; display: flex; align-items: center; justify-content: space-between;
+  font-family: inherit; font-size: 16px; padding: 0 12px; text-align: left;
+  border: 1.5px dashed var(--orange); border-radius: 12px; background: #fff; color: var(--ink); cursor: pointer;
+}
+.app-dropdown-caret { color: var(--muted); flex-shrink: 0; transition: transform 0.2s ease; }
+.app-dropdown.open .app-dropdown-caret { transform: rotate(180deg); }
+.app-dropdown-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40;
+  background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 4px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.14);
+  animation: appDropIn 0.14s ease;
+}
+@keyframes appDropIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.app-dropdown-optie {
+  width: 100%; text-align: left; font-family: inherit; font-size: 15px;
+  padding: 11px 12px; border: none; background: none; border-radius: 8px; color: var(--ink); cursor: pointer;
+}
+.app-dropdown-optie:hover, .app-dropdown-optie:active { background: var(--surface); }
+.app-dropdown-optie.actief { font-weight: 700; color: var(--orange); background: rgba(230,112,38,0.08); }
+
+/* ── Toelichting die meeloopt tijdens de analyse ───────────────────────────── */
+.analyse-caption {
+  text-align: center; font-size: 0.82rem; color: var(--muted);
+  margin-top: 8px; min-height: 1.1em; transition: opacity 0.2s ease;
+}
