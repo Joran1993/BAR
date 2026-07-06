@@ -364,7 +364,7 @@ def _estimate_weight_background(item_id: int, photo_url: str):
             # Verklein naar max 1568px (optimale grootte voor beeldanalyse).
             foto_bytes = _verklein_foto(r.content)
             img_b64 = base64.b64encode(foto_bytes).decode()
-            _, _, gewicht_kg, _, _ = ai_module.analyse_photo(img_b64)
+            _, _, gewicht_kg, _, _, _ = ai_module.analyse_photo(img_b64)
             if gewicht_kg is not None:
                 with db.get_cursor() as cur:
                     cur.execute("UPDATE items SET gewicht_kg = %s WHERE id = %s AND gewicht_kg IS NULL",
@@ -2111,13 +2111,14 @@ async def upload(
         _analyse = loop.run_in_executor(None, ai_module.analyse_photo, image_b64, inzamellijst_items)
         _uploads = [loop.run_in_executor(None, storage_module.upload_photo, c) for c in contents]
         _results = await asyncio.gather(_analyse, *_uploads)
-        (label, detail, gewicht_kg, ai_category, geaccepteerd) = _results[0]
+        (label, detail, gewicht_kg, ai_category, geaccepteerd, ai_conditie) = _results[0]
         photo_url_list = list(_results[1:])
         photo_url = photo_url_list[0]
 
         item_id = db.insert_item(photo_url, label, detail, gewicht_kg, gemeente, True,
                                  uploaded_by=user["id"],
-                                 photo_urls=_json.dumps(photo_url_list) if len(photo_url_list) > 1 else None)
+                                 photo_urls=_json.dumps(photo_url_list) if len(photo_url_list) > 1 else None,
+                                 conditie=ai_conditie)
         # Gebruik AI-categorie tenzij handmatig overschreven
         final_category = category if category else ai_category
         if manual_note or final_category:
@@ -2266,6 +2267,7 @@ async def update_item(
     category: Optional[str] = Form(None),
     ai_detail: Optional[str] = Form(None),
     ai_label: Optional[str] = Form(None),
+    conditie: Optional[str] = Form(None),
     user=Depends(get_current_user),
 ):
     item = db.get_item(item_id)
@@ -2273,7 +2275,7 @@ async def update_item(
         raise HTTPException(status_code=404)
     if not _mag_item_beheren(user, item):
         raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
-    db.update_item(item_id, manual_note, category, ai_detail=ai_detail, ai_label=ai_label)
+    db.update_item(item_id, manual_note, category, ai_detail=ai_detail, ai_label=ai_label, conditie=conditie)
     fs.sync_item(db.get_item(item_id))   # aangepaste titel/beschrijving ook naar de app-kant
     _invalideer_item_caches(item_id, item)
     cache_module.delete(f"items:{_gemeenten_expand(user.get('gemeente')) or user.get('gemeente')}:0:{user['id']}",
@@ -2817,7 +2819,7 @@ async def kiosk_scan(request: Request, file: UploadFile = File(...), gemeente: s
         inzamellijst_items = [e["product"] for e in db.get_inzamellijst_alle()]
 
     loop = asyncio.get_event_loop()
-    label, detail, gewicht_kg, category, geaccepteerd = await loop.run_in_executor(
+    label, detail, gewicht_kg, category, geaccepteerd, _conditie = await loop.run_in_executor(
         None, ai_module.analyse_photo, image_b64, inzamellijst_items
     )
 

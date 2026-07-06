@@ -214,8 +214,23 @@
           <button type="button" class="veld-wis veld-wis-top" aria-label="Beschrijving wissen" onclick="_wisVeld('result-detail')">&times;</button>
         </div>
       </div>
+      <div class="field" style="margin-top:10px;">
+        <label style="font-size:0.8rem;">Staat</label>
+        <select id="result-conditie"
+          style="width:100%;height:46px;font-family:inherit;font-size:16px;padding:0 12px;border:1.5px dashed var(--orange);border-radius:12px;background:#fff;color:var(--ink);">
+          <option value="Nieuw">Nieuw</option>
+          <option value="Zo goed als nieuw">Zo goed als nieuw</option>
+          <option value="Gebruikt">Gebruikt</option>
+          <option value="Reparatie nodig">Reparatie nodig</option>
+        </select>
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <label style="font-size:0.8rem;">Eventuele opmerkingen</label>
+        <textarea id="result-opmerking" rows="2" placeholder="Bijv. lichte gebruikssporen, kleine beschadiging…"
+          style="width:100%;font-family:inherit;font-size:16px;line-height:1.5;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:#fff;resize:vertical;"></textarea>
+      </div>
       <button id="result-bewerk-opslaan" class="btn btn-primary hidden" style="width:100%;margin-top:10px;">✓ Aanpassing opslaan</button>
-      <p style="font-size:0.8rem;color:var(--muted);margin-top:8px;text-align:center;">Tik op een veld om de tekst te verbeteren — de stippellijn betekent: bewerkbaar.</p>
+      <p style="font-size:0.8rem;color:var(--muted);margin-top:8px;text-align:center;">De stippellijn betekent: AI-suggestie die je kunt aanpassen.</p>
     </div>
     <div id="scan-error" class="scan-error hidden"></div>
     <div id="bedrijven-card" class="result-card hidden" style="border-top-color: #6DC4CE;">

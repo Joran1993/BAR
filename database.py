@@ -210,6 +210,7 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_ubp_user ON user_bedrijf_prioriteit(user_id, positie)")
         cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
         cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS photo_urls TEXT")
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS conditie TEXT")   # staat (Nieuw/Gebruikt/…)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_items_uploaded_by ON items(uploaded_by)")
         # Hete filter-/joinpaden die tot nu toe seq scans waren (worden pijnlijk bij groei)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_items_gemeente ON items(gemeente)")
@@ -587,17 +588,19 @@ def insert_item(photo_url: Optional[str], ai_label: Optional[str],
                 gemeente: Optional[str] = None,
                 geaccepteerd: Optional[bool] = None,
                 uploaded_by: Optional[int] = None,
-                photo_urls: Optional[str] = None) -> int:
+                photo_urls: Optional[str] = None,
+                conditie: Optional[str] = None) -> int:
     with get_cursor() as cur:
         cur.execute(
-            "INSERT INTO items (timestamp, photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-            (datetime.now(timezone.utc).isoformat(timespec="seconds"), photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by),
+            "INSERT INTO items (timestamp, photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by, conditie) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            (datetime.now(timezone.utc).isoformat(timespec="seconds"), photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by, conditie),
         )
         return cur.fetchone()["id"]
 
 
 def update_item(item_id: int, manual_note: Optional[str], category: Optional[str],
-                ai_detail: Optional[str] = None, ai_label: Optional[str] = None):
+                ai_detail: Optional[str] = None, ai_label: Optional[str] = None,
+                conditie: Optional[str] = None):
     """Werk alleen meegegeven velden bij (None = niet aanraken, '' = leegmaken)."""
     velden, params = [], []
     if manual_note is not None:
@@ -608,6 +611,8 @@ def update_item(item_id: int, manual_note: Optional[str], category: Optional[str
         velden.append("ai_detail = %s"); params.append(ai_detail)
     if ai_label is not None:
         velden.append("ai_label = %s"); params.append(ai_label)
+    if conditie is not None:
+        velden.append("conditie = %s"); params.append(conditie)
     if not velden:
         return
     with get_cursor() as cur:
@@ -617,7 +622,7 @@ def update_item(item_id: int, manual_note: Optional[str], category: Optional[str
 def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None, own_user_id: Optional[int] = None, all_aanbiedingen: bool = False, alleen_eigen: bool = False):
     with get_cursor() as cur:
         # NB: lijsten tonen geen zacht-verwijderde items; stats/dashboard tellen ze wél mee
-        base = "SELECT id, timestamp, photo_url, photo_url_thumb, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items"
+        base = "SELECT id, timestamp, photo_url, photo_url_thumb, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by, conditie FROM items"
         actief = "NOT COALESCE(verwijderd, FALSE)"
         if alleen_eigen and own_user_id:
             # Strikt eigen uploads — bedrijfsaccounts mogen niet gemeente-breed meekijken
@@ -723,7 +728,7 @@ def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, 
 def get_item(item_id: int, include_photo: bool = False):
     with get_cursor() as cur:
         cur.execute(
-            "SELECT id, timestamp, photo_url, photo_url_thumb, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by FROM items WHERE id = %s",
+            "SELECT id, timestamp, photo_url, photo_url_thumb, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by, conditie FROM items WHERE id = %s",
             (item_id,),
         )
         row = cur.fetchone()

@@ -492,6 +492,12 @@ window._wisVeld = _wisVeld;
     document.getElementById("result-bewerk-opslaan").classList.remove("hidden");
     _updateWisKnop(id);
   }));
+// Conditie (dropdown) en opmerkingen zijn ook bewerkbaar → tonen opslaan-knop
+["result-conditie", "result-opmerking"].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener(id === "result-conditie" ? "change" : "input", () =>
+    document.getElementById("result-bewerk-opslaan").classList.remove("hidden"));
+});
 document.getElementById("result-bewerk-opslaan").addEventListener("click", async () => {
   if (!_huidigItemId) return;
   const btn = document.getElementById("result-bewerk-opslaan");
@@ -499,6 +505,8 @@ document.getElementById("result-bewerk-opslaan").addEventListener("click", async
   const fd = new FormData();
   fd.append("ai_label", document.getElementById("result-label").value.trim());
   fd.append("ai_detail", document.getElementById("result-detail").value.trim());
+  fd.append("conditie", document.getElementById("result-conditie").value);
+  fd.append("manual_note", document.getElementById("result-opmerking").value.trim());
   const res = await apiFetch(`/api/items/${_huidigItemId}`, { method: "PATCH", body: fd });
   btn.disabled = false;
   if (res && res.ok) {
@@ -612,6 +620,11 @@ analyseBtn.addEventListener("click", async () => {
     }
     // Beschrijving als AI-suggestie in een bewerkbaar veld
     document.getElementById("result-detail").value = item.ai_detail || "";
+    // Conditie: AI-suggestie voorgevuld, aanpasbaar. Opmerkingen leeg starten.
+    const condSel = document.getElementById("result-conditie");
+    if (condSel) condSel.value = item.conditie || "Gebruikt";
+    const opmEl = document.getElementById("result-opmerking");
+    if (opmEl) opmEl.value = item.manual_note || "";
     _updateWisKnop("result-label");
     _updateWisKnop("result-detail");
 
