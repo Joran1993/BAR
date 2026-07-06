@@ -556,10 +556,46 @@ async function _comprimeer(file, maxPx = 1280, kwaliteit = 0.8) {
   } catch (e) { return file; }   // compressie is best-effort
 }
 
+// ── Voortgangsbalk tijdens analyse ─────────────────────────────────────────────
+// De AI-tijd is niet exact bekend (~2s), dus de balk loopt vlot naar 25%
+// (voorbereiden/uploaden) en daarna rustig naar 90% (AI); bij binnenkomst van
+// het antwoord springt hij naar 100% en verdwijnt. Geeft het gevoel van voortgang.
+let _analyseProgTimer = null;
+function _startAnalyseProgress() {
+  const wrap = document.getElementById("analyse-progress");
+  const bar = document.getElementById("analyse-progress-bar");
+  if (!wrap || !bar) return;
+  clearTimeout(_analyseProgTimer);
+  wrap.classList.remove("hidden");
+  bar.style.transition = "none";
+  bar.style.width = "0%";
+  void bar.offsetWidth;                      // reset laten 'landen' vóór de animatie
+  bar.style.transition = "width 0.3s ease";
+  bar.style.width = "25%";
+  _analyseProgTimer = setTimeout(() => {
+    bar.style.transition = "width 2.2s cubic-bezier(0.15,0.75,0.35,1)";
+    bar.style.width = "90%";
+  }, 320);
+}
+function _stopAnalyseProgress() {
+  const wrap = document.getElementById("analyse-progress");
+  const bar = document.getElementById("analyse-progress-bar");
+  if (!wrap || !bar) return;
+  clearTimeout(_analyseProgTimer);
+  bar.style.transition = "width 0.2s ease";
+  bar.style.width = "100%";
+  setTimeout(() => {
+    wrap.classList.add("hidden");
+    bar.style.transition = "none";
+    bar.style.width = "0%";
+  }, 300);
+}
+
 // ── Analyseren ─────────────────────────────────────────────────────────────────
 analyseBtn.addEventListener("click", async () => {
   if (!pendingFiles.length) return;
   analyseBtn.disabled = true;
+  _startAnalyseProgress();
   const analyseTxt = document.getElementById("analyse-txt");
   analyseTxt.textContent = "Voorbereiden…";
   resultCard.classList.add("hidden");
@@ -637,6 +673,7 @@ analyseBtn.addEventListener("click", async () => {
     scanError.textContent = "Fout: " + err.message;
     scanError.classList.remove("hidden");
   } finally {
+    _stopAnalyseProgress();
     analyseBtn.disabled = false;
     analyseTxt.textContent = "Analyseren \u0026 opslaan";
   }

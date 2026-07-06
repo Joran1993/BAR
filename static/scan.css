@@ -1246,3 +1246,14 @@ body {
 .veld-wis.zichtbaar { display: flex; }
 .veld-wis:hover, .veld-wis:active { color: #8a8a90; }
 .veld-wis-top { top: 8px; transform: none; }   /* meerregelig veld: bovenaan uitlijnen */
+
+/* ── Voortgangsbalk tijdens analyse ────────────────────────────────────────── */
+.analyse-progress {
+  height: 6px; margin: 10px 2px 0; border-radius: 100px;
+  background: rgba(230, 112, 38, 0.15); overflow: hidden;
+}
+.analyse-progress-bar {
+  height: 100%; width: 0; border-radius: 100px;
+  background: linear-gradient(90deg, var(--orange), #f59152);
+  transition: width 0.25s ease;
+}
