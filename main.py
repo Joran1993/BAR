@@ -292,6 +292,8 @@ _RINGTWO_EMAIL_BEDRIJF = {
     "daan@opwaarts.nu":              38,   # Opwaarts (Almere)
     "martin@behoudenvaart.net":      23,   # SitY academie
     "info@sityacademy.nl":           23,   # SitY academie (Firebase-account)
+    "info@degezel.nl":               21,   # De Gezel
+    "sjorsklerk@gmail.com":          21,   # De Gezel (Sjors, Firebase-account)
 }
 
 # Gemeente → standaard afnemer als er geen Ringtweelijst is

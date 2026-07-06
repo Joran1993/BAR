@@ -382,8 +382,9 @@ function _renderBedrijvenLijst(itemId, external) {
         ${(b.contactpersoon || b.telefoon) ? `<span style="display:block;font-size:0.8rem;color:var(--muted);margin-top:2px;">${b.contactpersoon ? _esc(b.contactpersoon) : ""}${b.telefoon ? ` · ${_esc(b.telefoon)}` : ""}</span>` : ""}
       </span>
     </label>`).join("")}
-    <button id="btn-aanbied-selectie" class="btn btn-primary" style="width:100%;margin-top:14px;" onclick="aanbiedenAanSelectie(${itemId})">
-      Aanbieden aan geselecteerde partijen
+    <button id="btn-aanbied-selectie" class="btn btn-primary cta-elevated" style="width:100%;margin-top:16px;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;" onclick="aanbiedenAanSelectie(${itemId})">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+      Aanbieden
     </button>`;
   bedrijvenCard.classList.remove("hidden");
 }
@@ -391,7 +392,6 @@ function _renderBedrijvenLijst(itemId, external) {
 
 // ── Camera ─────────────────────────────────────────────────────────────────────
 const cameraInput = document.getElementById("camera-input");
-const previewWrap   = document.getElementById("preview-wrap");
 const previewThumbs = document.getElementById("preview-thumbs");
 const addPhotoInput = document.getElementById("add-photo-input");
 const analyseBtn  = document.getElementById("analyse-btn");
@@ -406,43 +406,97 @@ function _voegFotosToe(fileList) {
     if (pendingFiles.length >= MAX_FOTOS) break;
     pendingFiles.push(f);
   }
-  if (!pendingFiles.length) return;
-  scanHero.classList.add("hidden");
-  previewWrap.classList.remove("hidden");
+  // Analyse-knop staat altijd op de fotopagina; hij is alleen uitgeschakeld
+  // zolang er nog geen foto is toegevoegd.
+  _renderThumbs();
   analyseBtn.classList.remove("hidden");
+  analyseBtn.disabled = pendingFiles.length === 0;
   resultCard.classList.add("hidden");
   scanError.classList.add("hidden");
-  _renderThumbs();
 }
 
+// Fotobron kiezen. Op Android geeft het OS geen keuze (het springt direct naar
+// de galerij), dus tonen we daar een eigen NL menu. Op iOS toont het OS zelf al
+// een keuzemenu (camera + bibliotheek), dus openen we daar direct de invoer.
+const _isAndroid = /Android/i.test(navigator.userAgent || "");
+function _fotoToevoegen() {
+  if (pendingFiles.length >= MAX_FOTOS) return;
+  if (_isAndroid) _openFotoKeuze();
+  else addPhotoInput.click();
+}
+function _openFotoKeuze() {
+  const el = document.getElementById("foto-keuze");
+  el.classList.remove("hidden");
+  requestAnimationFrame(() => el.classList.add("open"));
+}
+function _sluitFotoKeuze() {
+  const el = document.getElementById("foto-keuze");
+  el.classList.remove("open");
+  setTimeout(() => el.classList.add("hidden"), 240);
+}
+function _kiesFotoBron(bron) {
+  _sluitFotoKeuze();
+  setTimeout(() => {
+    if (bron === "camera") cameraInput.click();   // capture → direct de camera
+    else addPhotoInput.click();                    // zonder capture → galerij
+  }, 200);
+}
+window._sluitFotoKeuze = _sluitFotoKeuze;
+window._kiesFotoBron = _kiesFotoBron;
+
+// Tik op de bol op de hoofdpagina → naar de fotopagina (daar pas foto's toevoegen)
+function _gaNaarFotos() {
+  document.getElementById("scan-hero").classList.add("hidden");
+  document.getElementById("foto-pagina").classList.remove("hidden");
+  resultCard.classList.add("hidden");
+  document.getElementById("bedrijven-card").classList.add("hidden");
+  _renderThumbs();
+  analyseBtn.classList.remove("hidden");   // knop staat er meteen (uitgeschakeld tot er een foto is)
+  analyseBtn.disabled = pendingFiles.length === 0;
+}
+window._gaNaarFotos = _gaNaarFotos;
+
 function _renderThumbs() {
+  // Toon altijd alle vier de vakken (2×2): gevulde met foto + wisknop,
+  // lege als tikbare "+"-vakken. Zo is meteen duidelijk dat er ruimte is
+  // voor vier foto's en blijft het geheel netjes in het midden uitgelijnd.
   previewThumbs.innerHTML = "";
-  pendingFiles.forEach((f, i) => {
-    const cell = document.createElement("div");
-    cell.className = "preview-thumb";
-    const img = document.createElement("img");
-    img.src = URL.createObjectURL(f);
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "preview-thumb-del";
-    del.innerHTML = "&times;";
-    del.setAttribute("aria-label", "Verwijder foto");
-    del.addEventListener("click", () => {
-      pendingFiles.splice(i, 1);
-      if (!pendingFiles.length) resetScan(); else _renderThumbs();
-    });
-    cell.appendChild(img);
-    cell.appendChild(del);
-    previewThumbs.appendChild(cell);
-  });
-  if (pendingFiles.length < MAX_FOTOS) {
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "preview-thumb-add";
-    add.innerHTML = "+";
-    add.setAttribute("aria-label", "Foto toevoegen");
-    add.addEventListener("click", () => addPhotoInput.click());
-    previewThumbs.appendChild(add);
+  for (let i = 0; i < MAX_FOTOS; i++) {
+    const f = pendingFiles[i];
+    if (f) {
+      const cell = document.createElement("div");
+      cell.className = "preview-thumb";
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(f);
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "preview-thumb-del";
+      del.innerHTML = "&times;";
+      del.setAttribute("aria-label", "Verwijder foto");
+      del.addEventListener("click", () => {
+        pendingFiles.splice(i, 1);
+        _renderThumbs();
+        analyseBtn.disabled = pendingFiles.length === 0;
+      });
+      cell.appendChild(img);
+      cell.appendChild(del);
+      previewThumbs.appendChild(cell);
+    } else {
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "preview-thumb-add";
+      if (i === 0) {
+        // Eerste lege vak: een foto-icoon i.p.v. "+"
+        add.classList.add("eerste");
+        add.innerHTML = `<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
+      } else {
+        add.innerHTML = "+";
+      }
+      add.setAttribute("aria-label", "Foto toevoegen");
+      // Android: eigen NL menu; iOS: direct het OS-menu
+      add.addEventListener("click", () => _fotoToevoegen());
+      previewThumbs.appendChild(add);
+    }
   }
 }
 
@@ -453,9 +507,10 @@ function resetScan() {
   pendingFiles = [];
   cameraInput.value = "";
   if (addPhotoInput) addPhotoInput.value = "";
-  previewThumbs.innerHTML = "";
-  scanHero.classList.remove("hidden");
-  previewWrap.classList.add("hidden");
+  // Terug naar de hoofdpagina met de bol; de fotopagina verdwijnt
+  document.getElementById("scan-hero").classList.remove("hidden");
+  document.getElementById("foto-pagina").classList.add("hidden");
+  _renderThumbs();                 // vakken alvast leeg klaarzetten
   analyseBtn.classList.add("hidden");
   resultCard.classList.add("hidden");
   scanError.classList.add("hidden");
@@ -661,10 +716,10 @@ analyseBtn.addEventListener("click", async () => {
       pendingFiles = [];
       cameraInput.value = "";
       if (addPhotoInput) addPhotoInput.value = "";
-      previewThumbs.innerHTML = "";
-      previewWrap.classList.add("hidden");
+      _renderThumbs();
       analyseBtn.classList.add("hidden");
-      scanHero.classList.remove("hidden");
+      document.getElementById("scan-hero").classList.remove("hidden");
+      document.getElementById("foto-pagina").classList.add("hidden");
       (window.uxToast || alert)("Geen verbinding — scan bewaard, wordt automatisch verstuurd", "info");
       return;
     }
@@ -710,16 +765,19 @@ analyseBtn.addEventListener("click", async () => {
     pendingFiles = [];
     cameraInput.value = "";
     if (addPhotoInput) addPhotoInput.value = "";
-    previewThumbs.innerHTML = "";
-    previewWrap.classList.add("hidden");
+    _renderThumbs();
     analyseBtn.classList.add("hidden");
+    // Toon alleen het resultaat + bedrijvenlijst — geen bol/Reacties bovenaan.
+    // De bol komt terug via resetScan() zodra het aanbod is verstuurd (sluitSucces).
+    document.getElementById("scan-hero").classList.add("hidden");
+    document.getElementById("foto-pagina").classList.add("hidden");
   } catch (err) {
     scanError.textContent = "Fout: " + err.message;
     scanError.classList.remove("hidden");
   } finally {
     _stopAnalyseProgress();
     analyseBtn.disabled = false;
-    analyseTxt.textContent = "Analyseren \u0026 opslaan";
+    analyseTxt.textContent = "Analyseren en aanbieden";
   }
 });
 

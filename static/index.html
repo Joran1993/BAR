@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/base.css?v=6">
-  <link rel="stylesheet" href="/static/scan.css?v=29">
+  <link rel="stylesheet" href="/static/scan.css?v=30">
   <link rel="stylesheet" href="/brand.css">
   <script>
     (function() {
@@ -167,25 +167,54 @@
     <div class="scan-hero" id="scan-hero">
       <p class="scan-hero-intro">Check hier wie jouw overgebleven spullen wil ophalen</p>
       <p class="scan-hero-title">Wat wil je aanbieden?</p>
-      <label class="scan-circle-btn" id="camera-label">
-        <input type="file" id="camera-input" accept="image/*" capture="environment" multiple>
+      <button type="button" class="scan-circle-btn" id="scan-bol" onclick="_gaNaarFotos()" aria-label="Foto's toevoegen">
         <div class="scan-circle-inner">
           <img src="/static/scan-illustratie.webp" alt="" class="scan-illustratie" loading="lazy" decoding="async">
         </div>
-      </label>
+      </button>
       <button class="scan-hero-reacties-btn" onclick="gaNaarReacties()">Reacties</button>
       <button onclick="onboardingOpen()" style="display:block;width:100%;margin-top:10px;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.8rem;color:var(--muted);padding:4px;text-align:center;">Hoe werkt de app? →</button>
     </div>
 
-    <div id="preview-wrap" class="preview-wrap hidden">
+    <!-- Fotopagina: verschijnt pas nadat op de bol is getikt -->
+    <div id="foto-pagina" class="foto-pagina hidden">
+      <button type="button" class="foto-pagina-terug" onclick="resetScan()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        Terug
+      </button>
+      <p class="foto-pagina-titel">Voeg foto's toe</p>
       <div id="preview-thumbs" class="preview-thumbs"></div>
-      <p class="preview-hint">Tot 4 foto's — tik op + om er meer toe te voegen</p>
+      <p class="preview-hint">Tik op een vak om een foto te maken of te kiezen — tot 4 foto's</p>
+      <p class="preview-eerlijk">*Geven de foto's een eerlijk beeld? Ontvangers moeten soms spullen alsnog weigeren als er schade of vlekken zijn.</p>
     </div>
-    <input type="file" id="add-photo-input" accept="image/*" capture="environment" multiple
+
+    <!-- camera-input mét capture = direct de camera; add-photo-input zónder capture
+         = bibliotheek/album (iOS toont dan zelf het OS-menu). -->
+    <input type="file" id="camera-input" accept="image/*" capture="environment" multiple
            style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px;">
+    <input type="file" id="add-photo-input" accept="image/*" multiple
+           style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px;">
+
+    <!-- Eigen NL keuzemenu — alleen op Android (daar geeft het OS geen keuze) -->
+    <div id="foto-keuze" class="foto-keuze hidden">
+      <div class="foto-keuze-overlay" onclick="_sluitFotoKeuze()"></div>
+      <div class="foto-keuze-sheet" role="dialog" aria-label="Foto toevoegen">
+        <p class="foto-keuze-titel">Foto toevoegen</p>
+        <button type="button" class="foto-keuze-optie" onclick="_kiesFotoBron('camera')">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          <span>Foto maken</span>
+        </button>
+        <button type="button" class="foto-keuze-optie" onclick="_kiesFotoBron('bibliotheek')">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          <span>Kies uit galerij</span>
+        </button>
+        <button type="button" class="foto-keuze-annuleer" onclick="_sluitFotoKeuze()">Annuleren</button>
+      </div>
+    </div>
     <p id="locatie-txt" class="locatie-txt hidden"></p>
-    <button id="analyse-btn" class="btn btn-primary analyse-btn hidden">
-      <span id="analyse-txt">Analyseren &amp; opslaan</span>
+    <button id="analyse-btn" class="btn btn-primary cta-elevated analyse-btn hidden">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5 10.1 7.6 12 3z"/><path d="M19 15l.7 1.8L21.5 17.5 19.7 18.2 19 20l-.7-1.8L16.5 17.5 18.3 16.8 19 15z"/></svg>
+      <span id="analyse-txt">Analyseren en aanbieden</span>
     </button>
     <div id="analyse-progress" class="analyse-progress hidden" aria-hidden="true">
       <div id="analyse-progress-bar" class="analyse-progress-bar"></div>
@@ -193,10 +222,6 @@
     <div id="analyse-caption" class="analyse-caption hidden"></div>
     <div id="result-card" class="result-card hidden">
       <div id="result-acceptatie" class="result-acceptatie hidden"></div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-        <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">AI-suggestie — controleer en pas aan waar nodig</span>
-      </div>
       <div class="field" style="margin-bottom:10px;">
         <label style="font-size:0.8rem;">Titel</label>
         <div class="veld-wis-wrap">
@@ -605,7 +630,7 @@
     </div>
   </div>
   <script src="/static/cirqo-core.js?v=1"></script>
-    <script src="/static/scan.js?v=104"></script>
+    <script src="/static/scan.js?v=105"></script>
 
 
   <div id="ob-backdrop"></div>

@@ -131,6 +131,8 @@ body {
   display: block;
   width: 170px;
   height: 170px;
+  border: none;
+  padding: 0;
   border-radius: 50%;
   background: transparent;
   cursor: pointer;
@@ -177,36 +179,127 @@ body {
 
 .preview-wrap {
   position: relative;
-  margin: 16px auto;
+  margin: 24px auto 8px;
   max-width: 480px;
+  padding: 0 16px;
 }
 .preview-thumbs {
-  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(2, 108px);
+  gap: 12px;
+  justify-content: center;
 }
 .preview-thumb {
-  position: relative; width: 96px; height: 96px;
-  border-radius: 10px; overflow: hidden;
+  position: relative; width: 108px; height: 108px;
+  border-radius: 16px; overflow: hidden; background: #fff;
+  box-shadow: 0 8px 18px rgba(40,28,16,0.16), 0 1px 3px rgba(0,0,0,0.10);
+  animation: thumbPop .28s cubic-bezier(.2,.82,.26,1) backwards;
 }
 .preview-thumb img {
   width: 100%; height: 100%; object-fit: cover; display: block;
 }
 .preview-thumb-del {
-  position: absolute; top: 4px; right: 4px;
+  position: absolute; top: 5px; right: 5px;
   width: 24px; height: 24px;
   background: rgba(0,0,0,0.55); border: none; border-radius: 50%;
   color: #fff; font-size: 1rem; line-height: 1; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(2px);
 }
 .preview-thumb-add {
-  width: 96px; height: 96px; border-radius: 10px;
-  border: 2px dashed var(--border); background: var(--surface);
-  color: var(--muted); font-size: 1.8rem; line-height: 1; cursor: pointer;
+  width: 108px; height: 108px; border-radius: 16px;
+  border: 2px dashed #e0b89c; background: #fff8f2;
+  color: var(--orange); font-size: 2rem; font-weight: 300; line-height: 1; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  transition: transform .12s ease;
+  box-shadow: 0 4px 12px rgba(40,28,16,0.07);
+  transition: transform .12s ease, border-color .15s ease, background .15s ease;
 }
-.preview-thumb-add:active { transform: scale(.96); }
+.preview-thumb-add:active { transform: scale(.96); background: #ffefe1; }
+@keyframes thumbPop {
+  from { opacity: 0; transform: scale(.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
 .preview-hint {
-  font-size: 0.8rem; color: var(--muted); text-align: center; margin: 8px 0 0;
+  font-size: 0.8rem; color: var(--muted); text-align: center; margin: 12px 0 0;
+}
+.preview-eerlijk {
+  max-width: 340px;
+  margin: 12px auto 0;
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.45;
+  color: #e14b30;
+  text-wrap: balance;
+}
+/* ── Fotopagina (verschijnt na tik op de bol) ────────────────────────────────── */
+.foto-pagina {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 24px 22px;
+}
+.foto-pagina-terug {
+  align-self: flex-start;
+  display: flex; align-items: center; gap: 4px;
+  background: none; border: none; cursor: pointer;
+  font-family: inherit; font-weight: 700; font-size: 0.9rem;
+  color: var(--muted); padding: 6px 4px 14px;
+}
+.foto-pagina-terug svg { width: 18px; height: 18px; }
+.foto-pagina-terug:active { opacity: 0.6; }
+.foto-pagina-titel {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.3rem; font-weight: 600; color: #444;
+  margin: 0 0 22px; text-align: center;
+}
+.foto-pagina .preview-eerlijk { margin-bottom: 4px; }
+
+/* ── Fotobron-keuze: eigen NL bottomsheet (Android) ──────────────────────────── */
+.foto-keuze { position: fixed; inset: 0; z-index: 900; }
+.foto-keuze.hidden { display: none; }
+.foto-keuze-overlay {
+  position: absolute; inset: 0; background: rgba(18,24,18,0.42);
+  opacity: 0; transition: opacity .24s ease;
+}
+.foto-keuze.open .foto-keuze-overlay { opacity: 1; }
+.foto-keuze-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  max-width: 520px; margin: 0 auto;
+  background: #fff; border-radius: 24px 24px 0 0;
+  padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 18px);
+  box-shadow: 0 -16px 48px rgba(0,0,0,0.22);
+  transform: translateY(110%);
+  transition: transform .28s cubic-bezier(.22,.8,.36,1);
+}
+.foto-keuze.open .foto-keuze-sheet { transform: translateY(0); }
+.foto-keuze-sheet::before {
+  content: ""; display: block; width: 40px; height: 4px; border-radius: 100px;
+  background: #dcdce0; margin: 4px auto 14px;
+}
+.foto-keuze-titel {
+  text-align: center; font-weight: 800; color: var(--ink);
+  font-size: 0.95rem; margin: 0 0 12px;
+}
+.foto-keuze-optie {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 15px 16px; margin-bottom: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; cursor: pointer;
+  font-family: inherit; font-size: 0.98rem; font-weight: 700; color: var(--ink);
+  transition: transform .1s ease, background .15s ease;
+}
+.foto-keuze-optie:active { transform: scale(.98); background: #efece7; }
+.foto-keuze-optie svg {
+  width: 24px; height: 24px; stroke: var(--orange); fill: none; flex-shrink: 0;
+}
+.foto-keuze-annuleer {
+  width: 100%; padding: 14px; margin-top: 4px;
+  background: none; border: none; cursor: pointer;
+  font-family: inherit; font-size: 0.92rem; font-weight: 700; color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .foto-keuze-sheet, .foto-keuze-overlay { transition: none; }
 }
 
 .locatie-txt {
@@ -217,8 +310,35 @@ body {
 }
 
 .analyse-btn {
-  margin: 0 16px 16px;
+  margin: 6px 16px 18px;
   width: calc(100% - 32px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 17px;
+  font-size: 0.84rem;
+}
+.analyse-btn svg { flex-shrink: 0; }
+
+/* Verhoogde primaire CTA — gradient + diepte, gedeeld door analyse- en aanbied-knop.
+   Volledig merk-kleur-gestuurd via --orange/--orange2, zodat elke tenant (bij deze
+   groen) automatisch klopt. Eerste declaraties zijn nette fallbacks voor browsers
+   zonder color-mix; de tweede verrijkt met een lichte top + gekleurde gloed. */
+.cta-elevated {
+  /* Vlak vlak met alleen schaduw búiten de knop — geen inner-highlight/glans,
+     dus geen bolle uitstraling. Subtiel top→bodem verloop houdt lichte diepte. */
+  background: var(--orange);
+  background: linear-gradient(180deg, var(--orange) 0%, var(--orange2) 100%);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.16);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.13),
+              0 8px 22px color-mix(in srgb, var(--orange) 42%, transparent);
+}
+.cta-elevated:hover {
+  background: var(--orange2);
+}
+.cta-elevated:disabled {
+  box-shadow: none;
 }
 
 .result-card {
