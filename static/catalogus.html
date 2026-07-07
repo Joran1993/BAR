@@ -11,16 +11,35 @@
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"></noscript>
-  <link rel="stylesheet" href="/static/catalogus.css?v=2">
+  <link rel="stylesheet" href="/static/catalogus.css?v=3">
   <link rel="stylesheet" href="/brand.css">
   <link rel="stylesheet" href="/static/ux.css?v=2">
 </head>
 <body>
 
   <header class="cat-hdr">
+    <button type="button" class="cat-terug" onclick="terugNaarDashboard()" aria-label="Terug naar dashboard">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      <span>Dashboard</span>
+    </button>
     <img src="/static/bouwkringloop-logo.jpg" class="cat-logo" alt="De Bouwkringloop">
     <p class="cat-hdr-sub">Ingezameld bouwmateriaal · Milieustraat Almere-Buiten</p>
   </header>
+  <script>
+    // Terug naar het dashboard. Kwam de gebruiker vanuit het (embedded) dashboard,
+    // ga dan gewoon terug in de historie; anders naar de dashboardpagina zelf
+    // (met behoud van de gemeente-scope uit de URL).
+    function terugNaarDashboard() {
+      try {
+        if ((document.referrer || '').indexOf('/dashboard') !== -1 && window.history.length > 1) {
+          window.history.back();
+          return;
+        }
+      } catch (e) {}
+      var g = new URLSearchParams(location.search).get('gemeente');
+      location.href = '/dashboard' + (g ? '?gemeente=' + encodeURIComponent(g) : '');
+    }
+  </script>
 
   <div class="cat-filters">
     <input type="search" id="zoek" placeholder="Zoeken…" oninput="filterItems()">

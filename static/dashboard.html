@@ -393,7 +393,6 @@
       'kringloop giessenlanden arkel':   '/static/logos/kringloopgiessenlanden.png',
       'kringloop graafstroom goudriaan': '/static/logos/kringloopgoudriaan.png',
       'stichting vluchtelingenwerk':     '/static/logos/vluchtelingenwerk.png',
-      'terugwinning':                    '/static/logos/waardlanden.png',
     };
     let _nwB = [], _nwCats = [], _nwSel = null, _nwCat = null;
 
@@ -706,13 +705,15 @@
       let hubBron = _msNamen[hub.naam] ? _msNamen[hub.naam].replace(/^Milieustraat /, '') : (hub.naam || '');
       if (hub.naam === 'waardlanden' || (!gemeente && Object.keys(_msNamen).length)) hubBron = 'Alle milieustraten';
       const hubNaam = hubBron.length > 24 ? hubBron.slice(0, 23) + '…' : hubBron;
+      // Lange gemeentenamen iets kleiner zodat ze grotendeels binnen de hub blijven
+      const hubNaamFs = hubNaam.length > 18 ? 10 : (hubNaam.length > 14 ? 11 : 12);
       const hubNode = `<g class="nw-hub">` +
         `<circle cx="${cx}" cy="${cy}" r="${hubR + 6}" fill="none" stroke="#e67026" stroke-width="1.5" stroke-opacity="0.35">` +
           `<animate attributeName="r" values="${hubR + 6};${hubR + 13};${hubR + 6}" dur="3.2s" repeatCount="indefinite"/>` +
           `<animate attributeName="stroke-opacity" values="0.35;0.06;0.35" dur="3.2s" repeatCount="indefinite"/></circle>` +
         `<circle cx="${cx}" cy="${cy}" r="${hubR}" fill="url(#nwHub)" filter="url(#nwSh)"/>` +
         `<text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="#fff" font-size="15" font-weight="800" style="pointer-events:none;font-family:'Outfit',sans-serif">Milieustraat</text>` +
-        `<text x="${cx}" y="${cy + 15}" text-anchor="middle" fill="#d8cdbf" font-size="12" style="pointer-events:none">${esc(hubNaam)}</text>` +
+        `<text x="${cx}" y="${cy + 15}" text-anchor="middle" fill="#f1e8db" stroke="#17130d" stroke-width="2.4" paint-order="stroke" font-size="${hubNaamFs}" font-weight="600" style="pointer-events:none;font-family:'Outfit',sans-serif">${esc(hubNaam)}</text>` +
         `</g>`;
 
       // klik naast een knoop (op de svg-achtergrond) = selectie sluiten
