@@ -56,3 +56,12 @@ To github.com:Joran1993/BAR.git
    37fb577..4c2bf24  main -> main
 gepusht naar GitHub ✓
 ── 2026-07-11 19:13 ──
+[main 738b7fd] Automatische dagelijkse back-up 2026-07-11
+ 2 files changed, 21 insertions(+)
+ssh: connect to host github.com port 22: Undefined error: 0
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+PUSH MISLUKT — check ssh/netwerk
+── 2026-07-12 18:09 ──
