@@ -288,6 +288,8 @@
     });
 
     function uitloggen() {
+      // Ook de herstel-cookie serverzijde vernietigen (bewuste uitlog)
+      try { fetch("/api/auth/logout", { method: "POST", credentials: "include", keepalive: true }); } catch (e) {}
       localStorage.clear();
       token = null;
       location.href = "/login";

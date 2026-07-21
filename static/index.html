@@ -35,7 +35,29 @@
         localStorage.setItem('bedrijf_id',  p.get('_imp_bedrijf_id') || '');
         history.replaceState(null, '', '/');
       }
-      if (!localStorage.getItem('token')) { location.replace('/login?redirect=/'); } else { document.documentElement.style.visibility = 'hidden'; }
+      if (!localStorage.getItem('token')) {
+        // Geen token? Eerst stil sessieherstel via de httpOnly herstel-cookie
+        // proberen — pas als dat niet lukt naar het loginscherm.
+        document.documentElement.style.visibility = 'hidden';
+        fetch('/api/auth/herstel', { method: 'POST', credentials: 'include', cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .catch(function () { return null; })
+          .then(function (d) {
+            if (d && d.token) {
+              localStorage.setItem('token', d.token);
+              localStorage.setItem('user_id', d.user_id || '');
+              localStorage.setItem('username', d.username || '');
+              localStorage.setItem('role', d.role || 'user');
+              localStorage.setItem('gemeente', d.gemeente || '');
+              localStorage.setItem('organisatie', d.organisatie || '');
+              localStorage.setItem('auth_type', d.auth_type || 'local');
+              if (d.bedrijf_id) localStorage.setItem('bedrijf_id', d.bedrijf_id);
+              location.reload();
+            } else {
+              location.replace('/login?redirect=/');
+            }
+          });
+      } else { document.documentElement.style.visibility = 'hidden'; }
     })();
   </script>
   <link rel="stylesheet" href="/static/ux.css?v=2">

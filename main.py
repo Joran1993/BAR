@@ -43,7 +43,33 @@ security = HTTPBearer(auto_error=False)
 _USER_VERS_CACHE: dict = {}   # user_id → (timestamp, db-row) — max 60s oud
 
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+# Nazorg herstel-cookie: sessies van vóór het cookie-tijdperk (bv. Erik, al
+# ingelogd zonder ooit opnieuw in te loggen) krijgen bij hun eerstvolgende
+# API-gebruik alsnog een herstel-cookie — geheel onzichtbaar. Werkt server-
+# zijde, dus ook voor toestellen die nog oude frontend-code draaien.
+_HERSTEL_NAZORG: dict = {}   # uid → laatste poging; voorkomt dubbele rijen bij parallelle calls
+
+
+def _herstel_cookie_nazorg(request: Optional[Request], response: Optional[Response], uid: int):
+    try:
+        if request is None or response is None:
+            return
+        if request.cookies.get(_HERSTEL_COOKIE):
+            return
+        import time as _t
+        nu = _t.time()
+        if nu - _HERSTEL_NAZORG.get(uid, 0) < 600:
+            return
+        _HERSTEL_NAZORG[uid] = nu
+        if len(_HERSTEL_NAZORG) > 5000:
+            _HERSTEL_NAZORG.clear()
+        _zet_herstel_cookie(response, uid)
+    except Exception:
+        pass   # nazorg mag nooit een verzoek laten falen
+
+
+def get_current_user(request: Request = None, response: Response = None,
+                     credentials: HTTPAuthorizationCredentials = Depends(security)):
     if not credentials:
         raise HTTPException(status_code=401, detail="Niet ingelogd")
     payload = auth_module.decode_token(credentials.credentials)
@@ -65,6 +91,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             _USER_VERS_CACHE.clear()
     row = hit[1]
     if row:
+        _herstel_cookie_nazorg(request, response, uid)
         return {
             "id": uid,
             "username": row.get("username") or payload.get("username", ""),
@@ -880,7 +907,7 @@ async def health():
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @app.get("/api/auth/bedrijf-token/{token}")
-async def login_met_token(token: str):
+async def login_met_token(token: str, response: Response):
     """Automatisch inloggen voor bedrijven via de meld_token uit de link."""
     bedrijf = db.get_bedrijf_by_token(token)
     if not bedrijf:
@@ -896,6 +923,7 @@ async def login_met_token(token: str):
         user["id"], user["username"], user["role"],
         user.get("gemeente") or "", user.get("bedrijf_id")
     )
+    _zet_herstel_cookie(response, user["id"])
     return {
         "token": token_jwt,
         "username": bedrijf["naam"],
@@ -930,24 +958,38 @@ def _login_geblokkeerd(key: str) -> bool:
     return len(recent) >= _LOGIN_MAX
 
 
-@app.post("/api/auth/login")
-async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    import time as _t
-    key = _login_key(request, username)
-    if _login_geblokkeerd(key):
-        raise HTTPException(status_code=429, detail="Te veel mislukte pogingen — probeer het over 15 minuten opnieuw")
-    user = db.get_user_by_username(username)
-    if not user or not auth_module.verify_password(password, user["password"]):
-        _LOGIN_POGINGEN.setdefault(key, []).append(_t.time())
-        raise HTTPException(status_code=401, detail="Onjuiste gebruikersnaam of wachtwoord")
-    _LOGIN_POGINGEN.pop(key, None)   # gelukt → teller wissen
-    # Stilzwijgende migratie: oude HMAC-hashes worden bij succesvolle login
-    # omgezet naar bcrypt — de gebruiker merkt hier niets van
-    if auth_module.needs_rehash(user["password"]):
+# ── Stil sessieherstel ────────────────────────────────────────────────────────
+# Naast de JWT in localStorage krijgt elk toestel een langlopende httpOnly
+# herstel-cookie (alleen leesbaar door de server, pad-beperkt tot /api/auth).
+# Raakt de lokale opslag ooit kwijt (gewiste browserdata, oude wisbug), dan
+# meldt de app zichzelf hiermee stil opnieuw aan — nooit onnodig herinloggen.
+_HERSTEL_COOKIE = "cirqo_herstel"
+_HERSTEL_MAX_AGE = 365 * 24 * 3600
+
+
+def _herstel_hash(geheim: str) -> str:
+    import hashlib
+    return hashlib.sha256(geheim.encode()).hexdigest()
+
+
+def _zet_herstel_cookie(response: Response, user_id: int, geheim: str = None):
+    import secrets
+    nieuw = geheim is None
+    if nieuw:
+        geheim = secrets.token_urlsafe(48)
         try:
-            db.update_user_password(user["id"], password)
+            db.save_herstel_token(user_id, _herstel_hash(geheim))
         except Exception as e:
-            print(f"[auth] bcrypt-migratie mislukt voor user {user['id']}: {e}")
+            print(f"[auth] herstel-token opslaan mislukt (login gaat gewoon door): {e}")
+            return
+    response.set_cookie(
+        _HERSTEL_COOKIE, geheim,
+        max_age=_HERSTEL_MAX_AGE, httponly=True, secure=True,
+        samesite="lax", path="/api/auth",
+    )
+
+
+def _login_payload(user: dict, auth_type: str = "local") -> dict:
     token = auth_module.create_token(
         user["id"], user["username"], user["role"],
         user.get("gemeente") or "", user.get("bedrijf_id")
@@ -960,12 +1002,71 @@ async def login(request: Request, username: str = Form(...), password: str = For
         "gemeente": user.get("gemeente") or "",
         "bedrijf_id": user.get("bedrijf_id"),
         "organisatie": user.get("organisatie") or "",
-        "auth_type": "local",
+        "auth_type": auth_type,
     }
 
 
+@app.post("/api/auth/herstel")
+async def sessie_herstel(request: Request, response: Response):
+    """Geef een verse sessie op basis van de herstel-cookie (zonder wachtwoord)."""
+    geheim = request.cookies.get(_HERSTEL_COOKIE)
+    if not geheim:
+        raise HTTPException(status_code=401, detail="Geen herstelgegevens")
+    try:
+        user = db.get_user_by_herstel_token(_herstel_hash(geheim))
+    except Exception:
+        raise HTTPException(status_code=503, detail="Server is even niet bereikbaar — probeer het zo opnieuw")
+    if not user:
+        response.delete_cookie(_HERSTEL_COOKIE, path="/api/auth")
+        raise HTTPException(status_code=401, detail="Herstel niet mogelijk")
+    # Zelfde cookie opnieuw zetten = glijdende houdbaarheid, zonder rotatie-
+    # risico dat een half afgebroken herstel een toestel buitensluit
+    _zet_herstel_cookie(response, user["id"], geheim=geheim)
+    return _login_payload(user)
+
+
+@app.post("/api/auth/logout")
+async def logout_server(request: Request, response: Response):
+    """Bewuste uitlog: herstel-token vernietigen zodat er niets te herstellen valt."""
+    geheim = request.cookies.get(_HERSTEL_COOKIE)
+    if geheim:
+        try:
+            db.delete_herstel_token(_herstel_hash(geheim))
+        except Exception:
+            pass
+    response.delete_cookie(_HERSTEL_COOKIE, path="/api/auth")
+    return {"ok": True}
+
+
+@app.post("/api/auth/login")
+async def login(request: Request, response: Response, username: str = Form(...), password: str = Form(...)):
+    import time as _t
+    key = _login_key(request, username)
+    if _login_geblokkeerd(key):
+        raise HTTPException(status_code=429, detail="Te veel mislukte pogingen — probeer het over 15 minuten opnieuw")
+    try:
+        user = db.get_user_by_username(username)
+    except Exception:
+        # DB-storing mag nooit als "onjuist wachtwoord" (401) terugkomen: dat
+        # zou de gebruiker uitloggen en meetellen voor de brute-force-rem
+        raise HTTPException(status_code=503, detail="Server is even niet bereikbaar — probeer het over een minuut opnieuw")
+    if not user or not auth_module.verify_password(password, user["password"]):
+        _LOGIN_POGINGEN.setdefault(key, []).append(_t.time())
+        raise HTTPException(status_code=401, detail="Onjuiste gebruikersnaam of wachtwoord")
+    _LOGIN_POGINGEN.pop(key, None)   # gelukt → teller wissen
+    # Stilzwijgende migratie: oude HMAC-hashes worden bij succesvolle login
+    # omgezet naar bcrypt — de gebruiker merkt hier niets van
+    if auth_module.needs_rehash(user["password"]):
+        try:
+            db.update_user_password(user["id"], password)
+        except Exception as e:
+            print(f"[auth] bcrypt-migratie mislukt voor user {user['id']}: {e}")
+    _zet_herstel_cookie(response, user["id"])
+    return _login_payload(user, "local")
+
+
 @app.post("/api/auth/firebase-login")
-async def firebase_login(request: Request):
+async def firebase_login(request: Request, response: Response):
     """Verifieer een Firebase ID-token en geef een CIRQO JWT terug."""
     data = await request.json()
     id_token = data.get("id_token")
@@ -1021,20 +1122,11 @@ async def firebase_login(request: Request):
             naam = bdrf["naam"]
 
     user = db.upsert_firebase_user(firebase_uid, email, naam, gemeente, role, bedrijf_id=bedrijf_id)
-    token = auth_module.create_token(
-        user["id"], user["username"], user["role"],
-        user.get("gemeente") or "", user.get("bedrijf_id")
-    )
-    return {
-        "token": token,
-        "user_id": user["id"],
-        "username": user["username"],
-        "role": user["role"],
-        "gemeente": user.get("gemeente") or "",
-        "bedrijf_id": user.get("bedrijf_id"),
-        "organisatie": user.get("organisatie") or naam,
-        "auth_type": "firebase",
-    }
+    _zet_herstel_cookie(response, user["id"])
+    payload = _login_payload(user, "firebase")
+    if not payload["organisatie"]:
+        payload["organisatie"] = naam
+    return payload
 
 
 @app.post("/api/admin/sync-firestore")
@@ -2390,21 +2482,28 @@ async def _prewarm_cache_loop():
 @app.get("/api/dashboard")
 async def get_dashboard(days: int = 7, gemeente: Optional[str] = None, user=Depends(get_current_user)):
     # Bedrijfsaccounts zien alleen hun eigen stromen (geen gemeente-totalen)
-    if user.get("bedrijf_id"):
-        cache_key = f"dashboard-bedrijf:{user['bedrijf_id']}"
-        cached = cache_module.get(cache_key)
+    # Schild voor nog-niet-ververste clients: de oude dashboardpagina wiste de
+    # hele sessie bij élke niet-OK respons. Liever heel even lege cijfers (200)
+    # dan een gebruiker uitloggen door een tijdelijke fout.
+    try:
+        if user.get("bedrijf_id"):
+            cache_key = f"dashboard-bedrijf:{user['bedrijf_id']}"
+            cached = cache_module.get(cache_key)
+            if cached is not None:
+                return cached
+            data = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: db.get_bedrijf_dashboard(user["bedrijf_id"]))
+            cache_module.set(cache_key, data, ttl=60)
+            return data
+        gemeente = _gemeente_filter(user, gemeente)
+        gemeenten = _gemeenten_expand(gemeente)
+        cached = cache_module.get(f"dashboard:{gemeenten or gemeente}:{days}")
         if cached is not None:
             return cached
-        data = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: db.get_bedrijf_dashboard(user["bedrijf_id"]))
-        cache_module.set(cache_key, data, ttl=60)
-        return data
-    gemeente = _gemeente_filter(user, gemeente)
-    gemeenten = _gemeenten_expand(gemeente)
-    cached = cache_module.get(f"dashboard:{gemeenten or gemeente}:{days}")
-    if cached is not None:
-        return cached
-    return await _bouw_dashboard_data(gemeente, gemeenten, days)
+        return await _bouw_dashboard_data(gemeente, gemeenten, days)
+    except Exception as e:
+        print(f"[dashboard] fout — lege 200 als compatibiliteitsschild: {e}")
+        return {"stats": {}, "charts": {}, "recent": []}
 
 
 # ── Statistieken & export ─────────────────────────────────────────────────────

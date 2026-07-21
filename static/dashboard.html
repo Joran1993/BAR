@@ -295,10 +295,19 @@
         document.getElementById('s-kg').textContent = 'fout';
         return;
       }
+      if (res.status === 401) {
+        // Sessie écht ongeldig — alleen dan opnieuw inloggen. Top-level
+        // navigeren: in embed-modus draait dit in een iframe binnen de app.
+        localStorage.removeItem('token');
+        (window.top || window).location.replace('/login?redirect=/dashboard');
+        return;
+      }
       if (!res.ok) {
-        // Token verlopen — opnieuw inloggen
-        localStorage.clear();
-        location.replace('/login?redirect=/dashboard');
+        // Tijdelijke serverfout (deploy-herstart, database-hik): sessie NIET
+        // wissen. Dit wiste eerder ALLE localStorage bij elke 500/502 — dé
+        // oorzaak dat gebruikers "eruit gegooid" werden via de dashboard-knop.
+        _laadIndicatieWeg();
+        document.getElementById('s-kg').textContent = 'even niet beschikbaar';
         return;
       }
 

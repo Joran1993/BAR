@@ -17,13 +17,26 @@ _pool: psycopg2.pool.ThreadedConnectionPool = None
 _POOL_MIN = int(os.environ.get("DB_POOL_MIN", "6"))
 _POOL_MAX = int(os.environ.get("DB_POOL_MAX", "20"))
 
+class _Verbinding(psycopg2.extensions.connection):
+    """Poolverbinding met tijdstip van laatste gebruik, zodat we exemplaren
+    die lang stil lagen (en door Supabase gedood kunnen zijn) eerst testen."""
+    laatst_gebruikt = 0.0
+
+
 _CONNECT_KWARGS = dict(
     connect_timeout=10,
     keepalives=1,
     keepalives_idle=30,
     keepalives_interval=10,
     keepalives_count=5,
+    connection_factory=_Verbinding,
 )
+
+# Verbindingen die zo lang (s) niet gebruikt zijn eerst pingen vóór uitgifte.
+# Bij normaal verkeer kost dit niets; na een stille periode vangt het precies
+# de door Supabase verbroken verbindingen af (storing 9 jul: massaal
+# "server closed the connection unexpectedly" → gebruikers uitgelogd).
+_IDLE_PING_NA = 45
 
 
 def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
@@ -36,48 +49,67 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     return _pool
 
 
+def _gezonde_verbinding(pool):
+    """Geef een werkende verbinding uit de pool. Gesloten of lang-stilgelegen
+    exemplaren worden getest en zo nodig vervangen — een dode verbinding mag
+    nooit bij een verzoek van een gebruiker terechtkomen."""
+    import time as _t
+    for _ in range(_POOL_MAX + 2):
+        conn = pool.getconn()
+        if conn.closed:
+            try:
+                pool.putconn(conn, close=True)
+            except Exception:
+                pass
+            continue
+        if _t.time() - getattr(conn, "laatst_gebruikt", 0) < _IDLE_PING_NA:
+            return conn
+        try:
+            with conn.cursor() as c:
+                c.execute("SELECT 1")
+            conn.rollback()
+            return conn
+        except Exception as e:
+            print(f"[db] Dode poolverbinding vervangen: {e}")
+            try:
+                pool.putconn(conn, close=True)
+            except Exception:
+                pass
+    raise psycopg2.OperationalError("Geen werkende databaseverbinding beschikbaar")
+
+
 @contextmanager
 def get_cursor():
+    import time as _t
     pool = _get_pool()
-    conn = pool.getconn()
+    conn = _gezonde_verbinding(pool)
+    kapot = False
     try:
-        # Herstel stale verbinding
-        if conn.closed:
-            pool.putconn(conn, close=True)
-            conn = pool.getconn()
-        conn.cursor_factory = psycopg2.extras.RealDictCursor
-        with conn.cursor() as cur:
-            yield cur
-        conn.commit()
-    except psycopg2.OperationalError as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        # Verwijder kapotte verbinding uit de pool en probeer opnieuw met nieuwe
-        try:
-            pool.putconn(conn, close=True)
-        except Exception:
-            pass
-        conn = None
-        print(f"[db] Verbindingsfout, nieuwe verbinding: {e}")
-        conn = pool.getconn()
         conn.cursor_factory = psycopg2.extras.RealDictCursor
         with conn.cursor() as cur:
             yield cur
         conn.commit()
     except Exception:
+        # Rollback + gezondheidstest bepaalt of de verbinding de pool weer in
+        # mag. Een kapot exemplaar gaat dicht — nooit terug de pool in, anders
+        # blijft één storing minutenlang naklappen bij volgende verzoeken.
         try:
             conn.rollback()
+            with conn.cursor() as c:
+                c.execute("SELECT 1")
+            conn.rollback()
         except Exception:
-            pass
+            kapot = True
         raise
     finally:
-        if conn is not None:
-            try:
-                pool.putconn(conn)
-            except Exception:
-                pass
+        try:
+            conn.laatst_gebruikt = _t.time()
+        except Exception:
+            pass
+        try:
+            pool.putconn(conn, close=kapot or conn.closed)
+        except Exception:
+            pass
 
 
 def init_db():
@@ -188,6 +220,20 @@ def init_db():
         cur.execute("ALTER TABLE push_subscriptions ALTER COLUMN bedrijf_id DROP NOT NULL")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS organisatie TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS auto_doorsturen BOOLEAN DEFAULT FALSE")
+        # Stil sessieherstel: langlopende herstel-tokens (gehasht) gekoppeld aan
+        # een httpOnly-cookie. Als de lokale opslag van een toestel ooit gewist
+        # wordt, meldt de app zichzelf hiermee opnieuw aan — nooit meer
+        # onnodig opnieuw inloggen. RLS meteen aan (zie beveiligingslockdown).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS herstel_tokens (
+                id            SERIAL PRIMARY KEY,
+                user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                token_hash    TEXT NOT NULL UNIQUE,
+                created_at    TIMESTAMPTZ DEFAULT now(),
+                laatst_gebruikt TIMESTAMPTZ
+            )
+        """)
+        cur.execute("ALTER TABLE herstel_tokens ENABLE ROW LEVEL SECURITY")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS berichten (
                 id           SERIAL PRIMARY KEY,
@@ -508,6 +554,35 @@ def update_user_password(user_id: int, new_password: str):
     from auth import hash_password
     with get_cursor() as cur:
         cur.execute("UPDATE users SET password = %s WHERE id = %s", (hash_password(new_password), user_id))
+
+
+def save_herstel_token(user_id: int, token_hash: str):
+    """Bewaar een (gehasht) herstel-token; ruim en passant verlopen exemplaren op."""
+    with get_cursor() as cur:
+        cur.execute("DELETE FROM herstel_tokens WHERE created_at < now() - interval '400 days'")
+        cur.execute(
+            "INSERT INTO herstel_tokens (user_id, token_hash) VALUES (%s, %s)",
+            (user_id, token_hash),
+        )
+
+
+def get_user_by_herstel_token(token_hash: str):
+    """Zoek de gebruiker bij een herstel-token en stempel het gebruik af."""
+    with get_cursor() as cur:
+        cur.execute(
+            """SELECT u.* FROM herstel_tokens h JOIN users u ON u.id = h.user_id
+               WHERE h.token_hash = %s AND h.created_at > now() - interval '400 days'""",
+            (token_hash,),
+        )
+        row = cur.fetchone()
+        if row:
+            cur.execute("UPDATE herstel_tokens SET laatst_gebruikt = now() WHERE token_hash = %s", (token_hash,))
+        return dict(row) if row else None
+
+
+def delete_herstel_token(token_hash: str):
+    with get_cursor() as cur:
+        cur.execute("DELETE FROM herstel_tokens WHERE token_hash = %s", (token_hash,))
 
 
 def get_user_by_id_full(user_id: int):
