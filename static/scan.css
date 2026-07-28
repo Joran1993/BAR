@@ -10,15 +10,20 @@ body {
 
 /* ── Tab bar (onderaan) ───────────────────────────────────────────────────── */
 .tabbar {
-  /* Vastgepind (zoals op de dashboardpagina): flex-layout met 100dvh bleek op
-     Android soms 56px te hoog uit te vallen waardoor de balk buiten beeld viel */
+  /* Zwevende capsule (à la Instagram): los van de schermranden, afgerond,
+     met diepte. De safe-area zit in de bottom-afstand i.p.v. in padding. */
   position: fixed;
-  left: 0; right: 0; bottom: 0;
+  left: 14px; right: 14px;
+  bottom: calc(10px + var(--sab));
+  max-width: 420px;
+  margin: 0 auto;
   z-index: 40;
   display: flex;
-  padding-bottom: var(--sab);
+  border-radius: 100px;
+  overflow: hidden;               /* houdt de glazen pil binnen de ronding */
   background: #fff;
-  border-top: 1px solid var(--border);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(40,28,16,0.16), 0 2px 8px rgba(0,0,0,0.08);
 }
 .tabbar-btn {
   flex: 1;
@@ -51,7 +56,7 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   background: var(--bg);
-  padding-bottom: calc(64px + var(--sab));  /* ruimte voor de vaste onderbalk */
+  padding-bottom: calc(88px + var(--sab));  /* ruimte voor de zwevende onderbalk */
 }
 .tab.active { display: flex; flex-direction: column; }
 #tab-scan.active { justify-content: flex-start; }
@@ -718,7 +723,7 @@ body {
 
 /* Zwevende install-knop + popup */
 .install-fab {
-  position: fixed; right: 16px; bottom: calc(76px + var(--sab)); z-index: 600;
+  position: fixed; right: 16px; bottom: calc(92px + var(--sab)); z-index: 600;
   display: flex; align-items: center; gap: 7px;
   padding: 10px 15px; border: none; border-radius: 100px;
   background: var(--orange); color: #fff; font-family: inherit; font-weight: 700; font-size: 0.8rem;

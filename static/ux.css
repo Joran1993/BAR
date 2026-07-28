@@ -264,10 +264,10 @@ body { animation: pageIn 0.14s ease-out both; }
     /* Blurstraal bewust bescheiden: 18px maakte tabwissels traag op iPhone
        (blurkosten groeien kwadratisch); 10px + iets dekkender wit oogt
        vrijwel gelijk en is ~3x goedkoper */
-    background: rgba(255,255,255,0.78);
+    background: rgba(255,255,255,0.82);
     -webkit-backdrop-filter: blur(10px) saturate(1.5);
     backdrop-filter: blur(10px) saturate(1.5);
-    border-top: 1px solid rgba(0,0,0,0.05);
+    border: 1px solid rgba(255,255,255,0.65);
   }
 }
 .tabbar-btn { position: relative; z-index: 1; }
