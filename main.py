@@ -1371,6 +1371,11 @@ async def sync_password(request: Request):
     if not user:
         return {"ok": True}  # geen Supabase-account, niets te doen
     db.update_user_password(user["id"], password)
+    # Ook na een wachtwoord-reset: oude herstel-sessies buitensluiten
+    try:
+        db.delete_herstel_tokens_voor_user(user["id"])
+    except Exception as e:
+        print(f"[auth] herstel-sessies intrekken mislukt na reset user {user['id']}: {e}")
     return {"ok": True}
 
 
@@ -1609,6 +1614,14 @@ async def change_password(
             print(f"[change-password] Firebase update fout: {e}")
             db.registreer_fout("change-password-firebase", str(e), user_id=user_id)
     db.update_user_password(user_id, password)
+    # Alle herstel-sessies van deze gebruiker intrekken: een nieuw wachtwoord
+    # moet oude/gestolen toestellen daadwerkelijk buitensluiten
+    try:
+        aantal = db.delete_herstel_tokens_voor_user(user_id)
+        if aantal:
+            print(f"[auth] {aantal} herstel-sessie(s) ingetrokken na wachtwoordwijziging user {user_id}")
+    except Exception as e:
+        print(f"[auth] herstel-sessies intrekken mislukt voor user {user_id}: {e}")
     return {"ok": True}
 
 
@@ -2395,22 +2408,40 @@ async def delete_item(item_id: int, user=Depends(get_current_user)):
 
 # ── Dashboard (gecombineerd endpoint) ────────────────────────────────────────
 
-async def _bouw_dashboard_data(gemeente, gemeenten, days: int = 7):
+async def _bouw_dashboard_data(gemeente, gemeenten, days: int = 7, periode: Optional[int] = None,
+                               van: Optional[str] = None, tot: Optional[str] = None):
+    """periode = dagen voor de kerncijfers (None = alles, het oude gedrag);
+    van/tot = eigen datumbereik en gaat vóór periode."""
     g = None if gemeenten else gemeente
     loop = asyncio.get_event_loop()
     stats, charts, recent = await asyncio.gather(
-        loop.run_in_executor(None, lambda: db.get_stats(g, gemeenten=gemeenten)),
+        loop.run_in_executor(None, lambda: db.get_stats(g, gemeenten=gemeenten, dagen=periode, van=van, tot=tot)),
         loop.run_in_executor(None, lambda: db.get_chart_data(days, g, gemeenten=gemeenten)),
         loop.run_in_executor(None, lambda: db.get_items(6, 0, g, gemeenten=gemeenten)),
     )
-    result = {"stats": stats, "charts": charts, "recent": recent}
-    cache_module.set(f"dashboard:{gemeenten or gemeente}:{days}", result, ttl=150)
+    result = {"stats": stats, "charts": charts, "recent": recent,
+              "periode": periode or 0, "van": van or "", "tot": tot or ""}
+    cache_module.set(f"dashboard:{gemeenten or gemeente}:{days}:{periode or 0}:{van or ''}:{tot or ''}",
+                     result, ttl=150)
     return result
 
 
-async def _bouw_netwerk_data(g, gemeenten):
-    data = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_netwerk_data(g, gemeenten))
-    cache_module.set(f"netwerk:{gemeenten or g}", data, ttl=150)
+def _datum_ok(d: Optional[str]) -> Optional[str]:
+    """Accepteer alleen JJJJ-MM-DD; al het andere wordt genegeerd (geen injectie,
+    geen 500 door een typfout in de URL)."""
+    if not d:
+        return None
+    try:
+        return datetime.strptime(d[:10], "%Y-%m-%d").strftime("%Y-%m-%d")
+    except Exception:
+        return None
+
+
+async def _bouw_netwerk_data(g, gemeenten, dagen: Optional[int] = None,
+                             van: Optional[str] = None, tot: Optional[str] = None):
+    data = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: db.get_netwerk_data(g, gemeenten, dagen=dagen, van=van, tot=tot))
+    cache_module.set(f"netwerk:{gemeenten or g}:{dagen or 0}:{van or ''}:{tot or ''}", data, ttl=150)
     return data
 
 
@@ -2480,7 +2511,8 @@ async def _prewarm_cache_loop():
 
 
 @app.get("/api/dashboard")
-async def get_dashboard(days: int = 7, gemeente: Optional[str] = None, user=Depends(get_current_user)):
+async def get_dashboard(days: int = 7, periode: int = 0, van: Optional[str] = None, tot: Optional[str] = None,
+                        gemeente: Optional[str] = None, user=Depends(get_current_user)):
     # Bedrijfsaccounts zien alleen hun eigen stromen (geen gemeente-totalen)
     # Schild voor nog-niet-ververste clients: de oude dashboardpagina wiste de
     # hele sessie bij élke niet-OK respons. Liever heel even lege cijfers (200)
@@ -2497,10 +2529,12 @@ async def get_dashboard(days: int = 7, gemeente: Optional[str] = None, user=Depe
             return data
         gemeente = _gemeente_filter(user, gemeente)
         gemeenten = _gemeenten_expand(gemeente)
-        cached = cache_module.get(f"dashboard:{gemeenten or gemeente}:{days}")
+        periode = periode if periode in (7, 30, 90, 365) else 0   # alleen bekende perioden
+        van, tot = _datum_ok(van), _datum_ok(tot)
+        cached = cache_module.get(f"dashboard:{gemeenten or gemeente}:{days}:{periode}:{van or ''}:{tot or ''}")
         if cached is not None:
             return cached
-        return await _bouw_dashboard_data(gemeente, gemeenten, days)
+        return await _bouw_dashboard_data(gemeente, gemeenten, days, periode=periode or None, van=van, tot=tot)
     except Exception as e:
         print(f"[dashboard] fout — lege 200 als compatibiliteitsschild: {e}")
         return {"stats": {}, "charts": {}, "recent": []}
@@ -2523,7 +2557,9 @@ async def sla_mijn_volgorde(request: Request, user=Depends(get_current_user)):
 
 
 @app.get("/api/netwerk")
-async def get_netwerk(gemeente: Optional[str] = None, user=Depends(get_current_user)):
+async def get_netwerk(gemeente: Optional[str] = None, periode: int = 0,
+                      van: Optional[str] = None, tot: Optional[str] = None,
+                      user=Depends(get_current_user)):
     # Zichtbaar voor gemeente-/milieustraat-accounts; NIET voor bedrijven
     # (matchgegevens van andere bedrijven zijn niet hun zaak)
     if user.get("bedrijf_id") or user["role"] == "bedrijf":
@@ -2531,10 +2567,12 @@ async def get_netwerk(gemeente: Optional[str] = None, user=Depends(get_current_u
     g = _gemeente_filter(user, gemeente)
     # Organisatie-scope (bv. 'waardlanden') uitklappen naar de losse gemeenten
     gemeenten = _gemeenten_expand(g) or ([g] if g else None)
-    cached = cache_module.get(f"netwerk:{gemeenten or g}")
+    periode = periode if periode in (7, 30, 90, 365) else 0   # alleen bekende perioden
+    van, tot = _datum_ok(van), _datum_ok(tot)
+    cached = cache_module.get(f"netwerk:{gemeenten or g}:{periode}:{van or ''}:{tot or ''}")
     if cached is not None:
         return cached
-    return await _bouw_netwerk_data(g, gemeenten)
+    return await _bouw_netwerk_data(g, gemeenten, dagen=periode or None, van=van, tot=tot)
 
 
 @app.get("/api/deelnemers")

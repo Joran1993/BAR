@@ -47,6 +47,40 @@
 
     .dash-titel { font-family: 'Outfit', sans-serif; font-size: 1.6rem; font-weight: 900; margin-bottom: 20px; }
 
+    /* Periodekeuze: filtert kerncijfers, categorieën én het netwerk (incl. kg per partner) */
+    .periode-rij { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 14px; }
+    .periode-lbl { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em;
+                   color: #9a958c; margin-right: 3px; }
+    .periode-chip { background: #fff; border: 1px solid #e7e3da; border-radius: 100px; padding: 7px 14px;
+                    font-family: inherit; font-size: 0.78rem; font-weight: 650; color: #6b6558; cursor: pointer;
+                    transition: background .15s, color .15s, border-color .15s, transform .1s;
+                    -webkit-tap-highlight-color: transparent; }
+    .periode-chip:active { transform: scale(.96); }
+    .periode-chip.actief { background: var(--orange, #e67026); border-color: var(--orange, #e67026); color: #fff; }
+    .periode-chip[disabled] { opacity: .5; cursor: default; }
+
+    /* Eigen datumbereik — van/tot, bv. voor een kwartaalrapportage */
+    .eigen-periode { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+                     background: #fff; border: 1px solid #e7e3da; border-radius: 14px;
+                     padding: 10px 12px; margin: -6px 0 16px; }
+    .eigen-periode label { display: flex; align-items: center; gap: 6px;
+                           font-size: 0.78rem; font-weight: 650; color: #6b6558; }
+    .eigen-periode input[type="date"] { font-family: inherit; font-size: 0.82rem; color: var(--ink, #23201b);
+                     border: 1px solid #e7e3da; border-radius: 9px; padding: 6px 9px; background: #fdfcfa; }
+    .eigen-toon, .eigen-wis { border-radius: 100px; padding: 7px 15px; cursor: pointer;
+                     font-family: inherit; font-size: 0.78rem; font-weight: 700; border: 1px solid transparent; }
+    .eigen-toon { background: var(--orange, #e67026); color: #fff; }
+    .eigen-wis { background: none; border-color: #e7e3da; color: #6b6558; }
+    .eigen-toon:active, .eigen-wis:active { transform: scale(.96); }
+    .eigen-fout { font-size: 0.76rem; color: #b3402a; font-weight: 600; }
+
+    /* Kg-blok in het partner-detailpaneel: het cijfer waar het om gaat */
+    .nw-kg { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px;
+             padding: 8px 12px; background: #eaf4ec; border-radius: 10px; }
+    .nw-kg-waarde { font-family: 'Outfit', sans-serif; font-size: 1.5rem; font-weight: 900; color: #2c6e3f; line-height: 1; }
+    .nw-kg-eenheid { font-size: 0.82rem; font-weight: 700; color: #2c6e3f; }
+    .nw-kg-periode { font-size: 0.72rem; color: #6d8f78; margin-left: auto; }
+
     .stat-rij { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }
     @media (min-width: 600px) { .stat-rij { grid-template-columns: repeat(4, 1fr); } }
 
@@ -161,7 +195,7 @@
     .nw-detail h4 { font-family: 'Outfit', sans-serif; font-size: 1.05rem; margin-bottom: 2px; }
     .nw-hint { font-size: 0.71rem; color: #b4aca2; margin-top: 8px; text-align: center; }
   </style>
-  <link rel="stylesheet" href="/static/ux.css?v=2">
+  <link rel="stylesheet" href="/static/ux.css?v=4">
 </head>
 <body>
   <div class="laadbalk" id="laadbalk"></div>
@@ -173,6 +207,23 @@
 
   <div class="dash">
     <div class="dash-titel">Overzicht ingezameld materiaal</div>
+
+    <div class="periode-rij" id="periode-rij">
+      <span class="periode-lbl">Periode</span>
+      <button class="periode-chip" data-p="7"   onclick="zetPeriode(7)">7 dagen</button>
+      <button class="periode-chip" data-p="30"  onclick="zetPeriode(30)">30 dagen</button>
+      <button class="periode-chip" data-p="90"  onclick="zetPeriode(90)">Kwartaal</button>
+      <button class="periode-chip" data-p="365" onclick="zetPeriode(365)">Jaar</button>
+      <button class="periode-chip actief" data-p="0" onclick="zetPeriode(0)">Alles</button>
+      <button class="periode-chip" id="eigen-chip" onclick="toggleEigenPeriode()">Zelf kiezen…</button>
+    </div>
+    <div class="eigen-periode" id="eigen-periode" style="display:none">
+      <label>Van <input type="date" id="datum-van"></label>
+      <label>t/m <input type="date" id="datum-tot"></label>
+      <button class="eigen-toon" onclick="pasEigenPeriodeToe()">Toon</button>
+      <button class="eigen-wis" onclick="zetPeriode(0)">Wissen</button>
+      <span class="eigen-fout" id="eigen-fout"></span>
+    </div>
 
     <div class="stat-rij">
       <div class="stat-kaart"><div class="stat-waarde skel" id="s-items">—</div><div class="stat-label" id="l-items">Items ingezameld</div></div>
@@ -235,6 +286,94 @@
     if (gemeente) document.getElementById('dash-catalogus-link').href = '/catalogus?gemeente=' + encodeURIComponent(gemeente);
     if (EMBED) document.getElementById('dash-catalogus-link').target = '_top';
 
+    // ── Periodekeuze ────────────────────────────────────────────────────────────
+    // 0 = alles (standaard, zoals voorheen). Stuurt zowel de kerncijfers als het
+    // netwerk (aanbiedingen, matches en kg per partner) aan.
+    let _periode = 0, _bezig = false, _van = '', _tot = '';
+    const PERIODE_TEKST = { 0: 'sinds de start', 7: 'laatste 7 dagen', 30: 'laatste 30 dagen',
+                            90: 'laatste kwartaal', 365: 'laatste jaar' };
+    const dNL = s => s ? s.split('-').reverse().join('-') : '';   // 2026-01-31 → 31-01-2026
+    // Tekst die overal (kg-blok, labels) de gekozen periode benoemt
+    function periodeTekst() {
+      if (_van || _tot) return `${dNL(_van) || 'begin'} t/m ${dNL(_tot) || 'nu'}`;
+      return PERIODE_TEKST[_periode] || '';
+    }
+
+    // Query-string met gemeente-scope + gekozen periode (of eigen datumbereik)
+    function _q(extra) {
+      const p = new URLSearchParams();
+      if (gemeente) p.set('gemeente', gemeente);
+      if (_van || _tot) {
+        if (_van) p.set('van', _van);
+        if (_tot) p.set('tot', _tot);
+      } else if (_periode) p.set('periode', _periode);
+      Object.entries(extra || {}).forEach(([k, v]) => p.set(k, v));
+      const s = p.toString();
+      return s ? '?' + s : '';
+    }
+
+    // Eigen datumbereik in-/uitklappen
+    function toggleEigenPeriode() {
+      const vak = document.getElementById('eigen-periode');
+      vak.style.display = vak.style.display === 'none' ? '' : 'none';
+    }
+    window.toggleEigenPeriode = toggleEigenPeriode;
+
+    async function pasEigenPeriodeToe() {
+      const van = document.getElementById('datum-van').value;
+      const tot = document.getElementById('datum-tot').value;
+      const fout = document.getElementById('eigen-fout');
+      fout.textContent = '';
+      if (!van && !tot) { fout.textContent = 'Kies minstens één datum.'; return; }
+      if (van && tot && van > tot) { fout.textContent = 'De einddatum ligt vóór de begindatum.'; return; }
+      _van = van; _tot = tot; _periode = 0;
+      document.querySelectorAll('.periode-chip').forEach(el => el.classList.remove('actief'));
+      document.getElementById('eigen-chip').classList.add('actief');
+      document.getElementById('eigen-chip').textContent = periodeTekst();
+      await herlaadAlles();
+    }
+    window.pasEigenPeriodeToe = pasEigenPeriodeToe;
+
+    async function herlaadAlles() {
+      _bezig = true;
+      document.querySelectorAll('.periode-chip').forEach(el => { el.disabled = true; });
+      if (typeof nwReset === 'function') nwReset();
+      _nwAanbCache = null;
+      try {
+        await Promise.all([laad(), laadNetwerk()]);
+      } finally {
+        document.querySelectorAll('.periode-chip').forEach(el => { el.disabled = false; });
+        _bezig = false;
+      }
+    }
+
+    async function zetPeriode(p) {
+      if (_bezig || (p === _periode && !_van && !_tot)) return;
+      _periode = p;
+      _van = ''; _tot = '';
+      const dv = document.getElementById('datum-van'), dt = document.getElementById('datum-tot');
+      if (dv) dv.value = ''; if (dt) dt.value = '';
+      const ec = document.getElementById('eigen-chip');
+      if (ec) { ec.classList.remove('actief'); ec.textContent = 'Zelf kiezen…'; }
+      const ef = document.getElementById('eigen-fout');
+      if (ef) ef.textContent = '';
+      _bezig = true;
+      document.querySelectorAll('.periode-chip').forEach(el => {
+        el.classList.toggle('actief', el.dataset.p !== undefined && Number(el.dataset.p) === p);
+        el.disabled = true;
+      });
+      // Netwerk-selectie en -cache horen bij de oude periode
+      if (typeof nwReset === 'function') nwReset();
+      _nwAanbCache = null;
+      try {
+        await Promise.all([laad(), laadNetwerk()]);
+      } finally {
+        document.querySelectorAll('.periode-chip').forEach(el => { el.disabled = false; });
+        _bezig = false;
+      }
+    }
+    window.zetPeriode = zetPeriode;
+
     // Cijfer telt op van 0 naar de eindwaarde (ease-out)
     function countUp(el, val) {
       const dec = val % 1 ? 1 : 0, dur = 900, t0 = performance.now();
@@ -285,7 +424,7 @@
       const token = localStorage.getItem('token');
       if (!token) { location.replace('/login?redirect=/dashboard'); return; }
       const headers = { 'Authorization': 'Bearer ' + token };
-      const params = gemeente ? '?gemeente=' + encodeURIComponent(gemeente) : '';
+      const params = _q();
       let res, d;
       try {
         res = await fetch('/api/dashboard' + params, { headers });
@@ -321,7 +460,8 @@
       _laadIndicatieWeg();
 
       if (d.bedrijf) {
-        // Bedrijfsaccount: alleen de eigen stromen
+        // Bedrijfsaccount: alleen de eigen stromen (eigen endpoint zonder periodefilter)
+        document.getElementById('periode-rij').style.display = 'none';
         document.querySelector('.dash-titel').textContent = 'Jouw materiaalstromen';
         document.getElementById('l-items').textContent = 'Aangeboden aan jou';
         document.getElementById('l-kg').textContent = 'Matches';
@@ -336,6 +476,13 @@
         const impSub = document.querySelector('.impact-sub');
         if (impSub) impSub.innerHTML = impSub.innerHTML.replace('door hergebruik', 'door materiaal dat jij hergebruikt');
       } else {
+      // Labels tonen de gekozen periode, zodat een cijfer nooit als
+      // 'sinds de start' gelezen wordt terwijl er een filter aan staat
+      const KORT = { 7: '7 dgn', 30: '30 dgn', 90: 'kwartaal', 365: 'jaar' };
+      const suf = (_van || _tot) ? ` · ${periodeTekst()}` : (_periode ? ` · ${KORT[_periode]}` : '');
+      document.getElementById('l-items').textContent = 'Items ingezameld' + suf;
+      document.getElementById('l-kg').textContent = 'Totaal gewicht (kg)' + suf;
+      document.getElementById('l-cats').textContent = 'Categorieën' + suf;
       countUp(document.getElementById('s-items'), total);
       if (kg) countUp(document.getElementById('s-kg'), Math.round(kg)); else document.getElementById('s-kg').textContent = '—';
       countUp(document.getElementById('s-cats'), cats.filter(c => c.category && c.category !== 'Onbekend').length);
@@ -493,8 +640,12 @@
         <h4>${logoImg}${esc(b.naam)}</h4>
         <div style="color:#999;margin-bottom:6px">${esc(b.gemeente || '')}${b.sector ? ' · ' + esc(b.sector) : ''}</div>` +
         (actief
-          ? `<div><b style="color:var(--orange,#e67026)">${b.aanbieding_count}</b> aanbiedingen ·
-               <b style="color:var(--orange,#e67026)">${b.match_count || 0}</b> matches</div>
+          ? `<div class="nw-kg"><span class="nw-kg-waarde">${(b.kg_opgehaald || 0).toLocaleString('nl-NL', {maximumFractionDigits: 1})}</span>
+               <span class="nw-kg-eenheid">kg meegenomen</span>
+               <span class="nw-kg-periode">${esc(periodeTekst())}</span></div>
+             <div><b style="color:var(--orange,#e67026)">${b.aanbieding_count}</b> aanbiedingen ·
+               <b style="color:var(--orange,#e67026)">${b.match_count || 0}</b> matches${
+               b.kg_aangeboden ? ` · van ${(b.kg_aangeboden).toLocaleString('nl-NL', {maximumFractionDigits: 1})} kg aangeboden` : ''}</div>
              <div style="margin-top:4px">Categorieën: ${cats}</div>
              <button class="nw-dl" style="margin-top:10px" onclick="nwAanbiedingen(${i},event)">Bekijk aanbiedingen →</button>
              <div class="nw-aanb" id="nw-aanb" style="display:none"></div>`
@@ -535,7 +686,7 @@
     async function laadNetwerk() {
       if (localStorage.getItem('role') === 'bedrijf') return;   // niet voor bedrijven (server blokkeert ook)
       const token = localStorage.getItem('token');
-      const params = gemeente ? '?gemeente=' + encodeURIComponent(gemeente) : '';
+      const params = _q();
       let res;
       try {
         res = await fetch('/api/netwerk' + params, { headers: { 'Authorization': 'Bearer ' + token } });
@@ -560,6 +711,7 @@
       document.getElementById('nw-chips').innerHTML = [
         ['Deelnemers', hub.deelnemers], ['Verbindingen', hub.verbindingen],
         ['Aanbiedingen', hub.aanbiedingen_totaal], ['Matches', hub.matches_totaal],
+        ['Kg meegenomen', Math.round(hub.kg_opgehaald_totaal || 0)],
         ['Items aangeboden', hub.items_totaal],
       ].map(([l, v]) => `<span class="netwerk-chip">${esc(l)} <b data-val="${v || 0}">0</b></span>`).join('');
       document.querySelectorAll('#nw-chips b[data-val]').forEach(el => countUp(el, +el.getAttribute('data-val')));
@@ -791,7 +943,7 @@
     laadNetwerk();
   </script>
   <script src="/static/cirqo-core.js?v=1"></script>
-    <script src="/static/ux.js?v=2"></script>
+    <script src="/static/ux.js?v=4"></script>
   <script>
     // Pull-to-refresh: dashboard is een eigen document (ook als frame in de app),
     // dus de verversing hoort hier — trek omlaag bovenaan en de cijfers herladen.

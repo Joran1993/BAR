@@ -556,14 +556,31 @@ def update_user_password(user_id: int, new_password: str):
         cur.execute("UPDATE users SET password = %s WHERE id = %s", (hash_password(new_password), user_id))
 
 
+HERSTEL_MAX_PER_USER = 10   # ± aantal toestellen; voorkomt onbeperkte groei
+
+
 def save_herstel_token(user_id: int, token_hash: str):
-    """Bewaar een (gehasht) herstel-token; ruim en passant verlopen exemplaren op."""
+    """Bewaar een (gehasht) herstel-token; ruim verlopen exemplaren op en houd
+    per gebruiker maximaal HERSTEL_MAX_PER_USER tokens (oudste vervallen)."""
     with get_cursor() as cur:
         cur.execute("DELETE FROM herstel_tokens WHERE created_at < now() - interval '400 days'")
         cur.execute(
             "INSERT INTO herstel_tokens (user_id, token_hash) VALUES (%s, %s)",
             (user_id, token_hash),
         )
+        cur.execute("""DELETE FROM herstel_tokens WHERE id IN (
+                         SELECT id FROM herstel_tokens WHERE user_id = %s
+                         ORDER BY COALESCE(laatst_gebruikt, created_at) DESC
+                         OFFSET %s)""", (user_id, HERSTEL_MAX_PER_USER))
+
+
+def delete_herstel_tokens_voor_user(user_id: int) -> int:
+    """Trek ALLE herstel-sessies van een gebruiker in (bij wachtwoordwijziging/
+    -reset). Zonder dit blijft een gestolen of oud toestel een jaar lang verse
+    sessies kunnen ophalen, ook nadat het wachtwoord is veranderd."""
+    with get_cursor() as cur:
+        cur.execute("DELETE FROM herstel_tokens WHERE user_id = %s", (user_id,))
+        return cur.rowcount
 
 
 def get_user_by_herstel_token(token_hash: str):
@@ -817,7 +834,10 @@ def delete_item(item_id: int):
         cur.execute("UPDATE items SET verwijderd = TRUE WHERE id = %s", (item_id,))
 
 
-def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None):
+def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None,
+              dagen: Optional[int] = None, van: Optional[str] = None, tot: Optional[str] = None):
+    """Periodefilter op de scandatum. Óf dagen (laatste N dagen), óf een eigen
+    bereik van/tot (JJJJ-MM-DD, beide inclusief). None = alles, zoals voorheen."""
     filters = []
     params  = []
     if gemeenten:
@@ -826,6 +846,15 @@ def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gem
         filters.append("gemeente = %s"); params.append(gemeente)
     if user_id:
         filters.append("uploaded_by = %s"); params.append(user_id)
+    if van:
+        filters.append("(timestamp::timestamptz) >= %s::date")
+        params.append(van)
+    if tot:
+        filters.append("(timestamp::timestamptz) < (%s::date + 1)")   # t/m die dag
+        params.append(tot)
+    if dagen and not (van or tot):
+        filters.append("(timestamp::timestamptz) >= now() - make_interval(days => %s)")
+        params.append(int(dagen))
     where = ("WHERE " + " AND ".join(filters)) if filters else ""
     with get_cursor() as cur:
         cur.execute(f"SELECT COUNT(*) as n FROM items {where}", params)
@@ -948,32 +977,71 @@ def get_bedrijf_dashboard(bedrijf_id: int) -> dict:
     return {"bedrijf": True, "stats": stats, "recent": recent}
 
 
-def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] = None) -> dict:
+def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] = None,
+                     dagen: Optional[int] = None, van: Optional[str] = None,
+                     tot: Optional[str] = None) -> dict:
     """Netwerkdata: bedrijven mét aanbiedingen (op items in scope) én lokale
     bedrijven zonder aanbiedingen (b.gemeente in scope) — het hele netwerk in beeld.
-    gemeenten = uitgeklapte scope (bv. waardlanden → 9 gemeenten)."""
+    gemeenten = uitgeklapte scope (bv. waardlanden → 9 gemeenten).
+    dagen = periodefilter (None/0 = alles): aanbiedingen op hun aanbieddatum,
+    items op hun scandatum. Levert ook kg per partner (opgehaald/aangeboden)."""
     if gemeenten is None and gemeente:
         gemeenten = [gemeente]
     with get_cursor() as cur:
-        # Filter op gemeente van de items, niet het bedrijf
-        item_where = "WHERE i.gemeente = ANY(%s)" if gemeenten else ""
-        item_params = (gemeenten,) if gemeenten else ()
+        # Twee soorten filters: voor queries over aanbiedingen (a + i) en voor
+        # queries die alleen items raken. Apart houden, want een aanbieding-
+        # datumfilter mag niet in een items-only query terechtkomen.
+        aanb_v, aanb_p = [], []
+        item_v, item_p = [], []
+        if gemeenten:
+            aanb_v.append("i.gemeente = ANY(%s)"); aanb_p.append(gemeenten)
+            item_v.append("i.gemeente = ANY(%s)"); item_p.append(gemeenten)
+        if van:
+            aanb_v.append("(a.created_at::timestamptz) >= %s::date"); aanb_p.append(van)
+            item_v.append("(i.timestamp::timestamptz) >= %s::date");  item_p.append(van)
+        if tot:
+            aanb_v.append("(a.created_at::timestamptz) < (%s::date + 1)"); aanb_p.append(tot)
+            item_v.append("(i.timestamp::timestamptz) < (%s::date + 1)");  item_p.append(tot)
+        if dagen and not (van or tot):
+            aanb_v.append("(a.created_at::timestamptz) >= now() - make_interval(days => %s)")
+            aanb_p.append(int(dagen))
+            item_v.append("(i.timestamp::timestamptz) >= now() - make_interval(days => %s)")
+            item_p.append(int(dagen))
+
+        def _w(voorwaarden, extra=None):
+            alles = list(voorwaarden) + ([extra] if extra else [])
+            return ("WHERE " + " AND ".join(alles)) if alles else ""
+
+        item_where = _w(item_v)                     # items-only queries
+        item_params = tuple(item_p)
+        w_actief = _w(aanb_v, "a.status != 'niet_nodig'")
+        p_actief = tuple(aanb_p)
+
+        # Interesses (gekoppelde categorieën) apart ophalen. NIET meejoinen in de
+        # telquery hieronder: die LEFT JOIN vermenigvuldigde elke aanbieding met
+        # het aantal categorieën van het bedrijf (De Gezel toonde 72 i.p.v. 24).
+        cur.execute("""SELECT bedrijf_id, array_agg(category ORDER BY category) AS cats
+                       FROM bedrijf_categorieen WHERE category IS NOT NULL GROUP BY bedrijf_id""")
+        interesses = {r["bedrijf_id"]: r["cats"] for r in cur.fetchall()}
 
         # Bedrijven die gereageerd hebben op items uit deze gemeente(n)
         cur.execute(f"""
             SELECT b.id, b.naam, b.gemeente, b.email, b.sector,
                    COUNT(a.id) as aanbieding_count,
                    COUNT(a.id) FILTER (WHERE a.status = 'ophalen') as match_count,
-                   COALESCE(array_agg(bc.category ORDER BY bc.category)
-                     FILTER (WHERE bc.category IS NOT NULL), '{{}}') as categorieen
+                   COALESCE(SUM(i.gewicht_kg) FILTER (WHERE a.status = 'ophalen'), 0) as kg_opgehaald,
+                   COALESCE(SUM(i.gewicht_kg), 0) as kg_aangeboden
             FROM bedrijven b
             JOIN aanbiedingen a ON a.bedrijf_id = b.id
             JOIN items i ON i.id = a.item_id
-            LEFT JOIN bedrijf_categorieen bc ON bc.bedrijf_id = b.id
-            {item_where + (" AND" if item_where else "WHERE") + " a.status != 'niet_nodig'"}
-            GROUP BY b.id ORDER BY aanbieding_count DESC
-        """, item_params)
+            {w_actief}
+            GROUP BY b.id ORDER BY kg_opgehaald DESC, aanbieding_count DESC
+        """, p_actief)
         bedrijven = [dict(r) for r in cur.fetchall()]
+        for b in bedrijven:
+            b["kg_opgehaald"] = round(float(b["kg_opgehaald"] or 0), 1)
+            b["kg_aangeboden"] = round(float(b["kg_aangeboden"] or 0), 1)
+            b["categorieen"] = interesses.get(b["id"], [])
 
         # Ook lokale bedrijven zonder aanbiedingen (koppeling zichtbaar, nog geen verkeer)
         actieve_ids = [b["id"] for b in bedrijven]
@@ -983,6 +1051,7 @@ def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] =
         cur.execute(f"""
             SELECT b.id, b.naam, b.gemeente, b.email, b.sector,
                    0 AS aanbieding_count, 0 AS match_count,
+                   0 AS kg_opgehaald, 0 AS kg_aangeboden,
                    COALESCE(array_agg(bc.category ORDER BY bc.category)
                      FILTER (WHERE bc.category IS NOT NULL), '{{}}') AS categorieen
             FROM bedrijven b
@@ -997,9 +1066,9 @@ def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] =
         cur.execute(f"""
             SELECT a.bedrijf_id, COUNT(*) AS n
             FROM aanbiedingen a JOIN items i ON i.id = a.item_id
-            {item_where + (" AND" if item_where else "WHERE") + " a.status = 'niet_nodig'"}
+            {_w(aanb_v, "a.status = 'niet_nodig'")}
             GROUP BY a.bedrijf_id
-        """, item_params)
+        """, p_actief)
         niet_nodig = {r["bedrijf_id"]: r["n"] for r in cur.fetchall()}
 
         # Domein afleiden uit e-mail (voor logo-ophalen in de frontend); e-mail zelf niet lekken
@@ -1013,10 +1082,9 @@ def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] =
             SELECT a.bedrijf_id, i.category, COUNT(*) as count
             FROM aanbiedingen a
             JOIN items i ON i.id = a.item_id
-            {"WHERE i.gemeente = ANY(%s) AND" if gemeenten else "WHERE"} i.category IS NOT NULL
-            AND a.status != 'niet_nodig'
+            {_w(aanb_v, "i.category IS NOT NULL AND a.status != 'niet_nodig'")}
             GROUP BY a.bedrijf_id, i.category
-        """, item_params)
+        """, p_actief)
         cat_per_bedrijf = {}
         for r in cur.fetchall():
             cat_per_bedrijf.setdefault(r["bedrijf_id"], []).append({"category": r["category"], "count": r["count"]})
@@ -1041,6 +1109,7 @@ def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] =
             "aanbiedingen_totaal": sum(b["aanbieding_count"] for b in bedrijven),
             "matches_totaal": sum(b.get("match_count") or 0 for b in bedrijven),
             "items_totaal": items_totaal,
+            "kg_opgehaald_totaal": round(sum(float(b.get("kg_opgehaald") or 0) for b in bedrijven), 1),
         }
 
         return {

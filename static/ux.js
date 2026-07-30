@@ -173,15 +173,68 @@
       var pil = document.createElement('div');
       pil.className = 'tabbar-pil';
       bar.prepend(pil);
+      var huidigX = null;
+      var rustig = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // Waar staat de pil NU echt? Bij een onderbroken beweging is dat niet het
+      // vorige doel; uitlezen voorkomt een sprong (die als 'dubbel' oogt).
+      function echteX(terugval) {
+        try {
+          var t = getComputedStyle(pil).transform;
+          if (t && t !== 'none' && window.DOMMatrixReadOnly) {
+            return new DOMMatrixReadOnly(t).m41;
+          }
+        } catch (e) {}
+        return terugval;
+      }
+      function stopLopende() {
+        try {
+          (pil.getAnimations ? pil.getAnimations() : []).forEach(function (a) { a.cancel(); });
+        } catch (e) {}
+      }
+
       function zet(animeer) {
         var act = bar.querySelector('.tabbar-btn.active');
         if (!act) { pil.style.opacity = '0'; return; }
         pil.style.opacity = '1';
         // Breedte/hoogte via layout (verandert alleen bij resize); beweging via transform
         pil.style.width = (act.offsetWidth - 14) + 'px';
-        if (!animeer) pil.style.transition = 'none';
-        pil.style.transform = 'translateX(' + (act.offsetLeft + 7) + 'px)';
-        if (!animeer) requestAnimationFrame(function () { pil.style.transition = ''; });
+        var doel = act.offsetLeft + 7;
+
+        // Liquid glass: het glas rekt uit in de looprichting en 'zet zich' bij
+        // aankomst met een korte samendrukking. Alleen transform → volledig op
+        // de GPU, dus geen invloed op de laadsnelheid van de tabs zelf.
+        var kanVloeien = animeer && !rustig && huidigX !== null && huidigX !== doel
+                         && typeof pil.animate === 'function';
+        if (kanVloeien) {
+          var vanaf = echteX(huidigX);        // vloeiend verder vanaf de echte positie
+          stopLopende();                      // nooit twee bewegingen tegelijk
+          pil.classList.remove('reist');
+          var afstand = Math.abs(doel - vanaf);
+          var rek = Math.min(1 + afstand / 900, 1.16);   // subtiel: nooit over de buurtab heen
+          var midden = vanaf + (doel - vanaf) * 0.5;
+          pil.style.transition = 'none';
+          void pil.offsetWidth;               // glans-animatie opnieuw laten starten
+          pil.classList.add('reist');
+          var beweging = pil.animate([
+            { transform: 'translateX(' + vanaf + 'px) scaleX(1)' },
+            { transform: 'translateX(' + midden + 'px) scaleX(' + rek + ')', offset: 0.45 },
+            { transform: 'translateX(' + doel + 'px) scaleX(0.97)', offset: 0.8 },
+            { transform: 'translateX(' + doel + 'px) scaleX(1)' }
+          ], { duration: 460, easing: 'cubic-bezier(.33,.9,.28,1)', fill: 'forwards' });
+          beweging.onfinish = function () {
+            pil.style.transform = 'translateX(' + doel + 'px)';   // eindstand vastleggen
+            stopLopende();
+            pil.style.transition = '';
+            pil.classList.remove('reist');
+          };
+        } else {
+          stopLopende();
+          if (!animeer) pil.style.transition = 'none';
+          pil.style.transform = 'translateX(' + doel + 'px)';
+          if (!animeer) requestAnimationFrame(function () { pil.style.transition = ''; });
+        }
+        huidigX = doel;
       }
       zet(false);                                            // startpositie zonder animatie
       bar.addEventListener('click', function () {            // ná de tab-handlers (bubbling)
