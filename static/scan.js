@@ -342,11 +342,23 @@ const _ALLES_VOORAF_AAN = (_gemeente === "Molenlanden");
 // Klein logo (favicon) van een netwerkpartij, afgeleid uit het e-maildomein.
 // Ontbreekt het domein of laadt de favicon niet, dan verdwijnt het beeld netjes.
 function _bedrijfLogoImg(b) {
-  const email = (b.domain || b.email || "").trim().toLowerCase();
-  const domein = b.domain || (email.includes("@") ? email.split("@").pop() : "");
-  if (!domein) return "";
-  const url = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domein)}&sz=64`;
-  return `<img src="${url}" alt="" loading="lazy" onerror="this.style.display='none'" style="width:24px;height:24px;border-radius:6px;flex-shrink:0;object-fit:contain;background:#fff;border:1px solid var(--border);">`;
+  // Logo uit de gedeelde lijst (cirqo-core.js): eigen bestand, anders favicon.
+  // Zonder logo tonen we initialen, zodat elke regel een herkenbaar merkje heeft
+  // in plaats van een gat.
+  const url = (window.cirqoLogo ? window.cirqoLogo(b) : "");
+  const basis = "width:24px;height:24px;border-radius:6px;flex-shrink:0;";
+  const initialen = (window.cirqoInitialen ? window.cirqoInitialen(b.naam) : "?");
+  const vervang = `<span style=&quot;${basis}display:inline-flex;align-items:center;justify-content:center;` +
+    `background:var(--surface);color:var(--muted);font-size:0.62rem;font-weight:800;` +
+    `border:1px solid var(--border);&quot;>${_esc(initialen)}</span>`;
+  if (!url) {
+    return `<span style="${basis}display:inline-flex;align-items:center;justify-content:center;` +
+      `background:var(--surface);color:var(--muted);font-size:0.62rem;font-weight:800;` +
+      `border:1px solid var(--border);">${_esc(initialen)}</span>`;
+  }
+  // Laadt het logo niet (dood domein/geen favicon)? Dan alsnog de initialen.
+  return `<img src="${url}" alt="" loading="lazy" onerror="this.outerHTML='${vervang}'" ` +
+    `style="${basis}object-fit:contain;background:#fff;border:1px solid var(--border);">`;
 }
 
 function _renderBedrijvenLijst(itemId, external) {

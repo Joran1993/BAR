@@ -524,32 +524,8 @@
     const sectorVan = b => (b.sector && SECTOR_KLEUR[b.sector]) ? b.sector : 'Overig';
     // Handmatige logo-overrides per domein (voor bedrijven met een generieke/ontbrekende favicon).
     // Krijgen voorrang op de automatische favicon.
-    const NW_LOGO_OVERRIDES = {
-      'kringloopgorinchem.nl': '/static/logos/kringloopgorinchem.png',
-      'degezel.nl':            '/static/logos/degezel.png',
-      'behoudenvaart.net':     '/static/logos/behoudenvaart.jpg',
-      'opnieuwenco.nl':        '/static/logos/opnieuwenco.png',
-      'aafje.nl':              '/static/logos/aafje.png',
-      'buva.nl':               '/static/logos/buva.png',
-      'den-otter.nl':          '/static/logos/denotter.png',
-      'gkbgroep.nl':           '/static/logos/gkbgroep.png',
-      'humanitas-dmh.nl':      '/static/logos/humanitasdmh.png',
-      'ingka.ikea.com':        '/static/logos/ikea.png',
-      'makro.nl':              '/static/logos/makro.png',
-      'opwaarts.nu':           '/static/logos/opwaarts.jpg',
-      'oxin-growers.nl':       '/static/logos/oxingrowers.png',
-    };
-    // Overrides voor bedrijven zonder e-mail/domein in de database (op naam)
-    const NW_LOGO_OVERRIDES_NAME = {
-      '2ekans bouwmaterialen':           '/static/logos/2ekans.png',
-      'bouw mensen (vakschool)':         '/static/logos/bouwmensen.png',
-      'calvijn middelbare school':       '/static/logos/calvijn.png',
-      'de driemaster':                   '/static/logos/driemaster.png',
-      'dorcas':                          '/static/logos/dorcas.png',
-      'kringloop giessenlanden arkel':   '/static/logos/kringloopgiessenlanden.png',
-      'kringloop graafstroom goudriaan': '/static/logos/kringloopgoudriaan.png',
-      'stichting vluchtelingenwerk':     '/static/logos/vluchtelingenwerk.png',
-    };
+    // Logolijst staat centraal in cirqo-core.js (window.CIRQO_LOGO_*), zodat
+    // de aanbiedlijst in de app en deze visualisatie dezelfde logo's tonen.
     let _nwB = [], _nwCats = [], _nwSel = null, _nwCat = null;
 
     // idxs = array van uitgelichte indexen, of null = alles normaal
@@ -812,9 +788,7 @@
         const ir = nr - 4;                       // straal binnencirkel
         const ix = (x - ir).toFixed(1), iy = (y - ir).toFixed(1), id2 = (ir * 2).toFixed(1);
         let inner;
-        const nmeKey = (b.naam || '').toLowerCase().trim();
-        const logo = NW_LOGO_OVERRIDES[b.domain] || NW_LOGO_OVERRIDES_NAME[nmeKey] ||
-          (b.domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(b.domain)}&sz=128` : '');
+        const logo = (window.cirqoLogo ? window.cirqoLogo(b) : '');
         b._logo = logo;                          // ook tonen in detailpaneel
         if (logo) {
           const pad = ir * 0.2;                  // marge zodat het hele logo past
@@ -942,7 +916,7 @@
     laad();
     laadNetwerk();
   </script>
-  <script src="/static/cirqo-core.js?v=1"></script>
+  <script src="/static/cirqo-core.js?v=2"></script>
     <script src="/static/ux.js?v=4"></script>
   <script>
     // Pull-to-refresh: dashboard is een eigen document (ook als frame in de app),
