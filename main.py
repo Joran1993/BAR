@@ -982,10 +982,16 @@ def _zet_herstel_cookie(response: Response, user_id: int, geheim: str = None):
         except Exception as e:
             print(f"[auth] herstel-token opslaan mislukt (login gaat gewoon door): {e}")
             return
+    # Pad "/" i.p.v. "/api/auth": de nazorg hieronder draait op álle endpoints en
+    # moet kunnen zien dát er al een cookie is. Met een smal pad stuurde de
+    # browser hem daar niet mee, waardoor er elke 10 minuten een nieuwe werd
+    # uitgegeven (63 tokens in een paar dagen, waarvan 1 ooit gebruikt).
+    # Veiligheid blijft: httpOnly + secure + samesite=lax, en de cookie is
+    # alleen inwisselbaar op /api/auth/herstel.
     response.set_cookie(
         _HERSTEL_COOKIE, geheim,
         max_age=_HERSTEL_MAX_AGE, httponly=True, secure=True,
-        samesite="lax", path="/api/auth",
+        samesite="lax", path="/",
     )
 
 
@@ -1017,7 +1023,8 @@ async def sessie_herstel(request: Request, response: Response):
     except Exception:
         raise HTTPException(status_code=503, detail="Server is even niet bereikbaar — probeer het zo opnieuw")
     if not user:
-        response.delete_cookie(_HERSTEL_COOKIE, path="/api/auth")
+        response.delete_cookie(_HERSTEL_COOKIE, path="/")
+        response.delete_cookie(_HERSTEL_COOKIE, path="/api/auth")   # oude cookies (smal pad)
         raise HTTPException(status_code=401, detail="Herstel niet mogelijk")
     # Zelfde cookie opnieuw zetten = glijdende houdbaarheid, zonder rotatie-
     # risico dat een half afgebroken herstel een toestel buitensluit
@@ -1034,7 +1041,8 @@ async def logout_server(request: Request, response: Response):
             db.delete_herstel_token(_herstel_hash(geheim))
         except Exception:
             pass
-    response.delete_cookie(_HERSTEL_COOKIE, path="/api/auth")
+    response.delete_cookie(_HERSTEL_COOKIE, path="/")
+    response.delete_cookie(_HERSTEL_COOKIE, path="/api/auth")   # oude cookies (smal pad)
     return {"ok": True}
 
 
