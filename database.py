@@ -196,6 +196,13 @@ def init_db():
         # Zacht verwijderen: item verdwijnt uit lijsten/catalogus maar blijft
         # meetellen in dashboard, statistieken en netwerk (historie blijft intact)
         cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS verwijderd BOOLEAN DEFAULT FALSE")
+        # Milieustraat waar gescand is. Nodig omdat één gemeente meerdere
+        # milieustraten kan hebben (Molenlanden: Groot-Ammers én Nieuw-Lekkerland,
+        # Vijfheerenlanden: Leerdam én Vianen) — filteren op gemeente alleen is
+        # dan te grof voor rapportage per locatie.
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS milieustraat TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS milieustraat TEXT")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_items_milieustraat ON items(milieustraat)")
         # Koppeltabel: een bedrijf kan aan meerdere gemeenten/milieustraten hangen
         # (bedrijven.gemeente blijft de thuisbasis; dit zijn extra werkgebieden)
         cur.execute("""
@@ -381,7 +388,7 @@ def get_user_by_username(username: str):
 def get_user_by_id(user_id: int):
     with get_cursor() as cur:
         cur.execute(
-            "SELECT id, username, email, role, gemeente, organisatie, contactpersoon, telefoon, adres, auto_doorsturen, melding_digest, created_at FROM users WHERE id = %s", (user_id,)
+            "SELECT id, username, email, role, gemeente, organisatie, contactpersoon, telefoon, adres, auto_doorsturen, melding_digest, milieustraat, created_at FROM users WHERE id = %s", (user_id,)
         )
         row = cur.fetchone()
         return dict(row) if row else None
@@ -681,11 +688,12 @@ def insert_item(photo_url: Optional[str], ai_label: Optional[str],
                 geaccepteerd: Optional[bool] = None,
                 uploaded_by: Optional[int] = None,
                 photo_urls: Optional[str] = None,
-                conditie: Optional[str] = None) -> int:
+                conditie: Optional[str] = None,
+                milieustraat: Optional[str] = None) -> int:
     with get_cursor() as cur:
         cur.execute(
-            "INSERT INTO items (timestamp, photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by, conditie) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-            (datetime.now(timezone.utc).isoformat(timespec="seconds"), photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by, conditie),
+            "INSERT INTO items (timestamp, photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by, conditie, milieustraat) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            (datetime.now(timezone.utc).isoformat(timespec="seconds"), photo_url, photo_urls, ai_label, ai_detail, gewicht_kg, gemeente, geaccepteerd, uploaded_by, conditie, milieustraat),
         )
         return cur.fetchone()["id"]
 
@@ -711,43 +719,48 @@ def update_item(item_id: int, manual_note: Optional[str], category: Optional[str
         cur.execute(f"UPDATE items SET {', '.join(velden)} WHERE id = %s", (*params, item_id))
 
 
-def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None, own_user_id: Optional[int] = None, all_aanbiedingen: bool = False, alleen_eigen: bool = False):
+def get_items(limit: int = 50, offset: int = 0, gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None, own_user_id: Optional[int] = None, all_aanbiedingen: bool = False, alleen_eigen: bool = False, milieustraat: Optional[str] = None):
     with get_cursor() as cur:
         # NB: lijsten tonen geen zacht-verwijderde items; stats/dashboard tellen ze wél mee
         base = "SELECT id, timestamp, photo_url, photo_url_thumb, photo_urls, ai_label, ai_detail, gewicht_kg, manual_note, category, gemeente, geaccepteerd, uploaded_by, conditie FROM items"
         actief = "NOT COALESCE(verwijderd, FALSE)"
+        # Optioneel filter op één milieustraat (een gemeente kan er meerdere hebben).
+        # Wordt overal als extra AND achter de bestaande voorwaarden geplakt.
+        if milieustraat:
+            actief += " AND milieustraat = %s"
+        ms_p = (milieustraat,) if milieustraat else ()
         if alleen_eigen and own_user_id:
             # Strikt eigen uploads — bedrijfsaccounts mogen niet gemeente-breed meekijken
             cur.execute(
                 f"{base} WHERE uploaded_by = %s AND {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
-                (own_user_id, limit, offset),
+                (own_user_id,) + ms_p + (limit, offset),
             )
         elif gemeenten:
             if own_user_id:
                 cur.execute(
                     f"{base} WHERE (gemeente = ANY(%s) OR uploaded_by = %s) AND {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
-                    (gemeenten, own_user_id, limit, offset),
+                    (gemeenten, own_user_id) + ms_p + (limit, offset),
                 )
             else:
                 cur.execute(
                     f"{base} WHERE gemeente = ANY(%s) AND {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
-                    (gemeenten, limit, offset),
+                    (gemeenten,) + ms_p + (limit, offset),
                 )
         elif gemeente:
             if own_user_id:
                 cur.execute(
                     f"{base} WHERE (gemeente = %s OR uploaded_by = %s) AND {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
-                    (gemeente, own_user_id, limit, offset),
+                    (gemeente, own_user_id) + ms_p + (limit, offset),
                 )
             else:
                 cur.execute(
                     f"{base} WHERE gemeente = %s AND {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
-                    (gemeente, limit, offset),
+                    (gemeente,) + ms_p + (limit, offset),
                 )
         else:
             cur.execute(
                 f"{base} WHERE {actief} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
-                (limit, offset),
+                ms_p + (limit, offset),
             )
         items = [dict(r) for r in cur.fetchall()]
 
@@ -835,7 +848,8 @@ def delete_item(item_id: int):
 
 
 def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None,
-              dagen: Optional[int] = None, van: Optional[str] = None, tot: Optional[str] = None):
+              dagen: Optional[int] = None, van: Optional[str] = None, tot: Optional[str] = None,
+              milieustraat: Optional[str] = None):
     """Periodefilter op de scandatum. Óf dagen (laatste N dagen), óf een eigen
     bereik van/tot (JJJJ-MM-DD, beide inclusief). None = alles, zoals voorheen."""
     filters = []
@@ -846,6 +860,8 @@ def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gem
         filters.append("gemeente = %s"); params.append(gemeente)
     if user_id:
         filters.append("uploaded_by = %s"); params.append(user_id)
+    if milieustraat:
+        filters.append("milieustraat = %s"); params.append(milieustraat)
     if van:
         filters.append("(timestamp::timestamptz) >= %s::date")
         params.append(van)
@@ -875,36 +891,39 @@ def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gem
         }
 
 
-def get_chart_data(days: int = 30, gemeente: Optional[str] = None, gemeenten: Optional[list] = None):
+def get_chart_data(days: int = 30, gemeente: Optional[str] = None, gemeenten: Optional[list] = None,
+                   milieustraat: Optional[str] = None):
     with get_cursor() as cur:
         interval = f"{days} days"
+        ms_w = " AND milieustraat = %s" if milieustraat else ""
+        ms_p = (milieustraat,) if milieustraat else ()
         if gemeenten:
             cur.execute("""
                 SELECT to_char((timestamp::timestamptz) AT TIME ZONE 'UTC', 'YYYY-MM-DD') as dag,
                        COUNT(*) as aantal,
                        COALESCE(SUM(gewicht_kg), 0) as kg
                 FROM items
-                WHERE gemeente = ANY(%s) AND (timestamp::timestamptz) >= (CURRENT_DATE - INTERVAL %s)
+                WHERE gemeente = ANY(%s) AND (timestamp::timestamptz) >= (CURRENT_DATE - INTERVAL %s)""" + ms_w + """
                 GROUP BY dag ORDER BY dag
-            """, (gemeenten, interval))
+            """, (gemeenten, interval) + ms_p)
         elif gemeente:
             cur.execute("""
                 SELECT to_char((timestamp::timestamptz) AT TIME ZONE 'UTC', 'YYYY-MM-DD') as dag,
                        COUNT(*) as aantal,
                        COALESCE(SUM(gewicht_kg), 0) as kg
                 FROM items
-                WHERE gemeente = %s AND (timestamp::timestamptz) >= (CURRENT_DATE - INTERVAL %s)
+                WHERE gemeente = %s AND (timestamp::timestamptz) >= (CURRENT_DATE - INTERVAL %s)""" + ms_w + """
                 GROUP BY dag ORDER BY dag
-            """, (gemeente, interval))
+            """, (gemeente, interval) + ms_p)
         else:
             cur.execute("""
                 SELECT to_char((timestamp::timestamptz) AT TIME ZONE 'UTC', 'YYYY-MM-DD') as dag,
                        COUNT(*) as aantal,
                        COALESCE(SUM(gewicht_kg), 0) as kg
                 FROM items
-                WHERE (timestamp::timestamptz) >= (CURRENT_DATE - INTERVAL %s)
+                WHERE (timestamp::timestamptz) >= (CURRENT_DATE - INTERVAL %s)""" + ms_w + """
                 GROUP BY dag ORDER BY dag
-            """, (interval,))
+            """, (interval,) + ms_p)
         return [dict(r) for r in cur.fetchall()]
 
 
@@ -979,7 +998,7 @@ def get_bedrijf_dashboard(bedrijf_id: int) -> dict:
 
 def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] = None,
                      dagen: Optional[int] = None, van: Optional[str] = None,
-                     tot: Optional[str] = None) -> dict:
+                     tot: Optional[str] = None, milieustraat: Optional[str] = None) -> dict:
     """Netwerkdata: bedrijven mét aanbiedingen (op items in scope) én lokale
     bedrijven zonder aanbiedingen (b.gemeente in scope) — het hele netwerk in beeld.
     gemeenten = uitgeklapte scope (bv. waardlanden → 9 gemeenten).
@@ -996,6 +1015,9 @@ def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] =
         if gemeenten:
             aanb_v.append("i.gemeente = ANY(%s)"); aanb_p.append(gemeenten)
             item_v.append("i.gemeente = ANY(%s)"); item_p.append(gemeenten)
+        if milieustraat:
+            aanb_v.append("i.milieustraat = %s"); aanb_p.append(milieustraat)
+            item_v.append("i.milieustraat = %s"); item_p.append(milieustraat)
         if van:
             aanb_v.append("(a.created_at::timestamptz) >= %s::date"); aanb_p.append(van)
             item_v.append("(i.timestamp::timestamptz) >= %s::date");  item_p.append(van)
@@ -1071,9 +1093,20 @@ def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] =
         """, p_actief)
         niet_nodig = {r["bedrijf_id"]: r["n"] for r in cur.fetchall()}
 
+        # Extra netwerkkoppelingen per bedrijf (naast de vestigingsgemeente)
+        cur.execute("SELECT bedrijf_id, gemeente FROM bedrijf_gemeenten")
+        koppelingen = {}
+        for r in cur.fetchall():
+            koppelingen.setdefault(r["bedrijf_id"], []).append(r["gemeente"])
+
         # Domein afleiden uit e-mail (voor logo-ophalen in de frontend); e-mail zelf niet lekken
         for b in bedrijven:
             b["niet_nodig_count"] = niet_nodig.get(b["id"], 0)
+            # Aan welke gemeente(n) hangt deze partij? Vestigingsgemeente plus de
+            # extra netwerkkoppelingen. main.py vertaalt dit naar milieustraten.
+            b["netwerk_gemeenten"] = sorted(set(
+                ([b["gemeente"]] if b.get("gemeente") else []) + koppelingen.get(b["id"], [])
+            ))
             email = (b.pop("email", None) or "").strip().lower()
             b["domain"] = email.split("@")[-1] if "@" in email else ""
 

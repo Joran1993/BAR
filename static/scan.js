@@ -29,19 +29,37 @@ function _isWaardlanden() {
   // Alleen de milieustraat-kant (scanner/beheerder), niet externe afnemers
   return _WAARDLANDEN_GEMEENTEN.has(g) && (_role === "user" || _role === "admin");
 }
+// Avatar van een account: eigen logo als we dat kennen, anders de beginletter.
+// Eén plek voor zowel de kop als het accountpaneel.
+function _zetAvatar(el, naam) {
+  if (!el) return;
+  const n = (naam || "?").trim();
+  const letter = () => {
+    el.classList.remove("hdr-avatar-logo");
+    el.textContent = (n || "?").charAt(0).toUpperCase() || "?";
+  };
+  if (_isWaardlanden()) {
+    el.classList.add("hdr-avatar-logo");
+    el.innerHTML = '<img src="/static/waardlanden-globe.png" alt="Waardlanden">';
+    return;
+  }
+  const logo = (window.cirqoLogo ? window.cirqoLogo({ naam: n }) : "");
+  if (!logo) return letter();
+  el.classList.add("hdr-avatar-logo");
+  el.innerHTML = "";
+  const img = document.createElement("img");
+  img.src = logo;
+  img.alt = "";
+  img.onerror = letter;          // logo laadt niet → alsnog de beginletter
+  el.appendChild(img);
+}
+
 function _zetHeaderAccount() {
   const org = localStorage.getItem("organisatie") || _username || "";
   const naamEl = document.getElementById("hdr-orgnaam");
   const avEl = document.getElementById("hdr-avatar");
   if (naamEl) naamEl.textContent = org;
-  if (!avEl) return;
-  if (_isWaardlanden()) {
-    avEl.classList.add("hdr-avatar-logo");
-    avEl.innerHTML = '<img src="/static/waardlanden-globe.png" alt="Waardlanden">';
-  } else {
-    avEl.classList.remove("hdr-avatar-logo");
-    avEl.textContent = (org || "?").charAt(0).toUpperCase();
-  }
+  _zetAvatar(avEl, org);
 }
 _zetHeaderAccount();
 if (_role === "superadmin") {
@@ -71,6 +89,23 @@ const _PAGE_SIZE    = 15;
 if (_isAdmin) {
   document.getElementById("list-user-tabs").style.display = "none";
   document.getElementById("list-admin-filter").style.display = "block";
+}
+
+// ── Afnemers openen op 'Ontvangen' ─────────────────────────────────────────────
+// Kringloopwinkels en andere afnemers krijgen spullen aangeboden; hun eigen
+// aanbod is de uitzondering. De aanbodpagina start daarom meteen op de
+// ontvangen-kant, zodat ze niet eerst moeten wisselen om nieuw aanbod te zien.
+if (_role === "bedrijf") {
+  activeMain = "ontvangen";
+  activeSubtab = "ontvangen-alles";
+  const lijst = document.getElementById("tab-list");
+  if (lijst) lijst.dataset.main = activeMain;
+  document.querySelectorAll(".list-maintab").forEach(b =>
+    b.classList.toggle("active", b.dataset.main === activeMain));
+  const aan = document.getElementById("subtabs-aanbieden");
+  const ont = document.getElementById("subtabs-ontvangen");
+  if (aan) aan.style.display = "none";
+  if (ont) ont.style.display = "";
 }
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
@@ -2116,7 +2151,13 @@ async function slaLocatieOp() {
       const upMil = document.getElementById("up-milieustraat");
       if (upMil) _vulMilieustraatSelect(upMil, gemeente, "");
     }
-    if (milieustraat) localStorage.setItem("milieustraat", milieustraat);
+    if (milieustraat) {
+      localStorage.setItem("milieustraat", milieustraat);
+      // Ook serverzijde vastleggen: gescande items krijgen deze milieustraat mee,
+      // zodat rapportage per locatie klopt (een gemeente kan er meerdere hebben).
+      const fdm = new FormData(); fdm.append("milieustraat", milieustraat);
+      await apiFetch(`/api/users/${userId}/profiel`, { method: "PATCH", body: fdm });
+    }
     _zetAccWaardes(localStorage.getItem("organisatie") || _username);
     _zetHeaderAccount();
     (window.uxToast || (() => {}))("Locatie opgeslagen", "success");
@@ -2148,16 +2189,7 @@ function _zetPushChip(staat) {
 function _vulAccountKop(naam, rol) {
   const n = (naam || "Mijn account").trim();
   document.getElementById("up-naam").textContent = n;
-  const av = document.getElementById("up-avatar");
-  if (av) {
-    if (_isWaardlanden()) {
-      av.classList.add("hdr-avatar-logo");
-      av.innerHTML = '<img src="/static/waardlanden-globe.png" alt="Waardlanden">';
-    } else {
-      av.classList.remove("hdr-avatar-logo");
-      av.textContent = n.charAt(0).toUpperCase();
-    }
-  }
+  _zetAvatar(document.getElementById("up-avatar"), n);
   const rolEl = document.getElementById("up-rol-label");
   if (rolEl) rolEl.textContent = rol || "";
   // Gemeente-pill + versienummer in de voettekst

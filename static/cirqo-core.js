@@ -85,8 +85,23 @@
     'opwaarts.nu':           '/static/logos/opwaarts.jpg',
     'oxin-growers.nl':       '/static/logos/oxingrowers.png'
   };
-  // Voor partijen zonder e-mailadres in de database (op naam, kleine letters)
+  // Op naam (kleine letters). Nodig voor partijen zonder e-mailadres, én overal
+  // waar we alleen de naam kennen — zoals de avatar van het eigen account, die
+  // het e-maildomein niet bij de hand heeft.
   window.CIRQO_LOGO_NAAM = {
+    'kringloop gorinchem':             '/static/logos/kringloopgorinchem.png',
+    'de gezel':                        '/static/logos/degezel.png',
+    'opnieuw & co':                    '/static/logos/opnieuwenco.png',
+    'aafje':                           '/static/logos/aafje.png',
+    'buva':                            '/static/logos/buva.png',
+    'den otter':                       '/static/logos/denotter.png',
+    'gkb groep':                       '/static/logos/gkbgroep.png',
+    'humanitas dmh':                   '/static/logos/humanitasdmh.png',
+    'ikea':                            '/static/logos/ikea.png',
+    'makro':                           '/static/logos/makro.png',
+    'opwaarts':                        '/static/logos/opwaarts.jpg',
+    'oxin growers':                    '/static/logos/oxingrowers.png',
+    'behouden vaart':                  '/static/logos/behoudenvaart.jpg',
     '2ekans bouwmaterialen':           '/static/logos/2ekans.png',
     'bouw mensen (vakschool)':         '/static/logos/bouwmensen.png',
     'calvijn middelbare school':       '/static/logos/calvijn.png',

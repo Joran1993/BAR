@@ -219,11 +219,16 @@ ORGANISATIE_GEMEENTEN = {
 # Milieustraten per organisatie: naam → gemeente waar de locatie staat
 # (items krijgen bij het scannen de gemeente van de milieustraat via GPS/account)
 ORGANISATIE_MILIEUSTRATEN = {
+    # Alle zes locaties van Waardlanden. Let op: Molenlanden en Vijfheerenlanden
+    # hebben er elk twee — daarom filtert het dashboard op milieustraat (veld op
+    # het item) en niet alleen op gemeente.
     "waardlanden": [
         {"naam": "Milieustraat Gorinchem",              "gemeente": "Gorinchem"},
         {"naam": "Milieustraat Hardinxveld-Giessendam", "gemeente": "Hardinxveld-Giessendam"},
-        {"naam": "Milieustraat Leerdam",                "gemeente": "Vijfheerenlanden"},
         {"naam": "Ecopark Groot-Ammers",                "gemeente": "Molenlanden"},
+        {"naam": "Kringloopplein Nieuw-Lekkerland",     "gemeente": "Molenlanden"},
+        {"naam": "Milieustraat Leerdam",                "gemeente": "Vijfheerenlanden"},
+        {"naam": "Milieustraat Vianen",                 "gemeente": "Vijfheerenlanden"},
     ],
 }
 
@@ -1405,6 +1410,7 @@ async def me(user=Depends(get_current_user)):
         "gemeente": user.get("gemeente") or "",
         "organisatie": organisatie,
         "email": (db_user or {}).get("email") or ("@" in user["username"] and user["username"] or ""),
+        "milieustraat": (db_user or {}).get("milieustraat") or "",
         "contactpersoon": (db_user or {}).get("contactpersoon") or "",
         "telefoon": (db_user or {}).get("telefoon") or "",
         "adres": (db_user or {}).get("adres") or "",
@@ -1653,6 +1659,7 @@ async def change_profiel(
     contactpersoon: Optional[str] = Form(None),
     telefoon: Optional[str] = Form(None),
     adres: Optional[str] = Form(None),
+    milieustraat: Optional[str] = Form(None),
     melding_digest: Optional[bool] = Form(None),
     user=Depends(get_current_user),
 ):
@@ -1662,8 +1669,12 @@ async def change_profiel(
     if melding_digest is not None:
         with db.get_cursor() as cur:
             cur.execute("UPDATE users SET melding_digest = %s WHERE id = %s", (melding_digest, user_id))
+    # Alleen een bekende milieustraatnaam accepteren (voorkomt typfouten die de
+    # rapportage per locatie stilletjes zouden splitsen)
+    if milieustraat is not None:
+        milieustraat = _milieustraat_ok(milieustraat.strip()) or ""
     velden = {"organisatie": organisatie, "contactpersoon": contactpersoon,
-              "telefoon": telefoon, "adres": adres}
+              "telefoon": telefoon, "adres": adres, "milieustraat": milieustraat}
     updates = {k: v.strip()[:160] for k, v in velden.items() if v is not None}
     if not updates:
         if melding_digest is not None:
@@ -2230,8 +2241,11 @@ async def upload(
         photo_url_list = list(_results[1:])
         photo_url = photo_url_list[0]
 
+        # Milieustraat van het scannende account meeschrijven: één gemeente kan
+        # meerdere milieustraten hebben, dus alleen de gemeente is te grof.
+        _ms = (db.get_user_by_id_full(user["id"]) or {}).get("milieustraat")
         item_id = db.insert_item(photo_url, label, detail, gewicht_kg, gemeente, True,
-                                 uploaded_by=user["id"],
+                                 uploaded_by=user["id"], milieustraat=_ms,
                                  photo_urls=_json.dumps(photo_url_list) if len(photo_url_list) > 1 else None,
                                  conditie=ai_conditie)
         # Gebruik AI-categorie tenzij handmatig overschreven
@@ -2417,19 +2431,20 @@ async def delete_item(item_id: int, user=Depends(get_current_user)):
 # ── Dashboard (gecombineerd endpoint) ────────────────────────────────────────
 
 async def _bouw_dashboard_data(gemeente, gemeenten, days: int = 7, periode: Optional[int] = None,
-                               van: Optional[str] = None, tot: Optional[str] = None):
+                               van: Optional[str] = None, tot: Optional[str] = None,
+                               milieustraat: Optional[str] = None):
     """periode = dagen voor de kerncijfers (None = alles, het oude gedrag);
     van/tot = eigen datumbereik en gaat vóór periode."""
     g = None if gemeenten else gemeente
     loop = asyncio.get_event_loop()
     stats, charts, recent = await asyncio.gather(
-        loop.run_in_executor(None, lambda: db.get_stats(g, gemeenten=gemeenten, dagen=periode, van=van, tot=tot)),
-        loop.run_in_executor(None, lambda: db.get_chart_data(days, g, gemeenten=gemeenten)),
-        loop.run_in_executor(None, lambda: db.get_items(6, 0, g, gemeenten=gemeenten)),
+        loop.run_in_executor(None, lambda: db.get_stats(g, gemeenten=gemeenten, dagen=periode, van=van, tot=tot, milieustraat=milieustraat)),
+        loop.run_in_executor(None, lambda: db.get_chart_data(days, g, gemeenten=gemeenten, milieustraat=milieustraat)),
+        loop.run_in_executor(None, lambda: db.get_items(6, 0, g, gemeenten=gemeenten, milieustraat=milieustraat)),
     )
     result = {"stats": stats, "charts": charts, "recent": recent,
-              "periode": periode or 0, "van": van or "", "tot": tot or ""}
-    cache_module.set(f"dashboard:{gemeenten or gemeente}:{days}:{periode or 0}:{van or ''}:{tot or ''}",
+              "periode": periode or 0, "van": van or "", "tot": tot or "", "milieustraat": milieustraat or ""}
+    cache_module.set(f"dashboard:{gemeenten or gemeente}:{days}:{periode or 0}:{van or ''}:{tot or ''}:{milieustraat or ''}",
                      result, ttl=150)
     return result
 
@@ -2445,11 +2460,38 @@ def _datum_ok(d: Optional[str]) -> Optional[str]:
         return None
 
 
+# gemeente → milieustraten (een gemeente kan er meerdere hebben)
+_MS_PER_GEMEENTE = {}
+for _lijst in ORGANISATIE_MILIEUSTRATEN.values():
+    for _m in _lijst:
+        _MS_PER_GEMEENTE.setdefault(_m["gemeente"], []).append(_m["naam"])
+# Alle geldige milieustraatnamen — alleen deze accepteren we als filter
+_ALLE_MILIEUSTRATEN = {m["naam"] for lijst in ORGANISATIE_MILIEUSTRATEN.values() for m in lijst}
+
+
+def _milieustraat_ok(naam: Optional[str]) -> Optional[str]:
+    """Alleen een bekende milieustraatnaam doorlaten (geen vrije invoer in queries)."""
+    return naam if naam in _ALLE_MILIEUSTRATEN else None
+
+
 async def _bouw_netwerk_data(g, gemeenten, dagen: Optional[int] = None,
-                             van: Optional[str] = None, tot: Optional[str] = None):
+                             van: Optional[str] = None, tot: Optional[str] = None,
+                             milieustraat: Optional[str] = None):
     data = await asyncio.get_event_loop().run_in_executor(
-        None, lambda: db.get_netwerk_data(g, gemeenten, dagen=dagen, van=van, tot=tot))
-    cache_module.set(f"netwerk:{gemeenten or g}:{dagen or 0}:{van or ''}:{tot or ''}", data, ttl=150)
+        None, lambda: db.get_netwerk_data(g, gemeenten, dagen=dagen, van=van, tot=tot, milieustraat=milieustraat))
+    # Aan welke milieustraat(en) hangt elke partij? Handig in het totaaloverzicht
+    # van een organisatie als Waardlanden, waar meerdere milieustraten samenkomen.
+    for b in data.get("bedrijven", []):
+        namen, rest = [], []
+        for gem in b.get("netwerk_gemeenten") or []:
+            lijst = _MS_PER_GEMEENTE.get(gem)
+            if lijst:
+                namen.extend(lijst)         # een gemeente kan meerdere milieustraten hebben
+            else:
+                rest.append(gem)
+        b["milieustraten"] = sorted(set(namen))
+        b["overige_gemeenten"] = rest       # gemeenten zonder eigen milieustraat
+    cache_module.set(f"netwerk:{gemeenten or g}:{dagen or 0}:{van or ''}:{tot or ''}:{milieustraat or ''}", data, ttl=150)
     return data
 
 
@@ -2520,7 +2562,8 @@ async def _prewarm_cache_loop():
 
 @app.get("/api/dashboard")
 async def get_dashboard(days: int = 7, periode: int = 0, van: Optional[str] = None, tot: Optional[str] = None,
-                        gemeente: Optional[str] = None, user=Depends(get_current_user)):
+                        gemeente: Optional[str] = None, milieustraat: Optional[str] = None,
+                        user=Depends(get_current_user)):
     # Bedrijfsaccounts zien alleen hun eigen stromen (geen gemeente-totalen)
     # Schild voor nog-niet-ververste clients: de oude dashboardpagina wiste de
     # hele sessie bij élke niet-OK respons. Liever heel even lege cijfers (200)
@@ -2539,10 +2582,12 @@ async def get_dashboard(days: int = 7, periode: int = 0, van: Optional[str] = No
         gemeenten = _gemeenten_expand(gemeente)
         periode = periode if periode in (7, 30, 90, 365) else 0   # alleen bekende perioden
         van, tot = _datum_ok(van), _datum_ok(tot)
-        cached = cache_module.get(f"dashboard:{gemeenten or gemeente}:{days}:{periode}:{van or ''}:{tot or ''}")
+        milieustraat = _milieustraat_ok(milieustraat)
+        cached = cache_module.get(f"dashboard:{gemeenten or gemeente}:{days}:{periode}:{van or ''}:{tot or ''}:{milieustraat or ''}")
         if cached is not None:
             return cached
-        return await _bouw_dashboard_data(gemeente, gemeenten, days, periode=periode or None, van=van, tot=tot)
+        return await _bouw_dashboard_data(gemeente, gemeenten, days, periode=periode or None, van=van, tot=tot,
+                                          milieustraat=milieustraat)
     except Exception as e:
         print(f"[dashboard] fout — lege 200 als compatibiliteitsschild: {e}")
         return {"stats": {}, "charts": {}, "recent": []}
@@ -2567,7 +2612,7 @@ async def sla_mijn_volgorde(request: Request, user=Depends(get_current_user)):
 @app.get("/api/netwerk")
 async def get_netwerk(gemeente: Optional[str] = None, periode: int = 0,
                       van: Optional[str] = None, tot: Optional[str] = None,
-                      user=Depends(get_current_user)):
+                      milieustraat: Optional[str] = None, user=Depends(get_current_user)):
     # Zichtbaar voor gemeente-/milieustraat-accounts; NIET voor bedrijven
     # (matchgegevens van andere bedrijven zijn niet hun zaak)
     if user.get("bedrijf_id") or user["role"] == "bedrijf":
@@ -2577,10 +2622,12 @@ async def get_netwerk(gemeente: Optional[str] = None, periode: int = 0,
     gemeenten = _gemeenten_expand(g) or ([g] if g else None)
     periode = periode if periode in (7, 30, 90, 365) else 0   # alleen bekende perioden
     van, tot = _datum_ok(van), _datum_ok(tot)
-    cached = cache_module.get(f"netwerk:{gemeenten or g}:{periode}:{van or ''}:{tot or ''}")
+    milieustraat = _milieustraat_ok(milieustraat)
+    cached = cache_module.get(f"netwerk:{gemeenten or g}:{periode}:{van or ''}:{tot or ''}:{milieustraat or ''}")
     if cached is not None:
         return cached
-    return await _bouw_netwerk_data(g, gemeenten, dagen=periode or None, van=van, tot=tot)
+    return await _bouw_netwerk_data(g, gemeenten, dagen=periode or None, van=van, tot=tot,
+                                    milieustraat=milieustraat)
 
 
 @app.get("/api/deelnemers")
@@ -2792,8 +2839,29 @@ async def bedrijf_page(request: Request):
     return RedirectResponse("/login", status_code=302)
 
 
-@app.get("/bedrijf/{token}", response_class=HTMLResponse)
+@app.get("/bedrijf/{token}")
 async def bedrijf_page_token(token: str, request: Request):
+    """Directe inloglink voor een netwerkpartij: één tik en je zit in de app.
+
+    We zetten hier alleen de herstel-cookie en sturen door naar de gewone app.
+    De app haalt daarmee zelf een sessie op (/api/auth/herstel), dus er staat
+    nooit een inlogtoken in de URL — die belandt anders in de geschiedenis,
+    in doorgestuurde mailtjes en in serverlogs. Werkt de link niet (verlopen
+    of onbekend), dan valt hij terug op het oude portaal met loginscherm.
+    """
+    try:
+        bedrijf = db.get_bedrijf_by_token(token)
+        if bedrijf:
+            with db.get_cursor() as cur:
+                cur.execute("""SELECT id FROM users WHERE bedrijf_id = %s AND role = 'bedrijf'
+                               ORDER BY id LIMIT 1""", (bedrijf["id"],))
+                row = cur.fetchone()
+            if row:
+                resp = RedirectResponse("/", status_code=303)
+                _zet_herstel_cookie(resp, row["id"])
+                return resp
+    except Exception as e:
+        print(f"[bedrijf-link] terugval naar portaal: {e}")
     return _render_html("static/bedrijf.html", _detect_brand(request))
 
 

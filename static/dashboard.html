@@ -179,6 +179,9 @@
     .nw-sector-lbl { font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 800; letter-spacing: 0.13em;
                      opacity: 0.8; pointer-events: none; paint-order: stroke; stroke: #fdfaf6; stroke-width: 4px; stroke-linejoin: round; }
     .nw-count { font-weight: 800; fill: #fff; pointer-events: none; }
+    /* Aan welke milieustraat hangt deze partij (alleen in een totaaloverzicht) */
+    .nw-ms-lbl { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; fill: #9a9188;
+                 pointer-events: none; paint-order: stroke; stroke: #fdfaf6; stroke-width: 3px; stroke-linejoin: round; }
     .nw-edge { transition: opacity .25s; }
     .nw-edge.match { stroke-dasharray: 2 7; animation: nwFlow 1.1s linear infinite; }
     @keyframes nwFlow { to { stroke-dashoffset: -18; } }
@@ -193,6 +196,12 @@
     .nw-detail-x:hover { background: #f5efe7; color: #7a726a; }
     .nw-detail.show { display: block; animation: nwFadeIn .3s ease; }
     .nw-detail h4 { font-family: 'Outfit', sans-serif; font-size: 1.05rem; margin-bottom: 2px; }
+    /* "Gekoppeld aan" in het detailpaneel: aan welke milieustraat(en) hangt deze partij */
+    .nw-ms-rij { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 0 0 8px; }
+    .nw-ms-kop { font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em;
+                 color: #b4aca2; margin-right: 2px; }
+    .nw-ms-chip { background: #eaf4ec; color: #2c6e3f; border-radius: 100px; padding: 3px 10px;
+                  font-size: 0.74rem; font-weight: 700; }
     .nw-hint { font-size: 0.71rem; color: #b4aca2; margin-top: 8px; text-align: center; }
   </style>
   <link rel="stylesheet" href="/static/ux.css?v=4">
@@ -277,6 +286,9 @@
 
     // ?gemeente=... in de URL overschrijft de eigen scope (backend staat dit alleen toe voor admins)
     const urlGemeente = new URLSearchParams(location.search).get('gemeente') || '';
+    // Filter op één milieustraat. Nodig omdat Molenlanden en Vijfheerenlanden
+    // er elk twee hebben — op gemeente filteren zou die samenvoegen.
+    const urlMilieustraat = new URLSearchParams(location.search).get('milieustraat') || '';
     const gemeente = urlGemeente || localStorage.getItem('gemeente') || '';
     const organisatie = urlGemeente || localStorage.getItem('organisatie') || gemeente || 'Mijn gemeente';
     // Kort houden: de onderbalk zegt al "Dashboard" — hier alleen de scope
@@ -303,6 +315,7 @@
     function _q(extra) {
       const p = new URLSearchParams();
       if (gemeente) p.set('gemeente', gemeente);
+      if (urlMilieustraat) p.set('milieustraat', urlMilieustraat);
       if (_van || _tot) {
         if (_van) p.set('van', _van);
         if (_tot) p.set('tot', _tot);
@@ -385,7 +398,8 @@
     }
 
     // Switcher voor (super)admins: milieustraten als de organisatie die heeft, anders gemeenten
-    let _msNamen = {};   // gemeente → milieustraatnaam (voor labels in kop en netwerk-hub)
+    let _msNamen = {};   // gemeente → [milieustraatnamen] (labels in kop en netwerk-hub)
+    let _msLijst = [];   // volledige lijst milieustraten van deze organisatie
     async function laadGemeenteSwitch() {
       const role = localStorage.getItem('role');
       if (role !== 'admin' && role !== 'superadmin') return;
@@ -396,11 +410,14 @@
         const ms = d.milieustraten;
         const sel = document.getElementById('gem-switch');
         if (ms && ms.length) {
-          _msNamen = Object.fromEntries(ms.map(m => [m.gemeente, m.naam]));
+          // gemeente → milieustraten (een gemeente kan er meerdere hebben)
+          _msNamen = {};
+          ms.forEach(m => { (_msNamen[m.gemeente] = _msNamen[m.gemeente] || []).push(m.naam); });
+          _msLijst = ms;
           sel.innerHTML = '<option value="">Alle milieustraten</option>' +
-            ms.map(m => `<option value="${esc(m.gemeente)}"${m.gemeente === urlGemeente ? ' selected' : ''}>${esc(m.naam)}</option>`).join('');
-          if (_msNamen[urlGemeente]) document.getElementById('hdr-sub').textContent = _msNamen[urlGemeente];
-          else if (!urlGemeente) document.getElementById('hdr-sub').textContent = 'Alle milieustraten · Waardlanden';
+            ms.map(m => `<option value="${esc(m.naam)}"${m.naam === urlMilieustraat ? ' selected' : ''}>${esc(m.naam)}</option>`).join('');
+          if (urlMilieustraat) document.getElementById('hdr-sub').textContent = urlMilieustraat;
+          else document.getElementById('hdr-sub').textContent = 'Alle milieustraten · Waardlanden';
         } else {
           const lijst = d.gemeenten || [];
           if (lijst.length < 2) return;
@@ -408,7 +425,9 @@
             lijst.map(g => `<option value="${esc(g)}"${g === urlGemeente ? ' selected' : ''}>${esc(g)}</option>`).join('');
         }
         sel.style.display = '';
-        sel.onchange = () => location.href = location.pathname + (sel.value ? '?gemeente=' + encodeURIComponent(sel.value) : '')
+        const sleutel = (ms && ms.length) ? 'milieustraat' : 'gemeente';
+        sel.onchange = () => location.href = location.pathname
+          + (sel.value ? '?' + sleutel + '=' + encodeURIComponent(sel.value) : '')
           + (location.search.includes('embed=1') ? (sel.value ? '&' : '?') + 'embed=1' : '');
       } catch (e) {}
     }
@@ -615,6 +634,10 @@
       det.innerHTML = `<button class="nw-detail-x" onclick="nwReset()" aria-label="Sluiten">✕</button>
         <h4>${logoImg}${esc(b.naam)}</h4>
         <div style="color:#999;margin-bottom:6px">${esc(b.gemeente || '')}${b.sector ? ' · ' + esc(b.sector) : ''}</div>` +
+        ((b.milieustraten || []).length
+          ? `<div class="nw-ms-rij"><span class="nw-ms-kop">Gekoppeld aan</span>` +
+            (b.milieustraten || []).map(m => `<span class="nw-ms-chip">${esc(m)}</span>`).join('') + `</div>`
+          : '') +
         (actief
           ? `<div class="nw-kg"><span class="nw-kg-waarde">${(b.kg_opgehaald || 0).toLocaleString('nl-NL', {maximumFractionDigits: 1})}</span>
                <span class="nw-kg-eenheid">kg meegenomen</span>
@@ -673,6 +696,20 @@
       const bedrijven = (d.bedrijven || []);   // alle deelnemers, ook zonder aanbiedingen
       if (!bedrijven.length) return;
       // Groepeer op sector (taartpunten), daarbinnen actief eerst, dan grootste, dan naam
+      // ── Aan welke milieustraat hangt een partij? ──────────────────────────
+      // Alleen tonen als er in dit overzicht méér dan één milieustraat te zien
+      // is (bij een enkele milieustraat zou het label bij iedereen hetzelfde
+      // zijn — pure ruis). Namen kort houden: "Milieustraat Hardinxveld-
+      // Giessendam" → "Hardinxveld", "Ecopark Groot-Ammers" → "Ecopark".
+      const _alleMs = new Set(bedrijven.flatMap(b => b.milieustraten || []));
+      const _toonMs = _alleMs.size > 1;
+      const _kortMs = naam => String(naam || '').replace(/^Milieustraat\s+/i, '').split(/[\s-]/)[0];
+      window.msLabel = b => {
+        if (!_toonMs) return '';
+        const ms = (b.milieustraten || []).map(_kortMs);
+        return ms.length ? ms.join(' + ') : '';
+      };
+
       const secIdx = s => { const ix = SECTOR_VOLGORDE.indexOf(s); return ix < 0 ? SECTOR_VOLGORDE.length : ix; };
       bedrijven.sort((a, b) =>
         secIdx(sectorVan(a)) - secIdx(sectorVan(b)) ||
@@ -834,11 +871,15 @@
           `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${nr.toFixed(1)}" fill="${ringCol}" filter="url(#nwSh)"/>` +
           catRing + inner + badge +
           `<text class="nw-lbl" x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" text-anchor="${anchor}">${esc(nm)}</text>` +
+          (msLabel(b) ? `<text class="nw-ms-lbl" x="${lx.toFixed(1)}" y="${(ly + 20).toFixed(1)}" text-anchor="${anchor}">${esc(msLabel(b))}</text>` : '') +
           `</g>`;
       });
 
-      let hubBron = _msNamen[hub.naam] ? _msNamen[hub.naam].replace(/^Milieustraat /, '') : (hub.naam || '');
-      if (hub.naam === 'waardlanden' || (!gemeente && Object.keys(_msNamen).length)) hubBron = 'Alle milieustraten';
+      // Naam in het midden: de gekozen milieustraat, anders de gemeente/organisatie
+      let hubBron = hub.naam || '';
+      if (urlMilieustraat) hubBron = urlMilieustraat.replace(/^Milieustraat /, '');
+      else if (hub.naam === 'waardlanden' || (!gemeente && Object.keys(_msNamen).length)) hubBron = 'Alle milieustraten';
+      else if ((_msNamen[hub.naam] || []).length === 1) hubBron = _msNamen[hub.naam][0].replace(/^Milieustraat /, '');
       const hubNaam = hubBron.length > 24 ? hubBron.slice(0, 23) + '…' : hubBron;
       // Lange gemeentenamen iets kleiner zodat ze grotendeels binnen de hub blijven
       const hubNaamFs = hubNaam.length > 18 ? 10 : (hubNaam.length > 14 ? 11 : 12);
