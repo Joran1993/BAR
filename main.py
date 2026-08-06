@@ -2280,6 +2280,7 @@ async def upload(
             _bedrijf_domein(b)   # e-mail → domein (voor logo), e-mail zelf niet naar client
         alle_bedrijven.sort(key=lambda b: (not b["categorie_match"], b["naam"]))
         item["bedrijven"] = alle_bedrijven
+        storage_module.beveilig_items([item])
         print(f"[main] Item {item_id}: {label} ({gewicht_kg} kg) [{gemeente}]")
         return item
 
@@ -2306,11 +2307,11 @@ async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] 
         if cached is not None:
             return cached
         # Items aangeboden ÁÁN dit bedrijf
-        ontvangen = db.get_items_voor_bedrijf(bedrijf_id)
+        ontvangen = storage_module.beveilig_items(db.get_items_voor_bedrijf(bedrijf_id))
         # Plus strikt de éígen scans van dit account — nooit gemeente-breed:
         # een afnemer hoort niet te zien wat anderen scannen of aangeboden krijgen
         user_id = user["id"]
-        eigen = db.get_items(200, 0, None, user_id=user_id, own_user_id=user_id, alleen_eigen=True)
+        eigen = storage_module.beveilig_items(db.get_items(200, 0, None, user_id=user_id, own_user_id=user_id, alleen_eigen=True))
         ontvangen_ids = {i["id"] for i in ontvangen}
         extra = [i for i in eigen if i["id"] not in ontvangen_ids]
         result = ontvangen + extra
@@ -2329,6 +2330,7 @@ async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] 
     if cached is not None:
         return cached
     items = db.get_items(limit, offset, None if gemeenten else gemeente, user_id=user_id, gemeenten=gemeenten, own_user_id=own_user_id, all_aanbiedingen=is_admin)
+    storage_module.beveilig_items(items)
     # Lange TTL is veilig: mutaties invalideren gericht (o.a. items:*:0:{user_id})
     cache_module.set(cache_key, items, ttl=3600)
     return items
@@ -2345,6 +2347,7 @@ async def get_item(item_id: int, user=Depends(get_current_user)):
         if not (bid and any(a.get("bedrijf_id") == bid
                             for a in db.get_aanbiedingen_voor_item(item_id))):
             raise HTTPException(status_code=403, detail="Geen rechten voor dit item")
+    storage_module.beveilig_items([item])
     return item
 
 
@@ -2440,7 +2443,7 @@ async def _bouw_dashboard_data(gemeente, gemeenten, days: int = 7, periode: Opti
     stats, charts, recent = await asyncio.gather(
         loop.run_in_executor(None, lambda: db.get_stats(g, gemeenten=gemeenten, dagen=periode, van=van, tot=tot, milieustraat=milieustraat)),
         loop.run_in_executor(None, lambda: db.get_chart_data(days, g, gemeenten=gemeenten, milieustraat=milieustraat)),
-        loop.run_in_executor(None, lambda: db.get_items(6, 0, g, gemeenten=gemeenten, milieustraat=milieustraat)),
+        loop.run_in_executor(None, lambda: storage_module.beveilig_items(db.get_items(6, 0, g, gemeenten=gemeenten, milieustraat=milieustraat))),
     )
     result = {"stats": stats, "charts": charts, "recent": recent,
               "periode": periode or 0, "van": van or "", "tot": tot or "", "milieustraat": milieustraat or ""}
@@ -2489,7 +2492,8 @@ async def _bouw_netwerk_data(g, gemeenten, dagen: Optional[int] = None,
                 namen.extend(lijst)         # een gemeente kan meerdere milieustraten hebben
             else:
                 rest.append(gem)
-        b["milieustraten"] = sorted(set(namen))
+        # Expliciete koppeling gaat vóór de afleiding uit de gemeente
+        b["milieustraten"] = sorted(b.get("milieustraten_gekoppeld") or set(namen))
         b["overige_gemeenten"] = rest       # gemeenten zonder eigen milieustraat
     cache_module.set(f"netwerk:{gemeenten or g}:{dagen or 0}:{van or ''}:{tot or ''}:{milieustraat or ''}", data, ttl=150)
     return data
@@ -3204,6 +3208,7 @@ async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int =
         rows = [dict(r) for r in cur.fetchall()]
         cur.execute(f"SELECT COUNT(*) AS cnt FROM items WHERE {gem_filter} AND photo_url IS NOT NULL AND photo_url != '' AND NOT COALESCE(verwijderd, FALSE)", gem_params)
         total = cur.fetchone()["cnt"]
+        storage_module.beveilig_items(rows)
         return {"items": rows, "total": total, "offset": offset, "limit": limit}
 
 

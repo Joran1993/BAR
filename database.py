@@ -203,6 +203,17 @@ def init_db():
         cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS milieustraat TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS milieustraat TEXT")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_items_milieustraat ON items(milieustraat)")
+        # Netwerk per milieustraat: welke partners horen bij welke locatie.
+        # Eén gemeente kan meerdere milieustraten hebben met een eigen netwerk,
+        # dus koppelen op gemeente alleen is te grof.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bedrijf_milieustraten (
+                bedrijf_id   INTEGER NOT NULL REFERENCES bedrijven(id) ON DELETE CASCADE,
+                milieustraat TEXT NOT NULL,
+                PRIMARY KEY (bedrijf_id, milieustraat)
+            )
+        """)
+        cur.execute("ALTER TABLE bedrijf_milieustraten ENABLE ROW LEVEL SECURITY")
         # Koppeltabel: een bedrijf kan aan meerdere gemeenten/milieustraten hangen
         # (bedrijven.gemeente blijft de thuisbasis; dit zijn extra werkgebieden)
         cur.execute("""
@@ -1067,9 +1078,16 @@ def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] =
 
         # Ook lokale bedrijven zonder aanbiedingen (koppeling zichtbaar, nog geen verkeer)
         actieve_ids = [b["id"] for b in bedrijven]
-        rest_where = "WHERE NOT (b.id = ANY(%s))" + ((" AND (b.gemeente = ANY(%s) OR EXISTS "
-                     "(SELECT 1 FROM bedrijf_gemeenten bg WHERE bg.bedrijf_id = b.id AND bg.gemeente = ANY(%s)))") if gemeenten else "")
-        rest_params = (actieve_ids, gemeenten, gemeenten) if gemeenten else (actieve_ids,)
+        if milieustraat:
+            # Eén locatie gekozen → alleen de partners die aan díé milieustraat
+            # gekoppeld zijn (elke milieustraat heeft een eigen netwerk)
+            rest_where = ("WHERE NOT (b.id = ANY(%s)) AND EXISTS (SELECT 1 FROM bedrijf_milieustraten bm "
+                          "WHERE bm.bedrijf_id = b.id AND bm.milieustraat = %s)")
+            rest_params = (actieve_ids, milieustraat)
+        else:
+            rest_where = "WHERE NOT (b.id = ANY(%s))" + ((" AND (b.gemeente = ANY(%s) OR EXISTS "
+                         "(SELECT 1 FROM bedrijf_gemeenten bg WHERE bg.bedrijf_id = b.id AND bg.gemeente = ANY(%s)))") if gemeenten else "")
+            rest_params = (actieve_ids, gemeenten, gemeenten) if gemeenten else (actieve_ids,)
         cur.execute(f"""
             SELECT b.id, b.naam, b.gemeente, b.email, b.sector,
                    0 AS aanbieding_count, 0 AS match_count,
@@ -1098,12 +1116,17 @@ def get_netwerk_data(gemeente: Optional[str] = None, gemeenten: Optional[list] =
         koppelingen = {}
         for r in cur.fetchall():
             koppelingen.setdefault(r["bedrijf_id"], []).append(r["gemeente"])
+        cur.execute("SELECT bedrijf_id, milieustraat FROM bedrijf_milieustraten")
+        ms_koppel = {}
+        for r in cur.fetchall():
+            ms_koppel.setdefault(r["bedrijf_id"], []).append(r["milieustraat"])
 
         # Domein afleiden uit e-mail (voor logo-ophalen in de frontend); e-mail zelf niet lekken
         for b in bedrijven:
             b["niet_nodig_count"] = niet_nodig.get(b["id"], 0)
             # Aan welke gemeente(n) hangt deze partij? Vestigingsgemeente plus de
             # extra netwerkkoppelingen. main.py vertaalt dit naar milieustraten.
+            b["milieustraten_gekoppeld"] = sorted(ms_koppel.get(b["id"], []))
             b["netwerk_gemeenten"] = sorted(set(
                 ([b["gemeente"]] if b.get("gemeente") else []) + koppelingen.get(b["id"], [])
             ))
