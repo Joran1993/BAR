@@ -128,10 +128,14 @@ document.querySelectorAll(".tabbar-btn").forEach(btn => {
   });
 });
 
-// Direct een tab openen via ?tab=... (bijv. vanaf de dashboard-onderbalk)
+// Direct een tab openen via ?tab=... (bijv. vanaf de dashboard-onderbalk).
+// Afnemers (kringloopwinkels e.d.) scannen zelf niets: die openen meteen hun
+// aanbod, zodat ze na het inloggen direct zien wat er voor hen klaarstaat.
 (function () {
   const t = new URLSearchParams(location.search).get("tab");
-  if (t === "list") document.querySelector('[data-tab="list"]')?.click();
+  if (t === "list" || (!t && _role === "bedrijf")) {
+    document.querySelector('[data-tab="list"]')?.click();
+  }
 })();
 
 // ── Sync ───────────────────────────────────────────────────────────────────────
@@ -1334,6 +1338,12 @@ async function openModal(id, scrollToChat = false) {
     .toLocaleString("nl-NL", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
   const chips = [];
   if (item.category) chips.push(`<span class="m-chip">${_esc(item.category)}</span>`);
+  // Staat van het product: juist voor een ontvanger bepalend of het de moeite
+  // is om op te halen. Groen als het (zo goed als) nieuw is.
+  if (item.conditie) {
+    const goed = /nieuw/i.test(item.conditie);
+    chips.push(`<span class="m-chip${goed ? " groen" : ""}">${_esc(item.conditie)}</span>`);
+  }
   if (item.gemeente) chips.push(`<span class="m-chip">📍 ${_esc(item.gemeente)}</span>`);
   document.getElementById("modal-chips").innerHTML = chips.join("");
   document.getElementById("modal-note").value  = item.manual_note || "";

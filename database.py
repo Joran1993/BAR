@@ -860,11 +860,20 @@ def delete_item(item_id: int):
 
 def get_stats(gemeente: Optional[str] = None, user_id: Optional[int] = None, gemeenten: Optional[list] = None,
               dagen: Optional[int] = None, van: Optional[str] = None, tot: Optional[str] = None,
-              milieustraat: Optional[str] = None):
+              milieustraat: Optional[str] = None, stroom: Optional[str] = None):
     """Periodefilter op de scandatum. Óf dagen (laatste N dagen), óf een eigen
-    bereik van/tot (JJJJ-MM-DD, beide inclusief). None = alles, zoals voorheen."""
+    bereik van/tot (JJJJ-MM-DD, beide inclusief). None = alles, zoals voorheen.
+
+    stroom: None = alles wat gescand is; 'aangeboden' = alleen items die aan een
+    partij zijn aangeboden; 'meegenomen' = alleen items die ook echt zijn
+    opgehaald (aanbieding op 'ophalen'). Dat laatste is het cijfer dat telt voor
+    hergebruik — gescand betekent nog niet dat het een tweede leven kreeg."""
     filters = []
     params  = []
+    if stroom == "aangeboden":
+        filters.append("EXISTS (SELECT 1 FROM aanbiedingen a WHERE a.item_id = items.id)")
+    elif stroom == "meegenomen":
+        filters.append("EXISTS (SELECT 1 FROM aanbiedingen a WHERE a.item_id = items.id AND a.status = 'ophalen')")
     if gemeenten:
         filters.append("gemeente = ANY(%s)"); params.append(gemeenten)
     elif gemeente:
@@ -1448,8 +1457,8 @@ def get_items_voor_bedrijf(bedrijf_id: int) -> list:
     """Geeft items met aanbieding-info terug voor dit bedrijf."""
     with get_cursor() as cur:
         cur.execute("""
-            SELECT i.id, i.timestamp, i.photo_url, i.photo_url_thumb, i.ai_label, i.ai_detail,
-                   i.gewicht_kg, i.manual_note, i.category, i.gemeente, i.geaccepteerd,
+            SELECT i.id, i.timestamp, i.photo_url, i.photo_url_thumb, i.photo_urls, i.ai_label, i.ai_detail,
+                   i.gewicht_kg, i.manual_note, i.category, i.gemeente, i.geaccepteerd, i.conditie,
                    a.id as aanbieding_id, a.status as aanbieding_status,
                    COALESCE(u.organisatie, u.username) as aangeboden_door_naam, a.aangeboden_door as aangeboden_door_id,
                    (SELECT COUNT(*) FROM berichten b WHERE b.aanbieding_id = a.id) as bericht_count,

@@ -35,6 +35,12 @@
         localStorage.setItem('bedrijf_id',  p.get('_imp_bedrijf_id') || '');
         history.replaceState(null, '', '/');
       }
+      // Kwam de bezoeker via een directe inloglink? Dan gaat een eventuele
+      // bestaande sessie eraf, zodat hij daadwerkelijk in dát account landt.
+      if (p.get('sessie') === 'nieuw') {
+        localStorage.clear();
+        history.replaceState(null, '', location.pathname);
+      }
       if (!localStorage.getItem('token')) {
         // Geen token? Eerst stil sessieherstel via de httpOnly herstel-cookie
         // proberen — pas als dat niet lukt naar het loginscherm.
@@ -652,7 +658,7 @@
     </div>
   </div>
   <script src="/static/cirqo-core.js?v=2"></script>
-    <script src="/static/scan.js?v=44"></script>
+    <script src="/static/scan.js?v=46"></script>
 
 
   <div id="ob-backdrop"></div>

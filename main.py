@@ -302,6 +302,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_firestore_sync_loop())
     asyncio.create_task(_prewarm_cache_loop())
     asyncio.create_task(_digest_loop())
+    asyncio.create_task(_demo_verversen_loop())
     yield
 
 
@@ -1971,6 +1972,11 @@ async def mijn_aanbiedingen(
     return db.get_aanbiedingen_voor_bedrijf(user["bedrijf_id"], limit=limit, offset=offset, status=status)
 
 
+def _is_demo_aanbieding(item) -> bool:
+    """Hoort dit item bij de demo-omgeving? Dan geen echte pushmeldingen."""
+    return ((item or {}).get("gemeente") or "") == "Demo"
+
+
 @app.patch("/api/mijn-aanbiedingen/{aanbieding_id}")
 async def update_mijn_aanbieding(aanbieding_id: int, status: Optional[str] = Form(None),
                                   reden: Optional[str] = Form(None),
@@ -2039,7 +2045,11 @@ async def update_mijn_aanbieding(aanbieding_id: int, status: Optional[str] = For
                             url="/")
                     return  # geen "niet nodig" push meer nodig
 
-        # Standaard push naar aanbieder
+        # Standaard push naar aanbieder — behalve in de demo-omgeving. Die link
+        # gaat naar veel kringloopwinkels tegelijk; hun proefklikken mogen geen
+        # echte meldingen veroorzaken.
+        if _is_demo_aanbieding(item):
+            return
         status_tekst = "wil het ophalen 🚚" if status == "ophalen" else "heeft het niet nodig"
         subs = db.get_push_subscriptions_voor_user(offerer_id)
         for sub in subs:
@@ -2435,19 +2445,20 @@ async def delete_item(item_id: int, user=Depends(get_current_user)):
 
 async def _bouw_dashboard_data(gemeente, gemeenten, days: int = 7, periode: Optional[int] = None,
                                van: Optional[str] = None, tot: Optional[str] = None,
-                               milieustraat: Optional[str] = None):
+                               milieustraat: Optional[str] = None, stroom: Optional[str] = None):
     """periode = dagen voor de kerncijfers (None = alles, het oude gedrag);
     van/tot = eigen datumbereik en gaat vóór periode."""
     g = None if gemeenten else gemeente
     loop = asyncio.get_event_loop()
     stats, charts, recent = await asyncio.gather(
-        loop.run_in_executor(None, lambda: db.get_stats(g, gemeenten=gemeenten, dagen=periode, van=van, tot=tot, milieustraat=milieustraat)),
+        loop.run_in_executor(None, lambda: db.get_stats(g, gemeenten=gemeenten, dagen=periode, van=van, tot=tot, milieustraat=milieustraat, stroom=stroom)),
         loop.run_in_executor(None, lambda: db.get_chart_data(days, g, gemeenten=gemeenten, milieustraat=milieustraat)),
         loop.run_in_executor(None, lambda: storage_module.beveilig_items(db.get_items(6, 0, g, gemeenten=gemeenten, milieustraat=milieustraat))),
     )
     result = {"stats": stats, "charts": charts, "recent": recent,
-              "periode": periode or 0, "van": van or "", "tot": tot or "", "milieustraat": milieustraat or ""}
-    cache_module.set(f"dashboard:{gemeenten or gemeente}:{days}:{periode or 0}:{van or ''}:{tot or ''}:{milieustraat or ''}",
+              "periode": periode or 0, "van": van or "", "tot": tot or "", "milieustraat": milieustraat or "",
+              "stroom": stroom or ""}
+    cache_module.set(f"dashboard:{gemeenten or gemeente}:{days}:{periode or 0}:{van or ''}:{tot or ''}:{milieustraat or ''}:{stroom or ''}",
                      result, ttl=150)
     return result
 
@@ -2529,6 +2540,45 @@ def _verstuur_digests():
             except Exception: pass
 
 
+DEMO_BEDRIJF_ID = 46          # Demo Kringloop — het account achter de proeflink
+
+
+async def _demo_verversen_loop():
+    """Zet de demo elk uur terug in de startstand.
+
+    De proeflink gaat naar veel kringloopwinkels tegelijk. Zonder dit zou de
+    eerste bezoeker het aanbod 'leegklikken' en zag de volgende een lege lijst.
+    Raakt uitsluitend de Demo-gemeente; echte data blijft ongemoeid.
+    """
+    await asyncio.sleep(120)
+    while True:
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, _demo_verversen)
+        except Exception as e:
+            print(f"[demo] verversen mislukt: {e}")
+        await asyncio.sleep(3600)
+
+
+def _demo_verversen():
+    with db.get_cursor() as cur:
+        # Reacties en gesprekken wissen, aanbod weer op 'open' — op een vaste
+        # handvol na, zodat een bezoeker ook ziet hoe een match eruitziet.
+        cur.execute("""DELETE FROM berichten WHERE aanbieding_id IN
+                       (SELECT id FROM aanbiedingen WHERE bedrijf_id = %s)""", (DEMO_BEDRIJF_ID,))
+        cur.execute("""DELETE FROM aanbieding_events WHERE aanbieding_id IN
+                       (SELECT id FROM aanbiedingen WHERE bedrijf_id = %s)""", (DEMO_BEDRIJF_ID,))
+        cur.execute("""UPDATE aanbiedingen SET status = 'open', niet_nodig_reden = NULL
+                       WHERE bedrijf_id = %s AND status <> 'open'
+                       AND item_id NOT IN (SELECT item_id FROM aanbiedingen
+                                           WHERE bedrijf_id = %s ORDER BY item_id LIMIT 1)""",
+                    (DEMO_BEDRIJF_ID, DEMO_BEDRIJF_ID))
+        cur.execute("""UPDATE aanbiedingen SET status = 'ophalen'
+                       WHERE bedrijf_id = %s AND item_id IN
+                             (SELECT item_id FROM aanbiedingen WHERE bedrijf_id = %s ORDER BY item_id LIMIT 1)""",
+                    (DEMO_BEDRIJF_ID, DEMO_BEDRIJF_ID))
+    _invalideer_bedrijf_items(DEMO_BEDRIJF_ID)
+
+
 async def _digest_loop():
     """Controleert elke 10 minuten of de dagelijkse samenvatting eruit moet."""
     from zoneinfo import ZoneInfo
@@ -2567,7 +2617,7 @@ async def _prewarm_cache_loop():
 @app.get("/api/dashboard")
 async def get_dashboard(days: int = 7, periode: int = 0, van: Optional[str] = None, tot: Optional[str] = None,
                         gemeente: Optional[str] = None, milieustraat: Optional[str] = None,
-                        user=Depends(get_current_user)):
+                        stroom: Optional[str] = None, user=Depends(get_current_user)):
     # Bedrijfsaccounts zien alleen hun eigen stromen (geen gemeente-totalen)
     # Schild voor nog-niet-ververste clients: de oude dashboardpagina wiste de
     # hele sessie bij élke niet-OK respons. Liever heel even lege cijfers (200)
@@ -2587,11 +2637,12 @@ async def get_dashboard(days: int = 7, periode: int = 0, van: Optional[str] = No
         periode = periode if periode in (7, 30, 90, 365) else 0   # alleen bekende perioden
         van, tot = _datum_ok(van), _datum_ok(tot)
         milieustraat = _milieustraat_ok(milieustraat)
-        cached = cache_module.get(f"dashboard:{gemeenten or gemeente}:{days}:{periode}:{van or ''}:{tot or ''}:{milieustraat or ''}")
+        stroom = stroom if stroom in ("aangeboden", "meegenomen") else None
+        cached = cache_module.get(f"dashboard:{gemeenten or gemeente}:{days}:{periode}:{van or ''}:{tot or ''}:{milieustraat or ''}:{stroom or ''}")
         if cached is not None:
             return cached
         return await _bouw_dashboard_data(gemeente, gemeenten, days, periode=periode or None, van=van, tot=tot,
-                                          milieustraat=milieustraat)
+                                          milieustraat=milieustraat, stroom=stroom)
     except Exception as e:
         print(f"[dashboard] fout — lege 200 als compatibiliteitsschild: {e}")
         return {"stats": {}, "charts": {}, "recent": []}
@@ -2847,21 +2898,46 @@ async def bedrijf_page(request: Request):
 async def bedrijf_page_token(token: str, request: Request):
     """Directe inloglink voor een netwerkpartij: één tik en je zit in de app.
 
-    We zetten hier alleen de herstel-cookie en sturen door naar de gewone app.
-    De app haalt daarmee zelf een sessie op (/api/auth/herstel), dus er staat
-    nooit een inlogtoken in de URL — die belandt anders in de geschiedenis,
-    in doorgestuurde mailtjes en in serverlogs. Werkt de link niet (verlopen
-    of onbekend), dan valt hij terug op het oude portaal met loginscherm.
+    De sessie wordt in de pagina zelf meegegeven (niet in de URL, dus niet in
+    browsergeschiedenis of doorgestuurde links). Een herstel-cookie gaat mee
+    zodat de bezoeker ingelogd blijft. Onbekende of kapotte link → loginscherm.
     """
+    import json as _json
     try:
         bedrijf = db.get_bedrijf_by_token(token)
         if bedrijf:
             with db.get_cursor() as cur:
-                cur.execute("""SELECT id FROM users WHERE bedrijf_id = %s AND role = 'bedrijf'
+                cur.execute("""SELECT id, username, role, gemeente, organisatie, bedrijf_id
+                               FROM users WHERE bedrijf_id = %s AND role = 'bedrijf'
                                ORDER BY id LIMIT 1""", (bedrijf["id"],))
                 row = cur.fetchone()
             if row:
-                resp = RedirectResponse("/", status_code=303)
+                # Geen doorverwijzing met een cookie: Safari stuurt een cookie die
+                # tijdens een redirect is gezet niet altijd mee, waardoor de
+                # bezoeker alsnog op het loginscherm belandde. We serveren de app
+                # hier direct mét de sessie erin, en zetten de cookie voor later.
+                gebruiker = dict(row)
+                if not gebruiker.get("organisatie"):
+                    gebruiker["organisatie"] = bedrijf.get("naam") or ""
+                sessie = _login_payload(gebruiker)
+                velden = {
+                    "token": sessie["token"], "user_id": str(sessie["user_id"] or ""),
+                    "username": sessie["username"] or "", "role": sessie["role"] or "bedrijf",
+                    "gemeente": sessie["gemeente"] or "", "organisatie": sessie["organisatie"] or "",
+                    "auth_type": "link",
+                }
+                if sessie.get("bedrijf_id"):
+                    velden["bedrijf_id"] = str(sessie["bedrijf_id"])
+                zetters = "".join(
+                    f"localStorage.setItem({_json.dumps(k)},{_json.dumps(v)});" for k, v in velden.items()
+                )
+                inject = (
+                    "<script>(function(){try{localStorage.clear();" + zetters +
+                    "history.replaceState(null,'','/');}catch(e){}})();</script>"
+                )
+                pagina = _render_html("static/index.html", _detect_brand(request))
+                html = pagina.body.decode("utf-8").replace("<head>", "<head>" + inject, 1)
+                resp = HTMLResponse(html)
                 _zet_herstel_cookie(resp, row["id"])
                 return resp
     except Exception as e:
