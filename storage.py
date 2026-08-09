@@ -96,11 +96,19 @@ def _supabase_pad(url: str):
     """Herkent zowel gewone foto's als de miniatuur-variant.
     → (bucket, pad, is_miniatuur, extra_parameters)"""
     for merk, is_mini in (("/storage/v1/object/public/", False),
-                          ("/storage/v1/render/image/public/", True)):
+                          ("/storage/v1/render/image/public/", True),
+                          # Ook al ondertekende links: die staan in de database
+                          # opgeslagen bij een deel van de items. Zonder deze
+                          # regels worden ze nooit opnieuw ondertekend en is de
+                          # foto na het verlopen van de handtekening stuk.
+                          ("/storage/v1/object/sign/", False),
+                          ("/storage/v1/render/image/sign/", True)):
         if merk in url:
             staart = url.split(merk, 1)[1]
             rest, _, query = staart.partition("?")
             bucket, _, pad = rest.partition("/")
+            # de oude handtekening mag niet mee in de nieuwe link
+            query = "&".join(d for d in query.split("&") if d and not d.startswith("token="))
             if bucket and pad:
                 return bucket, pad, is_mini, query
     return None
@@ -171,7 +179,7 @@ def onderteken(urls):
                     _in_geheugen(orig, veilig)
         except Exception as e:
             print(f"[storage] ondertekenen Supabase mislukt: {e}")
-            for orig, _ in paren:
+            for orig, _pad, _mini, _query in paren:
                 uit[orig] = orig             # liever een werkende foto dan een gebroken pagina
 
     # Firebase: lokaal ondertekenen met de servicesleutel
