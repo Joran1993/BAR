@@ -267,7 +267,7 @@ def _gemeenten_expand(gemeente: Optional[str]) -> Optional[list]:
 def _invalideer_bedrijf_items(bedrijf_id) -> None:
     """Leeg de gecachete /api/items én het dashboard van dit bedrijf."""
     if bedrijf_id:
-        cache_module.delete_pattern(f"items:bedrijf2:{bedrijf_id}:*")
+        cache_module.delete_pattern(f"items:bedrijf3:{bedrijf_id}:*")
         cache_module.delete(f"dashboard-bedrijf:{bedrijf_id}")
 
 
@@ -2312,7 +2312,8 @@ async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] 
         # 'eigen' scans zijn per gebruiker. Cache dus op beide. Invalidatie gebeurt
         # gericht bij elke mutatie (aanbieding maken/status/scan) via
         # _invalideer_bedrijf_items — de 60s-TTL is enkel een vangnet.
-        bedrijf_cache_key = f"items:bedrijf2:{bedrijf_id}:{user['id']}"
+        # bedrijf3: sleutel opgehoogd zodat responses met verlopen fotolinks (getekend vóór 11-08) vervallen
+        bedrijf_cache_key = f"items:bedrijf3:{bedrijf_id}:{user['id']}"
         cached = cache_module.get(bedrijf_cache_key)
         if cached is not None:
             return cached

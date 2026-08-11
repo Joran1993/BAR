@@ -46,7 +46,7 @@ import urllib.parse as _up
 
 ONDERTEKEND_GELDIG = 6 * 3600      # 6 uur — ruim genoeg voor een sessie
 _CACHE_TTL = 5 * 3600              # iets korter cachen dan de geldigheid
-_CACHE_VERSIE = "v2"               # ophogen = alle gecachte links vervallen
+_CACHE_VERSIE = "v3"               # ophogen = alle gecachte links vervallen (v3: verlopen links uit de v2-cache)
 _fb_bucket = None
 # Snelle cache in het proces zelf: scheelt een Redis-rondje per foto. Redis
 # blijft eronder liggen zodat een herstart of tweede proces niet opnieuw hoeft
