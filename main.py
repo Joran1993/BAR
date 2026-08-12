@@ -63,7 +63,7 @@ def _herstel_cookie_nazorg(request: Optional[Request], response: Optional[Respon
         _HERSTEL_NAZORG[uid] = nu
         if len(_HERSTEL_NAZORG) > 5000:
             _HERSTEL_NAZORG.clear()
-        _zet_herstel_cookie(response, uid)
+        _zet_herstel_cookie(response, uid, request=request, via='nazorg')
     except Exception:
         pass   # nazorg mag nooit een verzoek laten falen
 
@@ -913,7 +913,7 @@ async def health():
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @app.get("/api/auth/bedrijf-token/{token}")
-async def login_met_token(token: str, response: Response):
+async def login_met_token(token: str, response: Response, request: Request = None):
     """Automatisch inloggen voor bedrijven via de meld_token uit de link."""
     bedrijf = db.get_bedrijf_by_token(token)
     if not bedrijf:
@@ -929,7 +929,7 @@ async def login_met_token(token: str, response: Response):
         user["id"], user["username"], user["role"],
         user.get("gemeente") or "", user.get("bedrijf_id")
     )
-    _zet_herstel_cookie(response, user["id"])
+    _zet_herstel_cookie(response, user["id"], request=request, via="bedrijfsportaal")
     return {
         "token": token_jwt,
         "username": bedrijf["naam"],
@@ -978,13 +978,20 @@ def _herstel_hash(geheim: str) -> str:
     return hashlib.sha256(geheim.encode()).hexdigest()
 
 
-def _zet_herstel_cookie(response: Response, user_id: int, geheim: str = None):
+def _zet_herstel_cookie(response: Response, user_id: int, geheim: str = None,
+                        request: Request = None, via: str = None):
     import secrets
     nieuw = geheim is None
     if nieuw:
         geheim = secrets.token_urlsafe(48)
         try:
-            db.save_herstel_token(user_id, _herstel_hash(geheim))
+            ip = ua = None
+            if request is not None:
+                # eerste hop van X-Forwarded-For is de echte client achter de proxy
+                ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() \
+                     or (request.client.host if request.client else None)
+                ua = request.headers.get("user-agent")
+            db.save_herstel_token(user_id, _herstel_hash(geheim), ip=ip, user_agent=ua, via=via)
         except Exception as e:
             print(f"[auth] herstel-token opslaan mislukt (login gaat gewoon door): {e}")
             return
@@ -1075,7 +1082,7 @@ async def login(request: Request, response: Response, username: str = Form(...),
             db.update_user_password(user["id"], password)
         except Exception as e:
             print(f"[auth] bcrypt-migratie mislukt voor user {user['id']}: {e}")
-    _zet_herstel_cookie(response, user["id"])
+    _zet_herstel_cookie(response, user["id"], request=request, via="wachtwoord")
     return _login_payload(user, "local")
 
 
@@ -1136,7 +1143,7 @@ async def firebase_login(request: Request, response: Response):
             naam = bdrf["naam"]
 
     user = db.upsert_firebase_user(firebase_uid, email, naam, gemeente, role, bedrijf_id=bedrijf_id)
-    _zet_herstel_cookie(response, user["id"])
+    _zet_herstel_cookie(response, user["id"], request=request, via="firebase")
     payload = _login_payload(user, "firebase")
     if not payload["organisatie"]:
         payload["organisatie"] = naam
@@ -2939,7 +2946,7 @@ async def bedrijf_page_token(token: str, request: Request):
                 pagina = _render_html("static/index.html", _detect_brand(request))
                 html = pagina.body.decode("utf-8").replace("<head>", "<head>" + inject, 1)
                 resp = HTMLResponse(html)
-                _zet_herstel_cookie(resp, row["id"])
+                _zet_herstel_cookie(resp, row["id"], request=request, via="inloglink")
                 return resp
     except Exception as e:
         print(f"[bedrijf-link] terugval naar portaal: {e}")

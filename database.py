@@ -252,6 +252,12 @@ def init_db():
             )
         """)
         cur.execute("ALTER TABLE herstel_tokens ENABLE ROW LEVEL SECURITY")
+        # Herkomst per sessie: zichtbaar maken wíé er inlogt (toestel + ip + route).
+        # Nodig sinds meerdere mensen (o.a. Joran zelf) via de inloglink hetzelfde
+        # account gebruiken en we willen weten of de échte gebruiker binnenkomt.
+        cur.execute("ALTER TABLE herstel_tokens ADD COLUMN IF NOT EXISTS ip text")
+        cur.execute("ALTER TABLE herstel_tokens ADD COLUMN IF NOT EXISTS user_agent text")
+        cur.execute("ALTER TABLE herstel_tokens ADD COLUMN IF NOT EXISTS via text")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS berichten (
                 id           SERIAL PRIMARY KEY,
@@ -577,14 +583,17 @@ def update_user_password(user_id: int, new_password: str):
 HERSTEL_MAX_PER_USER = 10   # ± aantal toestellen; voorkomt onbeperkte groei
 
 
-def save_herstel_token(user_id: int, token_hash: str):
-    """Bewaar een (gehasht) herstel-token; ruim verlopen exemplaren op en houd
-    per gebruiker maximaal HERSTEL_MAX_PER_USER tokens (oudste vervallen)."""
+def save_herstel_token(user_id: int, token_hash: str,
+                       ip: str = None, user_agent: str = None, via: str = None):
+    """Bewaar een (gehasht) herstel-token met herkomst (ip/toestel/route); ruim
+    verlopen exemplaren op en houd per gebruiker maximaal HERSTEL_MAX_PER_USER
+    tokens (oudste vervallen)."""
     with get_cursor() as cur:
         cur.execute("DELETE FROM herstel_tokens WHERE created_at < now() - interval '400 days'")
         cur.execute(
-            "INSERT INTO herstel_tokens (user_id, token_hash) VALUES (%s, %s)",
-            (user_id, token_hash),
+            "INSERT INTO herstel_tokens (user_id, token_hash, ip, user_agent, via)"
+            " VALUES (%s, %s, %s, %s, %s)",
+            (user_id, token_hash, ip, (user_agent or "")[:300] or None, via),
         )
         cur.execute("""DELETE FROM herstel_tokens WHERE id IN (
                          SELECT id FROM herstel_tokens WHERE user_id = %s
