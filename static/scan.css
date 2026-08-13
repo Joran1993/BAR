@@ -878,6 +878,7 @@ body {
 .st-match { background: #e9f3ec; color: #2c6e3f; }
 .st-nee   { background: #fdecea; color: #b71c1c; }
 .st-nieuw { background: var(--orange); color: #fff; }
+.st-ok    { background: #e7f1e9; color: #2e6b4f; }
 
 /* Teller op de Aanbod-tab */
 .tabbar-btn { position: relative; }

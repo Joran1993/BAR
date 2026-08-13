@@ -25,7 +25,9 @@
     <img src="/static/bouwkringloop-logo.jpg" class="cat-logo" alt="De Bouwkringloop">
     <p class="cat-hdr-sub">Ingezameld bouwmateriaal · Milieustraat Almere-Buiten</p>
   </header>
-  <script>
+  <script>/* rol-guard: afnemers horen hier niet — terug naar hun eigen aanbod */
+try{if(localStorage.getItem('role')==='bedrijf')location.replace('/?tab=list');}catch(e){}</script>
+<script>
     // Terug naar het dashboard. Kwam de gebruiker vanuit het (embedded) dashboard,
     // ga dan gewoon terug in de historie; anders naar de dashboardpagina zelf
     // (met behoud van de gemeente-scope uit de URL).

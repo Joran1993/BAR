@@ -3261,12 +3261,18 @@ async def check_page():
 async def catalogus_page():
     html = _render_html("static/catalogus.html", DEFAULT_BRAND).body.decode()
     html = re.sub(r'class="cat-hdr-sub">[^<]*<', 'class="cat-hdr-sub">Ingezameld bouwmateriaal · Milieustraat Almere-Buiten<', html)
-    return HTMLResponse(html)
+    # no-store zoals elke andere pagina: een gecachte kopie toonde afnemers
+    # nog dagen de oude gemeentebrede lijst
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/catalogus")
 async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int = 0,
                         user=Depends(get_optional_user)):
+    if user and (user.get("bedrijf_id") or user.get("role") == "bedrijf"):
+        # Afnemers zien alleen wat aan hén is aangeboden (hun eigen lijst) —
+        # niet de hele gemeentecatalogus met andermans scans
+        raise HTTPException(status_code=403, detail="Niet beschikbaar voor bedrijfsaccounts")
     if user:
         # Ingelogd: gemeente wordt geklemd op de eigen scope (admin: organisatie)
         gemeente = _gemeente_filter(user, gemeente)

@@ -60,6 +60,10 @@
     .periode-chip[disabled] { opacity: .5; cursor: default; }
 
     /* Eigen datumbereik — van/tot, bv. voor een kwartaalrapportage */
+    .recent-tegel { position: relative; }
+    .recent-status { position: absolute; left: 6px; bottom: 6px; font-size: .6rem; font-weight: 800;
+      padding: 2px 8px; border-radius: 100px; background: rgba(20,20,18,.55); color: #fff; }
+    .recent-status.ok { background: var(--orange, #86bc97); }
     .stroom-rij { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 14px; }
     .stroom-kop { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em;
                   color: #b4aca2; margin-right: 2px; }
@@ -303,7 +307,7 @@
       <div class="nw-hint">Taartpunt = sector (scholen, kringloop, …) · tik op een deelnemer voor details (nogmaals tikken sluit) · legenda = uitlichten per categorie · ring om een deelnemer = categorieverdeling · lijndikte = aantal aanbiedingen · bewegende oranje stip = actieve match.</div>
     </div>
 
-    <div class="sectie-titel">Per categorie</div>
+    <div class="sectie-titel" id="cat-titel">Per categorie</div>
     <div class="cat-lijst" id="cat-lijst"></div>
 
     <div class="sectie-titel" style="margin-top:24px" id="recent-titel">Meest recent ingezameld</div>
@@ -334,6 +338,8 @@
     document.getElementById('hdr-sub').textContent = organisatie;
     document.title = 'Dashboard — ' + organisatie;
     // Catalogus-link binnen dezelfde gemeente-scope houden
+    if (localStorage.getItem('role') === 'bedrijf')
+      document.getElementById('dash-catalogus-link').style.display = 'none';
     if (gemeente) document.getElementById('dash-catalogus-link').href = '/catalogus?gemeente=' + encodeURIComponent(gemeente);
     if (EMBED) document.getElementById('dash-catalogus-link').target = '_top';
 
@@ -547,17 +553,20 @@
       if (d.bedrijf) {
         // Bedrijfsaccount: alleen de eigen stromen (eigen endpoint zonder periodefilter)
         document.getElementById('periode-rij').style.display = 'none';
-        document.querySelector('.dash-titel').textContent = 'Jouw materiaalstromen';
-        document.getElementById('l-items').textContent = 'Aangeboden aan jou';
-        document.getElementById('l-kg').textContent = 'Matches';
-        document.getElementById('l-cats').textContent = 'Nog openstaand';
-        document.getElementById('l-gem').textContent = 'Kg opgehaald';
-        countUp(document.getElementById('s-items'), s.total || 0);
-        countUp(document.getElementById('s-kg'), s.matches || 0);
+        const stroomRij = document.querySelector('.stroom-rij');
+        if (stroomRij) stroomRij.style.display = 'none';   // milieustraat-jargon, niet voor afnemers
+        document.querySelector('.dash-titel').textContent = 'Jouw ophalingen';
+        document.getElementById('l-items').textContent = 'Opgehaald (stuks)';
+        document.getElementById('l-kg').textContent = "Kilo's opgehaald";
+        document.getElementById('l-cats').textContent = 'Nog te beoordelen';
+        document.getElementById('l-gem').textContent = 'Aangeboden aan jou';
+        countUp(document.getElementById('s-items'), s.matches || 0);
+        countUp(document.getElementById('s-kg'), Math.round(s.totaal_kg || 0));
         countUp(document.getElementById('s-cats'), s.openstaand || 0);
-        countUp(document.getElementById('s-gem'), Math.round(s.totaal_kg || 0));
+        countUp(document.getElementById('s-gem'), s.total || 0);
         document.getElementById('dash-catalogus-link').style.display = 'none';
-        document.getElementById('recent-titel').textContent = 'Recent aan jou aangeboden';
+        document.getElementById('cat-titel').textContent = 'Opgehaald per categorie';
+        document.getElementById('recent-titel').textContent = 'Jouw laatste reacties';
         const impSub = document.querySelector('.impact-sub');
         if (impSub) impSub.innerHTML = impSub.innerHTML.replace('door hergebruik', 'door materiaal dat jij hergebruikt');
       } else {
@@ -594,8 +603,9 @@
         </div>`).join('');
 
       document.getElementById('recent-grid').innerHTML = (d.recent || []).map(item => `
-        <div class="recent-tegel" title="${esc(item.ai_label || '')}">
+        <div class="recent-tegel" title="${esc(item.ai_label || '')}${item.gereageerd_op ? ' · ' + esc(item.gereageerd_op) : ''}"${item.status ? ` onclick="(window.top||window).location='/?tab=list'"` : ''}>
           <img src="${esc(item.photo_url_thumb || item.photo_url)}" loading="lazy" decoding="async" onerror="this.style.opacity=0.2">
+          ${item.status ? `<span class="recent-status ${item.status === 'ophalen' ? 'ok' : ''}">${item.status === 'ophalen' ? 'Opgehaald' : 'Niet nodig'}</span>` : ''}
         </div>`).join('');
 
     }

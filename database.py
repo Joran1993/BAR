@@ -405,7 +405,7 @@ def get_user_by_username(username: str):
 def get_user_by_id(user_id: int):
     with get_cursor() as cur:
         cur.execute(
-            "SELECT id, username, email, role, gemeente, organisatie, contactpersoon, telefoon, adres, auto_doorsturen, melding_digest, milieustraat, created_at FROM users WHERE id = %s", (user_id,)
+            "SELECT id, username, email, role, gemeente, organisatie, bedrijf_id, contactpersoon, telefoon, adres, auto_doorsturen, melding_digest, milieustraat, created_at FROM users WHERE id = %s", (user_id,)
         )
         row = cur.fetchone()
         return dict(row) if row else None
@@ -1008,18 +1008,22 @@ def get_bedrijf_dashboard(bedrijf_id: int) -> dict:
             WHERE a.bedrijf_id = %s
         """, (bedrijf_id,))
         stats = dict(cur.fetchone())
+        # Reactie-invalshoek: categorieën tellen wat het bedrijf ophaalde,
+        # niet wat er toevallig aan ze is aangeboden
         cur.execute("""
             SELECT i.category, COUNT(*) AS count, COALESCE(SUM(i.gewicht_kg), 0) AS kg
             FROM aanbiedingen a JOIN items i ON i.id = a.item_id
-            WHERE a.bedrijf_id = %s AND i.category IS NOT NULL
-            GROUP BY i.category ORDER BY count DESC
+            WHERE a.bedrijf_id = %s AND i.category IS NOT NULL AND a.status = 'ophalen'
+            GROUP BY i.category ORDER BY kg DESC
         """, (bedrijf_id,))
         stats["categories"] = [dict(r) for r in cur.fetchall()]
+        # Recent = de eigen reacties (opgehaald of afgewezen), met status en datum
         cur.execute("""
-            SELECT i.id, i.ai_label, i.photo_url, i.photo_url_thumb
+            SELECT i.id, i.ai_label, i.photo_url, i.photo_url_thumb,
+                   a.status, a.created_at::date AS gereageerd_op
             FROM aanbiedingen a JOIN items i ON i.id = a.item_id
-            WHERE a.bedrijf_id = %s
-            ORDER BY a.created_at DESC LIMIT 6
+            WHERE a.bedrijf_id = %s AND a.status IN ('ophalen', 'niet_nodig')
+            ORDER BY a.created_at DESC LIMIT 8
         """, (bedrijf_id,))
         recent = [dict(r) for r in cur.fetchall()]
     return {"bedrijf": True, "stats": stats, "recent": recent}
@@ -1469,6 +1473,7 @@ def get_items_voor_bedrijf(bedrijf_id: int) -> list:
             SELECT i.id, i.timestamp, i.photo_url, i.photo_url_thumb, i.photo_urls, i.ai_label, i.ai_detail,
                    i.gewicht_kg, i.manual_note, i.category, i.gemeente, i.geaccepteerd, i.conditie,
                    a.id as aanbieding_id, a.status as aanbieding_status,
+                   a.created_at as aanbieding_created_at,
                    COALESCE(u.organisatie, u.username) as aangeboden_door_naam, a.aangeboden_door as aangeboden_door_id,
                    (SELECT COUNT(*) FROM berichten b WHERE b.aanbieding_id = a.id) as bericht_count,
                    (SELECT MAX(created_at) FROM berichten b WHERE b.aanbieding_id = a.id) as last_bericht_at

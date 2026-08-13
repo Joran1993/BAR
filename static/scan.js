@@ -955,11 +955,21 @@ function _statusBadge(item) {
   const d = item.aanbieding_created_at ? Math.floor((Date.now() - new Date(item.aanbieding_created_at)) / 864e5) : null;
   return `<span class="st-badge st-wacht">Wacht${d > 0 ? ` · ${d}d` : ""}</span>`;
 }
-// Nog te beoordelen aanbod (ontvanger-weergave)
+// Reactiestatus voor de ontvanger: in één oogopslag zien waar al op
+// gereageerd is en waar nog niet — zo houdt de kringloop zelf overzicht
 function _nieuwBadge(item) {
   if (_role !== "bedrijf" || !item.aangeboden_door_naam) return "";
-  return (item.aanbieding_status === "open" || item.aanbieding_status === "beschikbaar")
-    ? `<span class="st-badge st-nieuw">Nieuw</span>` : "";
+  const st = item.aanbieding_status;
+  if (st === "ophalen")    return `<span class="st-badge st-ok">✓ Opgehaald</span>`;
+  if (st === "niet_nodig") return `<span class="st-badge st-nee">Niet nodig</span>`;
+  if (st === "open" || st === "beschikbaar") {
+    // "Nieuw" is een tijdsbegrip: alleen de eerste 7 dagen na aanbieden
+    const vers = item.aanbieding_created_at &&
+      (Date.now() - new Date(item.aanbieding_created_at)) < 7 * 864e5;
+    return vers ? `<span class="st-badge st-nieuw">Nieuw</span>`
+                : `<span class="st-badge st-wacht">Nog beoordelen</span>`;
+  }
+  return "";
 }
 // Tweede regel: status + (waar relevant) afzender — op één rustige lijn.
 // "Aan wie aangeboden" staat bewust NIET in de lijst: dat detail (incl. status
@@ -1034,7 +1044,8 @@ function renderItems() {
   } else if (activeMain === "aanbieden") {
     if (activeSubtab === "reacties") {
       source = allItems.filter(i =>
-        !i.aangeboden_door_naam && i.aanbieding_id && i.aanbieding_status && i.aanbieding_status !== "open"
+        !i.aangeboden_door_naam && i.aanbieding_id &&
+        (i.aanbieding_status === "ophalen" || i.aanbieding_status === "niet_nodig")
       );
     } else {
       // "Mijn items": strikt eigen items — zelf geüpload (ook nog niet aangeboden)
@@ -1048,8 +1059,10 @@ function renderItems() {
     const ontvangenItems = _role === "bedrijf"
       ? allItems.filter(i => !!i.aangeboden_door_naam)
       : [];
+    // Echt gereageerd = opgehaald of afgewezen. "beschikbaar" is net als "open"
+    // een onbeantwoorde staat (oudere aanmaakroute) en hoort hier niet bij.
     source = activeSubtab === "mijn-reacties"
-      ? ontvangenItems.filter(i => i.aanbieding_status && i.aanbieding_status !== "open")
+      ? ontvangenItems.filter(i => i.aanbieding_status === "ophalen" || i.aanbieding_status === "niet_nodig")
       : ontvangenItems;
   }
 
