@@ -869,6 +869,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
+# GZip: comprimeert responses alléén voor clients die er zelf om vragen
+# (Accept-Encoding) — clients zonder gzip-ondersteuning krijgen ongewijzigd
+# plaintext. Drukt de JSON-egress (grootste Railway-kostenpost) ~80-90%.
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 
 @app.get("/robots.txt", response_class=Response)
 async def robots_txt():
