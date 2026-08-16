@@ -3212,6 +3212,20 @@ def _render_html(path: str, brand: str) -> HTMLResponse:
     return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
 
 
+@app.post("/api/log-fotofout")
+async def log_fotofout(request: Request):
+    """Clientzijdig fotofout-rapport: welke beeldlink faalde, met welke status.
+    Alleen loggen — geen opslag, geen auth (bewust: juist kapotte sessies melden)."""
+    try:
+        data = await request.json()
+        ua = str(data.get("ua", ""))[:160]
+        for f in (data.get("fouten") or [])[:6]:
+            print(f"[fotofout] ua={ua} | status={f.get('status')} | url={str(f.get('url'))[:200]} | kop={str(f.get('kop'))[:120]}")
+    except Exception as e:
+        print(f"[fotofout] onleesbaar rapport: {e}")
+    return {"ok": True}
+
+
 @app.get("/api/version")
 async def app_version():
     return {"version": ASSET_VERSION}

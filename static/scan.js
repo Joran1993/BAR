@@ -153,8 +153,11 @@ let _itemsGeladen = false;   // pas na de eerste succesvolle fetch "Geen items" 
 // nieuwe reacties én nieuwe chatberichten. (Voorheen alleen aantal+eerste+laatste
 // id — dan miste een aanbieding/status op een bestaand item de update volledig.)
 function _itemsFingerprint(arr) {
+  // De foto-URL telt mee: ondertekende links verlopen en worden serverzijdig
+  // ververst — zonder dit veld zag de vergelijking "geen wijziging" en bleef
+  // het scherm eeuwig de oude, verlopen links tonen
   return arr.map(i =>
-    `${i.id}:${i.aanbieding_id || 0}:${i.aanbieding_status || ""}:${i.bericht_count || 0}:${i.last_bericht_at || ""}`
+    `${i.id}:${i.aanbieding_id || 0}:${i.aanbieding_status || ""}:${i.bericht_count || 0}:${i.last_bericht_at || ""}:${(i.photo_url_thumb || i.photo_url || "").slice(-24)}`
   ).join("|");
 }
 
@@ -2372,6 +2375,35 @@ setTimeout(() => {
 }, 4000);
 // Poll: 12s zolang de app zichtbaar is (fingerprint voorkomt onnodig hertekenen;
 // warme servercache maakt de call ~200ms). Push + focus-sync dekken de rest.
+// ── Fotofout-zelfrapport: als afbeeldingen niet laden, meldt de client zélf
+// welke link faalt en waarom — onmisbaar voor toestel-specifieke problemen
+const _fotoFouten = [];
+let _fotoFoutTimer = null;
+document.addEventListener("error", (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLImageElement)) return;
+  const src = el.currentSrc || el.src || "";
+  if (!src.startsWith("http")) return;
+  _fotoFouten.push(src);
+  clearTimeout(_fotoFoutTimer);
+  _fotoFoutTimer = setTimeout(_meldFotoFouten, 1500);
+}, true);
+async function _meldFotoFouten() {
+  const uniek = [...new Set(_fotoFouten.splice(0))].slice(0, 6);
+  if (!uniek.length) return;
+  const rapport = [];
+  for (const u of uniek) {
+    let status = "?", kop = "";
+    try { const r = await fetch(u, { cache: "no-store" }); status = r.status; kop = (await r.text()).slice(0, 120); }
+    catch (err) { status = "netwerkfout"; kop = String(err).slice(0, 120); }
+    rapport.push({ url: u.slice(0, 200), status, kop });
+  }
+  try {
+    fetch("/api/log-fotofout", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ua: navigator.userAgent.slice(0, 160), fouten: rapport }) });
+  } catch (e) {}
+}
+
 setInterval(() => { if (!document.hidden) syncItems(); }, 12000);
 // Pushmelding binnen terwijl de app open staat → direct verversen (niet op de poll wachten)
 if ("serviceWorker" in navigator) {

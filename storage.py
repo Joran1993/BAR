@@ -44,8 +44,8 @@ def upload_photo(content: bytes) -> str:
 import datetime as _dt
 import urllib.parse as _up
 
-ONDERTEKEND_GELDIG = 6 * 3600      # 6 uur — ruim genoeg voor een sessie
-_CACHE_TTL = 5 * 3600              # iets korter cachen dan de geldigheid
+ONDERTEKEND_GELDIG = 48 * 3600     # 48 uur — overleeft ook een app die een etmaal open blijft staan
+_CACHE_TTL = 24 * 3600             # ruim korter cachen dan de geldigheid (plus max 1u items-cache erbovenop)
 _CACHE_VERSIE = "v3"               # ophogen = alle gecachte links vervallen (v3: verlopen links uit de v2-cache)
 _fb_bucket = None
 # Snelle cache in het proces zelf: scheelt een Redis-rondje per foto. Redis
