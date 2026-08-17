@@ -46,7 +46,7 @@ import urllib.parse as _up
 
 ONDERTEKEND_GELDIG = 48 * 3600     # 48 uur — overleeft ook een app die een etmaal open blijft staan
 _CACHE_TTL = 24 * 3600             # ruim korter cachen dan de geldigheid (plus max 1u items-cache erbovenop)
-_CACHE_VERSIE = "v3"               # ophogen = alle gecachte links vervallen (v3: verlopen links uit de v2-cache)
+_CACHE_VERSIE = "v4"               # ophogen = alle gecachte links vervallen (v4: zelfgenezend — verlopen entries worden nooit meer geserveerd)
 _fb_bucket = None
 # Snelle cache in het proces zelf: scheelt een Redis-rondje per foto. Redis
 # blijft eronder liggen zodat een herstart of tweede proces niet opnieuw hoeft
@@ -127,6 +127,26 @@ def _firebase_pad(url: str):
     return None
 
 
+def _nog_vers(url: str, marge: int = 2 * 3600) -> bool:
+    """Is deze ondertekende link nog ruim geldig? Cache-inhoud kan door oudere
+    processen of races verlopen handtekeningen bevatten — wat we serveren moet
+    ALTIJD nog minstens `marge` geldig zijn, anders tekenen we opnieuw."""
+    import time as _t
+    try:
+        if "Expires=" in url:                     # Firebase/GCS V2: epoch in de query
+            e = int(_up.parse_qs(_up.urlparse(url).query).get("Expires", ["0"])[0])
+            return e - _t.time() > marge
+        if "token=" in url:                       # Supabase: JWT met exp-claim
+            import json as _j, base64 as _b
+            t = url.split("token=", 1)[1].split("&")[0]
+            p = t.split(".")[1]; p += "=" * (-len(p) % 4)
+            e = _j.loads(_b.urlsafe_b64decode(p)).get("exp", 0)
+            return e - _t.time() > marge
+    except Exception:
+        return False                              # onleesbaar → zekerheidshalve hertekenen
+    return True                                   # geen handtekening (bv. publiek) → prima
+
+
 def onderteken(urls):
     """Geef {originele_url: veilige_url}. Onbekende vormen blijven ongewijzigd."""
     import cache as _cache
@@ -135,6 +155,9 @@ def onderteken(urls):
 
     for u in uniek:
         gecached = _uit_geheugen(u) or _cache.get(f"foto:{_CACHE_VERSIE}:{u}")
+        if gecached and not _nog_vers(gecached):
+            _geheugen.pop(u, None)                # verlopen cache-entry: negeren en hertekenen
+            gecached = None
         if gecached:
             _in_geheugen(u, gecached)
             uit[u] = gecached

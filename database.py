@@ -49,13 +49,30 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     return _pool
 
 
+def _wacht_op_verbinding(pool, wachttijd: float = 5.0):
+    """getconn met geduld. Onder piekdrukte (een zaal die tegelijk de app opent)
+    zijn er tijdelijk meer verzoeken dan poolplekken; even wachten op een
+    vrijkomend exemplaar is dan correct — direct 'pool exhausted' gooien
+    betekent foutschermen voor gebruikers die een tel later gewoon geholpen
+    konden worden."""
+    import time as _t
+    deadline = _t.time() + wachttijd
+    while True:
+        try:
+            return pool.getconn()
+        except psycopg2.pool.PoolError:
+            if _t.time() >= deadline:
+                raise
+            _t.sleep(0.025)
+
+
 def _gezonde_verbinding(pool):
     """Geef een werkende verbinding uit de pool. Gesloten of lang-stilgelegen
     exemplaren worden getest en zo nodig vervangen — een dode verbinding mag
     nooit bij een verzoek van een gebruiker terechtkomen."""
     import time as _t
     for _ in range(_POOL_MAX + 2):
-        conn = pool.getconn()
+        conn = _wacht_op_verbinding(pool)
         if conn.closed:
             try:
                 pool.putconn(conn, close=True)
@@ -1539,6 +1556,23 @@ def get_digest_samenvatting(user_id: int, bedrijf_id, sinds) -> dict:
 def markeer_digest_verstuurd(user_id: int) -> None:
     with get_cursor() as cur:
         cur.execute("UPDATE users SET digest_verstuurd_op = now() WHERE id = %s", (user_id,))
+
+
+def claim_digest(user_id: int) -> bool:
+    """Atomaire claim: markeer de digest van vandaag als verstuurd en zeg of
+    wíj hem geclaimd hebben. Met meerdere workers draait de digestlus dubbel;
+    alleen de winnaar van deze UPDATE mag daadwerkelijk pushen, anders krijgt
+    de gebruiker de samenvatting twee keer."""
+    with get_cursor() as cur:
+        cur.execute("""
+            UPDATE users SET digest_verstuurd_op = now()
+            WHERE id = %s
+              AND COALESCE(melding_digest, FALSE)
+              AND (digest_verstuurd_op IS NULL
+                   OR (digest_verstuurd_op AT TIME ZONE 'Europe/Amsterdam')::date
+                      < (now() AT TIME ZONE 'Europe/Amsterdam')::date)
+            RETURNING id""", (user_id,))
+        return cur.fetchone() is not None
 
 
 def get_aanbiedingen_door_user(user_id: int) -> list:

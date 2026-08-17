@@ -267,7 +267,7 @@ def _gemeenten_expand(gemeente: Optional[str]) -> Optional[list]:
 def _invalideer_bedrijf_items(bedrijf_id) -> None:
     """Leeg de gecachete /api/items én het dashboard van dit bedrijf."""
     if bedrijf_id:
-        cache_module.delete_pattern(f"items:bedrijf3:{bedrijf_id}:*")
+        cache_module.delete_pattern(f"items:bedrijf4:{bedrijf_id}:*")
         cache_module.delete(f"dashboard-bedrijf:{bedrijf_id}")
 
 
@@ -877,13 +877,13 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 
 
 @app.get("/robots.txt", response_class=Response)
-async def robots_txt():
+def robots_txt():
     content = "User-agent: *\nAllow: /\nSitemap: https://app.cirqo.nl/sitemap.xml\n"
     return Response(content=content, media_type="text/plain")
 
 
 @app.get("/sitemap.xml", response_class=Response)
-async def sitemap_xml():
+def sitemap_xml():
     content = """<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://app.cirqo.nl/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
@@ -894,7 +894,7 @@ async def sitemap_xml():
 
 
 @app.get("/health")
-async def health():
+def health():
     """Health check — wordt gepingd door UptimeRobot om de container wakker te houden."""
     try:
         with db.get_cursor() as cur:
@@ -919,7 +919,7 @@ async def health():
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @app.get("/api/auth/bedrijf-token/{token}")
-async def login_met_token(token: str, response: Response, request: Request = None):
+def login_met_token(token: str, response: Response, request: Request = None):
     """Automatisch inloggen voor bedrijven via de meld_token uit de link."""
     bedrijf = db.get_bedrijf_by_token(token)
     if not bedrijf:
@@ -985,22 +985,37 @@ def _herstel_hash(geheim: str) -> str:
 
 
 def _zet_herstel_cookie(response: Response, user_id: int, geheim: str = None,
-                        request: Request = None, via: str = None):
+                        request: Request = None, via: str = None,
+                        achtergrond: bool = False):
     import secrets
     nieuw = geheim is None
     if nieuw:
         geheim = secrets.token_urlsafe(48)
-        try:
-            ip = ua = None
-            if request is not None:
-                # eerste hop van X-Forwarded-For is de echte client achter de proxy
-                ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() \
-                     or (request.client.host if request.client else None)
-                ua = request.headers.get("user-agent")
-            db.save_herstel_token(user_id, _herstel_hash(geheim), ip=ip, user_agent=ua, via=via)
-        except Exception as e:
-            print(f"[auth] herstel-token opslaan mislukt (login gaat gewoon door): {e}")
-            return
+        ip = ua = None
+        if request is not None:
+            # eerste hop van X-Forwarded-For is de echte client achter de proxy
+            ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() \
+                 or (request.client.host if request.client else None)
+            ua = request.headers.get("user-agent")
+        if achtergrond:
+            # Drukke momenten (zaal scant de proeflink): de INSERT hoeft de
+            # respons niet op te houden. Mislukt hij, dan is de cookie loos en
+            # valt de bezoeker later gewoon terug op de link — geen schade.
+            import threading
+
+            def _bewaar(hash_=_herstel_hash(geheim)):
+                try:
+                    db.save_herstel_token(user_id, hash_, ip=ip, user_agent=ua, via=via)
+                except Exception as e:
+                    print(f"[auth] herstel-token (achtergrond) opslaan mislukt: {e}")
+
+            threading.Thread(target=_bewaar, daemon=True).start()
+        else:
+            try:
+                db.save_herstel_token(user_id, _herstel_hash(geheim), ip=ip, user_agent=ua, via=via)
+            except Exception as e:
+                print(f"[auth] herstel-token opslaan mislukt (login gaat gewoon door): {e}")
+                return
     # Pad "/" i.p.v. "/api/auth": de nazorg hieronder draait op álle endpoints en
     # moet kunnen zien dát er al een cookie is. Met een smal pad stuurde de
     # browser hem daar niet mee, waardoor er elke 10 minuten een nieuwe werd
@@ -1032,7 +1047,7 @@ def _login_payload(user: dict, auth_type: str = "local") -> dict:
 
 
 @app.post("/api/auth/herstel")
-async def sessie_herstel(request: Request, response: Response):
+def sessie_herstel(request: Request, response: Response):
     """Geef een verse sessie op basis van de herstel-cookie (zonder wachtwoord)."""
     geheim = request.cookies.get(_HERSTEL_COOKIE)
     if not geheim:
@@ -1052,7 +1067,7 @@ async def sessie_herstel(request: Request, response: Response):
 
 
 @app.post("/api/auth/logout")
-async def logout_server(request: Request, response: Response):
+def logout_server(request: Request, response: Response):
     """Bewuste uitlog: herstel-token vernietigen zodat er niets te herstellen valt."""
     geheim = request.cookies.get(_HERSTEL_COOKIE)
     if geheim:
@@ -1066,7 +1081,7 @@ async def logout_server(request: Request, response: Response):
 
 
 @app.post("/api/auth/login")
-async def login(request: Request, response: Response, username: str = Form(...), password: str = Form(...)):
+def login(request: Request, response: Response, username: str = Form(...), password: str = Form(...)):
     import time as _t
     key = _login_key(request, username)
     if _login_geblokkeerd(key):
@@ -1165,13 +1180,13 @@ async def sync_firestore_manual(user=Depends(require_superadmin)):
 
 
 @app.get("/api/admin/fouten")
-async def admin_fouten(limit: int = 100, user=Depends(require_superadmin)):
+def admin_fouten(limit: int = 100, user=Depends(require_superadmin)):
     """Foutenlog: onverwachte 500's en mislukte achtergrond-syncs. Voor monitoring."""
     return {"fouten": db.get_fouten(min(limit, 500)), "laatste_24u": db.tel_fouten_sinds(24)}
 
 
 @app.post("/api/gebruik")
-async def meld_gebruik(kanaal: str = Form(...), user=Depends(get_current_user)):
+def meld_gebruik(kanaal: str = Form(...), user=Depends(get_current_user)):
     """Client meldt bij app-start via welk kanaal hij draait (update-adoptie)."""
     if kanaal not in ("native-ios", "native-android", "pwa", "browser"):
         kanaal = "browser"
@@ -1190,7 +1205,7 @@ async def meld_gebruik(kanaal: str = Form(...), user=Depends(get_current_user)):
 
 
 @app.get("/api/admin/gebruik")
-async def admin_gebruik(user=Depends(require_superadmin)):
+def admin_gebruik(user=Depends(require_superadmin)):
     """Per gebruiker: laatst gezien + kanaal. Wie ontbreekt zit nog in de oude app of web."""
     with db.get_cursor() as cur:
         cur.execute("""
@@ -1208,7 +1223,7 @@ async def admin_gebruik(user=Depends(require_superadmin)):
 
 
 @app.post("/api/admin/import-firestore")
-async def import_firestore(user=Depends(require_superadmin)):
+def import_firestore(user=Depends(require_superadmin)):
     """Eenmalige import van Marketplaceoffers en ophaalverzoeken uit Firestore naar PostgreSQL."""
     fsdb = fs._get_db()
     if not fsdb:
@@ -1288,7 +1303,7 @@ async def heranalyseer_gewichten(gemeente: str = Form("Almere"), user=Depends(re
 
 
 @app.post("/api/admin/fix-aanbieding-statussen")
-async def fix_aanbieding_statussen(user=Depends(require_superadmin)):
+def fix_aanbieding_statussen(user=Depends(require_superadmin)):
     """Herstel aanbieding-statussen vanuit Firestore ophaalverzoeken."""
     fsdb = fs._get_db()
     if not fsdb:
@@ -1310,7 +1325,7 @@ def _has_firestore_col():
 
 
 @app.post("/api/auth/impersonate/{user_id}")
-async def impersonate(user_id: int, user=Depends(get_current_user)):
+def impersonate(user_id: int, user=Depends(get_current_user)):
     if user["role"] != "superadmin":
         raise HTTPException(status_code=403, detail="Geen toegang")
     target = db.get_user_by_id(user_id)
@@ -1332,7 +1347,7 @@ async def impersonate(user_id: int, user=Depends(get_current_user)):
 
 
 @app.post("/api/auth/request-reset")
-async def request_reset(email: str = Form(...)):
+def request_reset(email: str = Form(...)):
     """
     Zorgt dat er een Firebase-account bestaat voor dit e-mailadres.
     De browser stuurt daarna zelf sendPasswordResetEmail() — Firebase verstuurt de mail.
@@ -1407,7 +1422,7 @@ async def sync_password(request: Request):
 
 
 @app.get("/api/auth/me")
-async def me(user=Depends(get_current_user)):
+def me(user=Depends(get_current_user)):
     db_user = db.get_user_by_id(user["id"])
     organisatie = (db_user or {}).get("organisatie") or ""
     # Bedrijf-gebruikers: val terug op de naam uit de bedrijven-tabel
@@ -1436,7 +1451,7 @@ async def me(user=Depends(get_current_user)):
 # ── Gemeenten ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/gemeenten")
-async def list_gemeenten(user=Depends(get_current_user)):
+def list_gemeenten(user=Depends(get_current_user)):
     if DEFAULT_BRAND == "rwm":
         return RWM_GEMEENTEN
     # Wijzigt zelden (alleen bij accountbeheer) — 5 min cache scheelt een DB-call
@@ -1481,7 +1496,7 @@ async def geocode(lat: float, lon: float, user=Depends(get_current_user)):
 
 
 @app.get("/api/mijn-gemeenten")
-async def mijn_gemeenten(user=Depends(get_current_user)):
+def mijn_gemeenten(user=Depends(get_current_user)):
     """Scope van de ingelogde gebruiker voor de dashboard-switcher.
     Geeft {gemeenten: [...], milieustraten: [{naam, gemeente}, ...]|null} terug —
     organisaties met milieustraten filteren daarop i.p.v. op kale gemeenten."""
@@ -1495,21 +1510,21 @@ async def mijn_gemeenten(user=Depends(get_current_user)):
 
 
 @app.get("/api/milieustraten")
-async def list_milieustraten():
+def list_milieustraten():
     if DEFAULT_BRAND == "rwm":
         return RWM_MILIEUSTRATEN
     return {}
 
 
 @app.get("/api/gemeenten/stats")
-async def gemeente_stats(user=Depends(require_superadmin)):
+def gemeente_stats(user=Depends(require_superadmin)):
     return db.get_gemeente_stats()
 
 
 # ── Gebruikersbeheer ──────────────────────────────────────────────────────────
 
 @app.get("/api/users")
-async def list_users(user=Depends(require_admin)):
+def list_users(user=Depends(require_admin)):
     all_users = db.get_all_users()
     # superadmin ziet iedereen; gemeente-admin ziet alleen eigen gemeente
     if user["role"] == "superadmin":
@@ -1518,7 +1533,7 @@ async def list_users(user=Depends(require_admin)):
 
 
 @app.post("/api/users")
-async def create_user(
+def create_user(
     username: str = Form(...),
     password: str = Form(...),
     gemeente: str = Form(""),
@@ -1544,7 +1559,7 @@ async def create_user(
 
 
 @app.delete("/api/users/{user_id}")
-async def delete_user(user_id: int, admin=Depends(require_admin)):
+def delete_user(user_id: int, admin=Depends(require_admin)):
     if user_id == admin["id"]:
         raise HTTPException(status_code=400, detail="Je kunt jezelf niet verwijderen")
     target = db.get_user_by_id(user_id)
@@ -1560,7 +1575,7 @@ async def delete_user(user_id: int, admin=Depends(require_admin)):
 
 
 @app.patch("/api/users/{user_id}/role")
-async def change_user_role(
+def change_user_role(
     user_id: int,
     role: str = Form(...),
     bedrijf_id: Optional[int] = Form(None),
@@ -1578,7 +1593,7 @@ async def change_user_role(
 
 
 @app.patch("/api/users/{user_id}/gemeente")
-async def change_gemeente(
+def change_gemeente(
     user_id: int,
     gemeente: str = Form(...),
     user=Depends(get_current_user),
@@ -1614,7 +1629,7 @@ async def change_gemeente(
 
 
 @app.patch("/api/users/{user_id}/password")
-async def change_password(
+def change_password(
     user_id: int,
     password: str = Form(...),
     user=Depends(get_current_user),
@@ -1654,7 +1669,7 @@ async def change_password(
 
 
 @app.patch("/api/users/{user_id}/organisatie")
-async def change_organisatie(
+def change_organisatie(
     user_id: int,
     organisatie: str = Form(...),
     user=Depends(get_current_user),
@@ -1667,7 +1682,7 @@ async def change_organisatie(
 
 
 @app.patch("/api/users/{user_id}/profiel")
-async def change_profiel(
+def change_profiel(
     user_id: int,
     organisatie: Optional[str] = Form(None),
     contactpersoon: Optional[str] = Form(None),
@@ -1701,7 +1716,7 @@ async def change_profiel(
 
 
 @app.patch("/api/users/{user_id}/auto-doorsturen")
-async def set_auto_doorsturen(
+def set_auto_doorsturen(
     user_id: int,
     enabled: bool = Form(...),
     user=Depends(get_current_user),
@@ -1715,13 +1730,13 @@ async def set_auto_doorsturen(
 # ── Bedrijven ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/bedrijven")
-async def get_bedrijven(gemeente: Optional[str] = None, user=Depends(require_admin)):
+def get_bedrijven(gemeente: Optional[str] = None, user=Depends(require_admin)):
     g = _gemeente_filter(user, gemeente)
     return db.get_bedrijven(g)
 
 
 @app.get("/api/bedrijven-voor-scan")
-async def bedrijven_voor_scan(
+def bedrijven_voor_scan(
     gemeente: str,
     category: Optional[str] = None,
     item_id: Optional[int] = None,
@@ -1765,7 +1780,7 @@ async def bedrijven_voor_scan(
 
 
 @app.post("/api/bedrijven")
-async def create_bedrijf(
+def create_bedrijf(
     naam: str = Form(...),
     gemeente: str = Form(...),
     contactpersoon: str = Form(""),
@@ -1785,7 +1800,7 @@ async def create_bedrijf(
 
 
 @app.patch("/api/bedrijven/{bedrijf_id}")
-async def update_bedrijf(
+def update_bedrijf(
     bedrijf_id: int,
     naam: str = Form(...),
     contactpersoon: str = Form(""),
@@ -1802,7 +1817,7 @@ async def update_bedrijf(
 
 
 @app.delete("/api/bedrijven/{bedrijf_id}")
-async def delete_bedrijf(bedrijf_id: int, user=Depends(require_admin)):
+def delete_bedrijf(bedrijf_id: int, user=Depends(require_admin)):
     if user["role"] != "superadmin" and not _bedrijf_werkt_in(bedrijf_id, _scope_gemeenten(user)):
         raise HTTPException(status_code=403, detail="Bedrijf valt buiten je gemeente-scope")
     db.delete_bedrijf(bedrijf_id)
@@ -1812,7 +1827,7 @@ async def delete_bedrijf(bedrijf_id: int, user=Depends(require_admin)):
 # ── Aanbiedingen ──────────────────────────────────────────────────────────────
 
 @app.post("/api/aanbiedingen")
-async def create_aanbieding(
+def create_aanbieding(
     item_id: int = Form(...),
     bedrijf_id: int = Form(...),
     user=Depends(get_current_user),
@@ -1908,7 +1923,7 @@ async def create_aanbiedingen_bulk(
 
 
 @app.get("/api/push/vapid-key")
-async def get_vapid_key():
+def get_vapid_key():
     return {"public_key": push_module.get_public_key()}
 
 
@@ -1927,7 +1942,7 @@ async def push_subscribe(request: Request, user=Depends(get_current_user)):
 
 
 @app.post("/api/push/test")
-async def push_test(user=Depends(get_current_user)):
+def push_test(user=Depends(get_current_user)):
     """Stuurt een test-pushmelding naar de eigen toestellen van de ingelogde gebruiker."""
     subs = db.get_push_subscriptions_voor_user(user["id"], ook_digest=True)
     if user.get("bedrijf_id"):
@@ -1951,7 +1966,7 @@ async def push_test(user=Depends(get_current_user)):
 
 
 @app.get("/api/push/debug")
-async def push_debug(user=Depends(require_admin)):
+def push_debug(user=Depends(require_admin)):
     """Toon alle push subscriptions (alleen voor beheerders)."""
     with db.get_cursor() as cur:
         cur.execute("SELECT bedrijf_id, id, LEFT(subscription, 60) as sub_preview FROM push_subscriptions ORDER BY bedrijf_id")
@@ -1959,13 +1974,13 @@ async def push_debug(user=Depends(require_admin)):
 
 
 @app.get("/api/aanbiedingen")
-async def get_aanbiedingen(gemeente: Optional[str] = None, user=Depends(require_admin)):
+def get_aanbiedingen(gemeente: Optional[str] = None, user=Depends(require_admin)):
     g = _gemeente_filter(user, gemeente)
     return db.get_aanbiedingen_voor_beheer(g)
 
 
 @app.get("/api/mijn-aanbiedingen-als-aanbieder")
-async def mijn_aanbiedingen_als_aanbieder(user=Depends(get_current_user)):
+def mijn_aanbiedingen_als_aanbieder(user=Depends(get_current_user)):
     cache_key = f"mijn_aanbiedingen:{user['id']}"
     cached = cache_module.get(cache_key)
     if cached is not None:
@@ -1976,7 +1991,7 @@ async def mijn_aanbiedingen_als_aanbieder(user=Depends(get_current_user)):
 
 
 @app.get("/api/mijn-aanbiedingen")
-async def mijn_aanbiedingen(
+def mijn_aanbiedingen(
     limit: int = 15, offset: int = 0, status: Optional[str] = None,
     user=Depends(get_current_user)
 ):
@@ -1991,7 +2006,7 @@ def _is_demo_aanbieding(item) -> bool:
 
 
 @app.patch("/api/mijn-aanbiedingen/{aanbieding_id}")
-async def update_mijn_aanbieding(aanbieding_id: int, status: Optional[str] = Form(None),
+def update_mijn_aanbieding(aanbieding_id: int, status: Optional[str] = Form(None),
                                   reden: Optional[str] = Form(None),
                                   user=Depends(get_current_user)):
     if not user.get("bedrijf_id"):
@@ -2078,7 +2093,7 @@ async def update_mijn_aanbieding(aanbieding_id: int, status: Optional[str] = For
 # ── Berichten ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/aanbiedingen/{aanbieding_id}/berichten")
-async def get_berichten(aanbieding_id: int, user=Depends(get_current_user)):
+def get_berichten(aanbieding_id: int, user=Depends(get_current_user)):
     # Toegang: aanbieder, bedrijf dat de aanbieding ontving, of admin
     info = db.get_aanbieding_deelnemers(aanbieding_id)
     if not info:
@@ -2092,7 +2107,7 @@ async def get_berichten(aanbieding_id: int, user=Depends(get_current_user)):
 
 
 @app.post("/api/aanbiedingen/{aanbieding_id}/berichten")
-async def stuur_bericht(
+def stuur_bericht(
     aanbieding_id: int,
     tekst: str = Form(...),
     user=Depends(get_current_user),
@@ -2156,7 +2171,7 @@ async def stuur_bericht(
 # ── Inzamellijst ─────────────────────────────────────────────────────────────
 
 @app.get("/api/inzamellijst")
-async def get_inzamellijst(gemeente: Optional[str] = None, user=Depends(require_admin)):
+def get_inzamellijst(gemeente: Optional[str] = None, user=Depends(require_admin)):
     g = _gemeente_filter(user, gemeente) or user.get("gemeente") or ""
     if not g:
         raise HTTPException(status_code=400, detail="Gemeente vereist")
@@ -2164,7 +2179,7 @@ async def get_inzamellijst(gemeente: Optional[str] = None, user=Depends(require_
 
 
 @app.post("/api/inzamellijst")
-async def add_inzamellijst(
+def add_inzamellijst(
     product: str = Form(...),
     gemeente: Optional[str] = Form(None),
     user=Depends(require_admin),
@@ -2191,7 +2206,7 @@ async def set_inzamellijst(request: Request, user=Depends(require_admin)):
 
 
 @app.delete("/api/inzamellijst/{entry_id}")
-async def delete_inzamellijst(entry_id: int, gemeente: Optional[str] = None, user=Depends(require_admin)):
+def delete_inzamellijst(entry_id: int, gemeente: Optional[str] = None, user=Depends(require_admin)):
     g = _gemeente_filter(user, gemeente) or user.get("gemeente") or ""
     if not g:
         raise HTTPException(status_code=400, detail="Gemeente vereist")
@@ -2318,15 +2333,15 @@ async def upload(
 # ── Items ─────────────────────────────────────────────────────────────────────
 
 @app.get("/api/items")
-async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] = None, user=Depends(get_current_user)):
+def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] = None, user=Depends(get_current_user)):
     bedrijf_id = user.get("bedrijf_id")
     if bedrijf_id:
         # Per (bedrijf, gebruiker): 'ontvangen' is gedeeld binnen het bedrijf,
         # 'eigen' scans zijn per gebruiker. Cache dus op beide. Invalidatie gebeurt
         # gericht bij elke mutatie (aanbieding maken/status/scan) via
         # _invalideer_bedrijf_items — de 60s-TTL is enkel een vangnet.
-        # bedrijf3: sleutel opgehoogd zodat responses met verlopen fotolinks (getekend vóór 11-08) vervallen
-        bedrijf_cache_key = f"items:bedrijf3:{bedrijf_id}:{user['id']}"
+        # bedrijf4: opgehoogd bij de zelfgenezende tekenlaag — responses met oude links vervallen in één keer
+        bedrijf_cache_key = f"items:bedrijf4:{bedrijf_id}:{user['id']}"
         cached = cache_module.get(bedrijf_cache_key)
         if cached is not None:
             return cached
@@ -2361,7 +2376,7 @@ async def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] 
 
 
 @app.get("/api/items/{item_id}")
-async def get_item(item_id: int, user=Depends(get_current_user)):
+def get_item(item_id: int, user=Depends(get_current_user)):
     item = db.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404)
@@ -2376,7 +2391,7 @@ async def get_item(item_id: int, user=Depends(get_current_user)):
 
 
 @app.get("/api/items/{item_id}/aanbiedingen")
-async def get_item_aanbiedingen(item_id: int, user=Depends(get_current_user)):
+def get_item_aanbiedingen(item_id: int, user=Depends(get_current_user)):
     item = db.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404)
@@ -2394,7 +2409,7 @@ async def get_item_aanbiedingen(item_id: int, user=Depends(get_current_user)):
 
 
 @app.patch("/api/aanbiedingen/{aanbieding_id}/status")
-async def update_aanbieding_status_admin(
+def update_aanbieding_status_admin(
     aanbieding_id: int,
     status: str = Form(...),
     user=Depends(get_current_user),
@@ -2417,7 +2432,7 @@ async def update_aanbieding_status_admin(
 
 
 @app.patch("/api/items/{item_id}")
-async def update_item(
+def update_item(
     item_id: int,
     manual_note: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
@@ -2440,7 +2455,7 @@ async def update_item(
 
 
 @app.delete("/api/items/{item_id}")
-async def delete_item(item_id: int, user=Depends(get_current_user)):
+def delete_item(item_id: int, user=Depends(get_current_user)):
     item = db.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404)
@@ -2532,8 +2547,9 @@ def _verstuur_digests():
     for u in db.get_digest_gebruikers():
         try:
             sinds = u.get("digest_verstuurd_op") or (datetime.now(timezone.utc) - timedelta(hours=24))
+            if not db.claim_digest(u["id"]):
+                continue   # andere worker was ons voor — geen dubbele push
             samenvatting = db.get_digest_samenvatting(u["id"], u.get("bedrijf_id"), sinds)
-            db.markeer_digest_verstuurd(u["id"])   # ook bij niets: geen herhaalpogingen vandaag
             delen = []
             n = samenvatting["aanbiedingen"]
             if n: delen.append(f"{n} nieuwe aanbieding{'en' if n != 1 else ''}")
@@ -2665,7 +2681,7 @@ async def get_dashboard(days: int = 7, periode: int = 0, van: Optional[str] = No
 # ── Statistieken & export ─────────────────────────────────────────────────────
 
 @app.get("/api/mijn-volgorde")
-async def get_mijn_volgorde(user=Depends(get_current_user)):
+def get_mijn_volgorde(user=Depends(get_current_user)):
     return db.get_volgorde(user["id"])
 
 
@@ -2700,7 +2716,7 @@ async def get_netwerk(gemeente: Optional[str] = None, periode: int = 0,
 
 
 @app.get("/api/deelnemers")
-async def get_deelnemers(user=Depends(get_current_user)):
+def get_deelnemers(user=Depends(get_current_user)):
     """Alle deelnemende bedrijven in het netwerk — zichtbaar voor ingelogde bedrijfsaccounts."""
     gemeente = user.get("gemeente", "")
     gemeenten = _gemeenten_expand(gemeente)
@@ -2735,7 +2751,7 @@ async def get_deelnemers(user=Depends(get_current_user)):
 
 
 @app.get("/api/stats")
-async def get_stats(gemeente: Optional[str] = None, user=Depends(get_current_user)):
+def get_stats(gemeente: Optional[str] = None, user=Depends(get_current_user)):
     bedrijf_id = user.get("bedrijf_id")
     if bedrijf_id:
         items = db.get_items_voor_bedrijf(bedrijf_id)
@@ -2765,7 +2781,7 @@ async def get_stats(gemeente: Optional[str] = None, user=Depends(get_current_use
 
 
 @app.get("/api/charts")
-async def get_charts(days: int = 30, gemeente: Optional[str] = None, user=Depends(get_current_user)):
+def get_charts(days: int = 30, gemeente: Optional[str] = None, user=Depends(get_current_user)):
     gemeente = _gemeente_filter(user, gemeente)
     gemeenten = _gemeenten_expand(gemeente)
     cache_key = f"charts:{gemeenten or gemeente}:{days}"
@@ -2779,7 +2795,7 @@ async def get_charts(days: int = 30, gemeente: Optional[str] = None, user=Depend
 
 
 @app.get("/api/export/csv")
-async def export_csv(gemeente: Optional[str] = None, user=Depends(require_admin)):
+def export_csv(gemeente: Optional[str] = None, user=Depends(require_admin)):
     csv_data = db.export_csv(_gemeente_filter(user, gemeente))
     fname = f"bouwkringloop_{gemeente or 'alle'}_{datetime.now().strftime('%Y%m%d')}.csv"
     return Response(
@@ -2795,7 +2811,7 @@ from fastapi.responses import FileResponse
 import mimetypes
 
 @app.get("/static/{path:path}")
-async def static_files(path: str):
+def static_files(path: str):
     file_path = f"static/{path}"
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404)
@@ -2816,7 +2832,7 @@ async def static_files(path: str):
 
 
 @app.get("/sw.js")
-async def service_worker():
+def service_worker():
     with open("static/sw.js", "r", encoding="utf-8") as f:
         return Response(content=f.read(), media_type="application/javascript",
                         headers={"Cache-Control": "no-store"})
@@ -2837,34 +2853,34 @@ def _detect_brand(request: Request) -> str:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def scan_app(request: Request):
+def scan_app(request: Request):
     return _render_html("static/index.html", _detect_brand(request))
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
+def login_page(request: Request):
     return _render_html("static/login.html", _detect_brand(request))
 
 
 @app.get("/auth-action", response_class=HTMLResponse)
-async def auth_action_page(request: Request):
+def auth_action_page(request: Request):
     return _render_html("static/auth-action.html", _detect_brand(request))
 
 
 @app.get("/beheer", response_class=HTMLResponse)
-async def beheer_page(request: Request):
+def beheer_page(request: Request):
     return _render_html("static/beheer.html", _detect_brand(request))
 
 
 @app.get("/debug-brand")
-async def debug_brand(request: Request):
+def debug_brand(request: Request):
     import os as _os2
     detected = _detect_brand(request)
     return {"DEFAULT_BRAND": DEFAULT_BRAND, "detected_brand": detected, "host": request.headers.get("host"), "BRAND_ENV": _os2.getenv("BRAND")}
 
 
 @app.get("/.well-known/assetlinks.json")
-async def assetlinks():
+def assetlinks():
     """Digital Asset Links: koppelt de Play Store-app (TWA-schil) aan dit domein,
     zodat hij zonder browserbalk opent. Vingerafdrukken = upload- + Play-signing-
     certificaat van de bestaande CIRQO-app (uit Firebase, project database-e5575)."""
@@ -2884,32 +2900,36 @@ async def assetlinks():
 
 
 @app.get("/privacy", response_class=HTMLResponse)
-async def privacy_page():
+def privacy_page():
     """Privacyverklaring — verplicht veld voor App Store en Play Store."""
     return _render_html("static/privacy.html", DEFAULT_BRAND)
 
 
 @app.get("/voorwaarden", response_class=HTMLResponse)
-async def voorwaarden_page():
+def voorwaarden_page():
     """Algemene voorwaarden — bereikbaar via Over CIRQO in het accountpaneel."""
     return _render_html("static/voorwaarden.html", DEFAULT_BRAND)
 
 
 @app.get("/installeren", response_class=HTMLResponse)
-async def installeren_page(request: Request):
+def installeren_page(request: Request):
     """Openbare installatiepagina — voor mails en de QR-poster op de milieustraat."""
     return _render_html("static/installeren.html", _detect_brand(request))
 
 
 @app.get("/bedrijf", response_class=HTMLResponse)
-async def bedrijf_page(request: Request):
+def bedrijf_page(request: Request):
     # Kale pagina zonder token is een pilot-restant → naar de normale login.
     # De token-variant hieronder blijft werken (oude partnerlinks).
     return RedirectResponse("/login", status_code=302)
 
 
+# Korte cache voor de proeflink: token → (vervaltijd, bedrijf, gebruikersrij)
+_bedrijf_link_cache: dict = {}
+
+
 @app.get("/bedrijf/{token}")
-async def bedrijf_page_token(token: str, request: Request):
+def bedrijf_page_token(token: str, request: Request):
     """Directe inloglink voor een netwerkpartij: één tik en je zit in de app.
 
     De sessie wordt in de pagina zelf meegegeven (niet in de URL, dus niet in
@@ -2917,14 +2937,30 @@ async def bedrijf_page_token(token: str, request: Request):
     zodat de bezoeker ingelogd blijft. Onbekende of kapotte link → loginscherm.
     """
     import json as _json
+    import time as _time
     try:
-        bedrijf = db.get_bedrijf_by_token(token)
-        if bedrijf:
+        # Token → (bedrijf, gebruiker) kort cachen: de proeflink gaat op een
+        # lezing naar een hele zaal tegelijk, en het antwoord is voor iedereen
+        # gelijk. Beide query's in één rondreis; 10 minuten vasthouden.
+        gecached = _bedrijf_link_cache.get(token)
+        if gecached and gecached[0] > _time.time():
+            bedrijf, row = gecached[1], gecached[2]
+        else:
             with db.get_cursor() as cur:
-                cur.execute("""SELECT id, username, role, gemeente, organisatie, bedrijf_id
-                               FROM users WHERE bedrijf_id = %s AND role = 'bedrijf'
-                               ORDER BY id LIMIT 1""", (bedrijf["id"],))
-                row = cur.fetchone()
+                cur.execute("""SELECT b.naam AS b_naam,
+                                      u.id, u.username, u.role, u.gemeente,
+                                      u.organisatie, u.bedrijf_id
+                               FROM bedrijven b
+                               LEFT JOIN users u ON u.bedrijf_id = b.id AND u.role = 'bedrijf'
+                               WHERE b.meld_token = %s
+                               ORDER BY u.id LIMIT 1""", (token,))
+                r = cur.fetchone()
+            bedrijf = {"naam": r["b_naam"]} if r else None
+            row = ({k: r[k] for k in ("id", "username", "role", "gemeente",
+                                      "organisatie", "bedrijf_id")}
+                   if r and r["id"] is not None else None)
+            _bedrijf_link_cache[token] = (_time.time() + 600, bedrijf, row)
+        if bedrijf:
             if row:
                 # Geen doorverwijzing met een cookie: Safari stuurt een cookie die
                 # tijdens een redirect is gezet niet altijd mee, waardoor de
@@ -2952,7 +2988,8 @@ async def bedrijf_page_token(token: str, request: Request):
                 pagina = _render_html("static/index.html", _detect_brand(request))
                 html = pagina.body.decode("utf-8").replace("<head>", "<head>" + inject, 1)
                 resp = HTMLResponse(html)
-                _zet_herstel_cookie(resp, row["id"], request=request, via="inloglink")
+                _zet_herstel_cookie(resp, row["id"], request=request, via="inloglink",
+                                    achtergrond=True)
                 return resp
     except Exception as e:
         print(f"[bedrijf-link] terugval naar portaal: {e}")
@@ -2998,7 +3035,7 @@ def _thumb_url_toegestaan(u: str) -> bool:
 
 
 @app.get("/api/thumb")
-async def get_thumb(url: str, size: int = 400, user=Depends(get_current_user)):
+def get_thumb(url: str, size: int = 400, user=Depends(get_current_user)):
     import ssl, urllib.request, io
     from PIL import Image
     from fastapi.responses import Response
@@ -3055,7 +3092,7 @@ async def get_thumb(url: str, size: int = 400, user=Depends(get_current_user)):
 
 
 @app.get("/api/tuya/test/{kleur}")
-async def tuya_test(kleur: str, user=Depends(require_admin)):
+def tuya_test(kleur: str, user=Depends(require_admin)):
     import tuya as t
     if kleur == "wit":
         return t.lamp_groen()
@@ -3078,7 +3115,7 @@ _KIOSK_SCANS: dict = {}   # ip → [timestamps], max 12 scans/minuut
 
 
 @app.get("/kiosk", response_class=HTMLResponse)
-async def kiosk_page(key: str = ""):
+def kiosk_page(key: str = ""):
     if not KIOSK_TOKEN:
         raise HTTPException(status_code=503, detail="Kiosk is niet geconfigureerd")
     if key != KIOSK_TOKEN:
@@ -3190,7 +3227,16 @@ def _compute_asset_version() -> str:
 ASSET_VERSION = _compute_asset_version()
 
 
+# Gerenderde pagina's per (bestand, brand): de bestanden en ASSET_VERSION staan
+# vast per deploy, dus het lees- en regexwerk hoeft maar één keer. Scheelt bij
+# een piek (zaal scant QR) tientallen ms per verzoek.
+_render_cache: dict = {}
+
+
 def _render_html(path: str, brand: str) -> HTMLResponse:
+    gecached = _render_cache.get((path, brand))
+    if gecached is not None:
+        return HTMLResponse(content=gecached, headers={"Cache-Control": "no-store"})
     with open(path, "r", encoding="utf-8") as f:
         html = f.read()
     b = BRANDS.get(brand, BRANDS["cirqo"])
@@ -3209,6 +3255,7 @@ def _render_html(path: str, brand: str) -> HTMLResponse:
     # Swap subtitle
     html = html.replace("Milieustraat Almere-Buiten", b["sub"])
     html = html.replace("CIRQO", b["name"])
+    _render_cache[(path, brand)] = html
     return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
 
 
@@ -3227,58 +3274,58 @@ async def log_fotofout(request: Request):
 
 
 @app.get("/api/version")
-async def app_version():
+def app_version():
     return {"version": ASSET_VERSION}
 
 @app.get("/brand.css")
-async def brand_css(request: Request):
+def brand_css(request: Request):
     css = _brand_css(_detect_brand(request))
     return Response(content=css, media_type="text/css", headers={"Cache-Control": "no-cache"})
 
 @app.get("/rwm/brand.css")
-async def rwm_brand_css():
+def rwm_brand_css():
     return Response(content=_brand_css("rwm"), media_type="text/css", headers={"Cache-Control": "no-cache"})
 
 @app.get("/rwm", response_class=HTMLResponse)
 @app.get("/rwm/", response_class=HTMLResponse)
-async def rwm_home():
+def rwm_home():
     return _render_html("static/index.html", "rwm")
 
 @app.get("/rwm/login", response_class=HTMLResponse)
-async def rwm_login():
+def rwm_login():
     return _render_html("static/login.html", "rwm")
 
 @app.get("/rwm/kiosk", response_class=HTMLResponse)
-async def rwm_kiosk():
+def rwm_kiosk():
     return _render_html("static/kiosk.html", "rwm")
 
 @app.get("/rwm/catalogus", response_class=HTMLResponse)
-async def rwm_catalogus():
+def rwm_catalogus():
     return _render_html("static/catalogus.html", "rwm")
 
 @app.get("/rwm/beheer", response_class=HTMLResponse)
-async def rwm_beheer():
+def rwm_beheer():
     return _render_html("static/beheer.html", "rwm")
 
 @app.get("/rwm/bedrijf", response_class=HTMLResponse)
-async def rwm_bedrijf():
+def rwm_bedrijf():
     return _render_html("static/bedrijf.html", "rwm")
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard_page():
+def dashboard_page():
     return _render_html("static/dashboard.html", DEFAULT_BRAND)
 
 
 @app.get("/check", response_class=HTMLResponse)
-async def check_page():
+def check_page():
     return _render_html("static/check.html", DEFAULT_BRAND)
 
 
 @app.get("/catalogus", response_class=HTMLResponse)
 @app.get("/pilotalmere", response_class=HTMLResponse)
 @app.get("/pilotalmere/", response_class=HTMLResponse)
-async def catalogus_page():
+def catalogus_page():
     html = _render_html("static/catalogus.html", DEFAULT_BRAND).body.decode()
     html = re.sub(r'class="cat-hdr-sub">[^<]*<', 'class="cat-hdr-sub">Ingezameld bouwmateriaal · Milieustraat Almere-Buiten<', html)
     # no-store zoals elke andere pagina: een gecachte kopie toonde afnemers
@@ -3287,7 +3334,7 @@ async def catalogus_page():
 
 
 @app.get("/api/catalogus")
-async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int = 0,
+def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int = 0,
                         user=Depends(get_optional_user)):
     if user and (user.get("bedrijf_id") or user.get("role") == "bedrijf"):
         # Afnemers zien alleen wat aan hén is aangeboden (hun eigen lijst) —
@@ -3323,7 +3370,7 @@ async def get_catalogus(gemeente: str = "Almere", limit: int = 48, offset: int =
 
 
 @app.post("/api/admin/bouw-thumb-urls")
-async def bouw_thumb_urls(gemeente: str = "Almere", user=Depends(require_superadmin)):
+def bouw_thumb_urls(gemeente: str = "Almere", user=Depends(require_superadmin)):
     import re, urllib.parse as _up
     from firebase_admin import storage as _storage
 
