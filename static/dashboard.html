@@ -726,9 +726,10 @@
              <div><b style="color:var(--orange,#e67026)">${b.aanbieding_count}</b> aanbiedingen ·
                <b style="color:var(--orange,#e67026)">${b.match_count || 0}</b> matches${
                b.kg_aangeboden ? ` · van ${(b.kg_aangeboden).toLocaleString('nl-NL', {maximumFractionDigits: 1})} kg aangeboden` : ''}</div>
-             <div style="margin-top:4px">Categorieën: ${cats}</div>
-             <button class="nw-dl" style="margin-top:10px" onclick="nwAanbiedingen(${i},event)">Bekijk aanbiedingen →</button>
-             <div class="nw-aanb" id="nw-aanb" style="display:none"></div>`
+             <div style="margin-top:4px">Categorieën: ${cats}</div>` +
+             (window._nwEigen ? '' :
+             `<button class="nw-dl" style="margin-top:10px" onclick="nwAanbiedingen(${i},event)">Bekijk aanbiedingen →</button>
+             <div class="nw-aanb" id="nw-aanb" style="display:none"></div>`)
           : `<div style="color:#8a8178">${b.niet_nodig_count > 0
                 ? `Aangesloten op het netwerk — ${b.niet_nodig_count} aanbieding${b.niet_nodig_count > 1 ? 'en' : ''} ontvangen, maar (nog) niets nodig gehad.`
                 : 'Aangesloten op het netwerk — nog geen aanbiedingen ontvangen.'}</div>` +
@@ -764,7 +765,7 @@
     }
 
     async function laadNetwerk() {
-      if (localStorage.getItem('role') === 'bedrijf') return;   // niet voor bedrijven (server blokkeert ook)
+      // Ook voor bedrijven: de server geeft hen hun éigen netwerk (bedrijf als hub)
       const token = localStorage.getItem('token');
       const params = _q();
       let res;
@@ -773,6 +774,7 @@
       } catch (e) { return; }
       if (!res.ok) return;   // geen admin-rechten → sectie blijft verborgen
       const d = await res.json();
+      window._nwEigen = !!d.eigen;             // bedrijfsweergave: eigen bedrijf als hub
       const hub = d.hub || {};
       const bedrijven = (d.bedrijven || []);   // alle deelnemers, ook zonder aanbiedingen
       if (!bedrijven.length) return;
@@ -802,12 +804,16 @@
       document.getElementById('nw-sectie-titel').style.display = '';
       document.getElementById('netwerk-wrap').style.display = '';
 
-      document.getElementById('nw-chips').innerHTML = [
+      document.getElementById('nw-chips').innerHTML = (window._nwEigen ? [
+        ['Partners', hub.deelnemers], ['Actieve verbindingen', hub.verbindingen],
+        ['Aanbiedingen', hub.aanbiedingen_totaal], ['Matches', hub.matches_totaal],
+        ['Kg uitgewisseld', Math.round(hub.kg_opgehaald_totaal || 0)],
+      ] : [
         ['Deelnemers', hub.deelnemers], ['Verbindingen', hub.verbindingen],
         ['Aanbiedingen', hub.aanbiedingen_totaal], ['Matches', hub.matches_totaal],
         ['Kg meegenomen', Math.round(hub.kg_opgehaald_totaal || 0)],
         ['Items aangeboden', hub.items_totaal],
-      ].map(([l, v]) => `<span class="netwerk-chip">${esc(l)} <b data-val="${v || 0}">0</b></span>`).join('');
+      ]).map(([l, v]) => `<span class="netwerk-chip">${esc(l)} <b data-val="${v || 0}">0</b></span>`).join('');
       document.querySelectorAll('#nw-chips b[data-val]').forEach(el => countUp(el, +el.getAttribute('data-val')));
 
       // categorie → kleurindex ('' / null = Overig); unie van dominante + ring-categorieën
@@ -964,13 +970,33 @@
       const hubNaam = hubBron.length > 24 ? hubBron.slice(0, 23) + '…' : hubBron;
       // Lange gemeentenamen iets kleiner zodat ze grotendeels binnen de hub blijven
       const hubNaamFs = hubNaam.length > 18 ? 10 : (hubNaam.length > 14 ? 11 : 12);
+      // Bedrijfsweergave: geen "Milieustraat"-kop maar de eigen bedrijfsnaam,
+      // over meerdere regels uitgebalanceerd zodat hij in de hub past.
+      let hubTeksten;
+      if (window._nwEigen) {
+        const wrd = hubBron.split(/\s+/).filter(Boolean);
+        const lijnen = wrd.length <= 3 ? (wrd.length ? wrd : [hubBron]) : (() => {
+          const per = Math.ceil(wrd.length / 3), uit = [];
+          for (let k = 0; k < wrd.length; k += per) uit.push(wrd.slice(k, k + per).join(' '));
+          return uit;
+        })();
+        const maxLen = Math.max(...lijnen.map(l => l.length));
+        const fs = maxLen > 12 ? 9.5 : (maxLen > 9 ? 11 : 13);
+        const lh = fs + 4;
+        const y0 = cy - ((lijnen.length - 1) * lh) / 2 + fs * 0.35;
+        hubTeksten = lijnen.map((l, k) =>
+          `<text x="${cx}" y="${(y0 + k * lh).toFixed(1)}" text-anchor="middle" fill="#fff" font-size="${fs}" font-weight="800" style="pointer-events:none;font-family:'Outfit',sans-serif">${esc(l)}</text>`).join('');
+      } else {
+        hubTeksten =
+          `<text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="#fff" font-size="15" font-weight="800" style="pointer-events:none;font-family:'Outfit',sans-serif">Milieustraat</text>` +
+          `<text x="${cx}" y="${cy + 15}" text-anchor="middle" fill="#f1e8db" stroke="#17130d" stroke-width="2.4" paint-order="stroke" font-size="${hubNaamFs}" font-weight="600" style="pointer-events:none;font-family:'Outfit',sans-serif">${esc(hubNaam)}</text>`;
+      }
       const hubNode = `<g class="nw-hub">` +
         `<circle cx="${cx}" cy="${cy}" r="${hubR + 6}" fill="none" stroke="#e67026" stroke-width="1.5" stroke-opacity="0.35">` +
           `<animate attributeName="r" values="${hubR + 6};${hubR + 13};${hubR + 6}" dur="3.2s" repeatCount="indefinite"/>` +
           `<animate attributeName="stroke-opacity" values="0.35;0.06;0.35" dur="3.2s" repeatCount="indefinite"/></circle>` +
         `<circle cx="${cx}" cy="${cy}" r="${hubR}" fill="url(#nwHub)" filter="url(#nwSh)"/>` +
-        `<text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="#fff" font-size="15" font-weight="800" style="pointer-events:none;font-family:'Outfit',sans-serif">Milieustraat</text>` +
-        `<text x="${cx}" y="${cy + 15}" text-anchor="middle" fill="#f1e8db" stroke="#17130d" stroke-width="2.4" paint-order="stroke" font-size="${hubNaamFs}" font-weight="600" style="pointer-events:none;font-family:'Outfit',sans-serif">${esc(hubNaam)}</text>` +
+        hubTeksten +
         `</g>`;
 
       // klik naast een knoop (op de svg-achtergrond) = selectie sluiten

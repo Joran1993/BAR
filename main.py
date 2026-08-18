@@ -1849,24 +1849,30 @@ def create_aanbieding(
     _invalideer_bedrijf_items(bedrijf_id)               # ontvangend bedrijf ziet nieuw aanbod
     _invalideer_bedrijf_items(user.get("bedrijf_id"))   # aanbieder-bedrijf: eigen item nu 'aangeboden'
 
-    # Push op de achtergrond — vertraagt het response niet
-    async def _stuur_bedrijf_push():
-        item = db.get_item(item_id)
-        label = (item or {}).get("ai_label") or "nieuw materiaal"
-        subscriptions = db.get_push_subscriptions_for_bedrijf(bedrijf_id)
-        print(f"[push] Aanbieding voor bedrijf {bedrijf_id}: {len(subscriptions)} subscription(s)")
-        for sub in subscriptions:
-            ok = push_module.send_push(
-                sub["subscription"],
-                title="Nieuw aanbod — CIRQO",
-                body=f"Er is {label} aangeboden.",
-                url="/",
-            )
-            print(f"[push] Verzonden naar sub {sub['id']}: {'OK' if ok else 'MISLUKT'}")
-            if not ok:
-                db.delete_push_subscription(sub["subscription"])
+    # Push op de achtergrond — vertraagt het response niet. In een thread, niet
+    # via asyncio: deze handler draait sinds de threadpool-omzetting buiten de
+    # event loop, waar asyncio.create_task niet bestaat (leerpunt 18-08).
+    def _stuur_bedrijf_push():
+        try:
+            item = db.get_item(item_id)
+            label = (item or {}).get("ai_label") or "nieuw materiaal"
+            subscriptions = db.get_push_subscriptions_for_bedrijf(bedrijf_id)
+            print(f"[push] Aanbieding voor bedrijf {bedrijf_id}: {len(subscriptions)} subscription(s)")
+            for sub in subscriptions:
+                ok = push_module.send_push(
+                    sub["subscription"],
+                    title="Nieuw aanbod — CIRQO",
+                    body=f"Er is {label} aangeboden.",
+                    url="/",
+                )
+                print(f"[push] Verzonden naar sub {sub['id']}: {'OK' if ok else 'MISLUKT'}")
+                if not ok:
+                    db.delete_push_subscription(sub["subscription"])
+        except Exception as e:
+            print(f"[push] aanbieding-push mislukt: {e}")
 
-    asyncio.create_task(_stuur_bedrijf_push())
+    import threading
+    threading.Thread(target=_stuur_bedrijf_push, daemon=True).start()
     return {"id": aanbieding_id}
 
 
@@ -2032,7 +2038,7 @@ def update_mijn_aanbieding(aanbieding_id: int, status: Optional[str] = Form(None
     fs.update_aanbieding_status(aanbieding_id, status)
     _invalideer_bedrijf_items(user.get("bedrijf_id"))   # reagerend bedrijf: eigen lijststatus wijzigt
 
-    async def _afhandel():
+    def _afhandel():
         with db.get_cursor() as cur:
             cur.execute("SELECT aangeboden_door, item_id FROM aanbiedingen WHERE id = %s", (aanbieding_id,))
             row = cur.fetchone()
@@ -2086,7 +2092,8 @@ def update_mijn_aanbieding(aanbieding_id: int, status: Optional[str] = Form(None
                 body=f"{bedrijf_naam} {status_tekst}: {label}",
                 url="/")
 
-    asyncio.create_task(_afhandel())
+    import threading
+    threading.Thread(target=_afhandel, daemon=True).start()
     return {"ok": True}
 
 
@@ -2133,7 +2140,7 @@ def stuur_bericht(
         cache_module.delete_pattern(f"items:*:0:{info['aangeboden_door']}")
 
     # Push naar de andere partij op de achtergrond
-    async def _push_bericht():
+    def _push_bericht():
         label = info.get("ai_label") or "materiaal"
         print(f"[push-chat] is_bedrijf={is_bedrijf}, aanbieding={aanbieding_id}, label={label!r}")
         if is_bedrijf:
@@ -2163,7 +2170,8 @@ def stuur_bericht(
                     if not ok:
                         db.delete_push_subscription(sub["subscription"])
 
-    asyncio.create_task(_push_bericht())
+    import threading
+    threading.Thread(target=_push_bericht, daemon=True).start()
     return {**bericht, "user_id": user["id"],
             "naam": naam, "tekst": tekst.strip()}
 
@@ -2694,14 +2702,172 @@ async def sla_mijn_volgorde(request: Request, user=Depends(get_current_user)):
     return {"ok": True}
 
 
+def _bouw_bedrijf_netwerk(bedrijf_id: int) -> dict:
+    """Netwerk vanuit één bedrijf: het eigen bedrijf als hub, daaromheen de
+    partijen waarmee het daadwerkelijk uitwisselt plus de overige deelnemers
+    in het eigen werkgebied. Privacy blijft overeind: elk getal betreft
+    uitsluitend aanbiedingen waar dit bedrijf zélf partij in was — wat andere
+    bedrijven onderling doen blijft onzichtbaar."""
+    with db.get_cursor() as cur:
+        cur.execute("SELECT naam, gemeente FROM bedrijven WHERE id = %s", (bedrijf_id,))
+        eigen = cur.fetchone()
+        if not eigen:
+            raise HTTPException(status_code=404, detail="Bedrijf niet gevonden")
+
+        # Uitgaand: aan wie bood dit bedrijf (via eigen scans) aan?
+        cur.execute("""
+            SELECT b2.id, b2.naam, b2.gemeente, b2.email, b2.sector,
+                   COUNT(*)                                          AS aanbieding_count,
+                   COUNT(*) FILTER (WHERE a.status = 'ophalen')      AS match_count,
+                   COUNT(*) FILTER (WHERE a.status = 'niet_nodig')   AS niet_nodig_count,
+                   COALESCE(SUM(i.gewicht_kg) FILTER (WHERE a.status = 'ophalen'), 0) AS kg_opgehaald,
+                   COALESCE(SUM(i.gewicht_kg), 0)                    AS kg_aangeboden
+            FROM aanbiedingen a
+            JOIN items i     ON i.id = a.item_id
+            JOIN users u     ON u.id = i.uploaded_by
+            JOIN bedrijven b2 ON b2.id = a.bedrijf_id
+            WHERE u.bedrijf_id = %s AND a.bedrijf_id <> %s
+            GROUP BY b2.id, b2.naam, b2.gemeente, b2.email, b2.sector
+        """, (bedrijf_id, bedrijf_id))
+        partners = {r["id"]: dict(r) for r in cur.fetchall()}
+
+        # Categorieverdeling per uitgaande partner (voor de donut-ring per knoop)
+        cur.execute("""
+            SELECT a.bedrijf_id AS pid, i.category, COUNT(*) AS n
+            FROM aanbiedingen a
+            JOIN items i ON i.id = a.item_id
+            JOIN users u ON u.id = i.uploaded_by
+            WHERE u.bedrijf_id = %s AND a.bedrijf_id <> %s
+              AND COALESCE(i.category, '') <> ''
+            GROUP BY a.bedrijf_id, i.category
+        """, (bedrijf_id, bedrijf_id))
+        for r in cur.fetchall():
+            p = partners.get(r["pid"])
+            if p is not None:
+                p.setdefault("categorie_counts", []).append(
+                    {"category": r["category"], "count": r["n"]})
+
+        # Inkomend: wie bood aan dít bedrijf aan? Aanbiedende bedrijven smelten
+        # samen met hun bestaande partnerknoop (anders staat dezelfde partij er
+        # twee keer); overige aanbieders (milieustraten/gemeenten) worden op
+        # organisatie gegroepeerd, niet op individuele mensen.
+        cur.execute("""
+            SELECT u.bedrijf_id AS pid, i.category,
+                   COUNT(*)                                          AS aanbieding_count,
+                   COUNT(*) FILTER (WHERE a.status = 'ophalen')      AS match_count,
+                   COUNT(*) FILTER (WHERE a.status = 'niet_nodig')   AS niet_nodig_count,
+                   COALESCE(SUM(i.gewicht_kg) FILTER (WHERE a.status = 'ophalen'), 0) AS kg_opgehaald,
+                   COALESCE(SUM(i.gewicht_kg), 0)                    AS kg_aangeboden
+            FROM aanbiedingen a
+            JOIN items i ON i.id = a.item_id
+            JOIN users u ON u.id = i.uploaded_by
+            WHERE a.bedrijf_id = %s AND u.bedrijf_id IS NOT NULL AND u.bedrijf_id <> %s
+            GROUP BY u.bedrijf_id, i.category
+        """, (bedrijf_id, bedrijf_id))
+        inkomend = cur.fetchall()
+        ontbrekend = {r["pid"] for r in inkomend} - set(partners)
+        if ontbrekend:
+            cur.execute("""SELECT id, naam, gemeente, email, sector FROM bedrijven
+                           WHERE id = ANY(%s)""", (list(ontbrekend),))
+            for r in cur.fetchall():
+                partners[r["id"]] = dict(r) | {
+                    "aanbieding_count": 0, "match_count": 0, "niet_nodig_count": 0,
+                    "kg_opgehaald": 0, "kg_aangeboden": 0}
+        for r in inkomend:
+            p = partners.get(r["pid"])
+            if p is None:
+                continue
+            for veld in ("aanbieding_count", "match_count", "niet_nodig_count",
+                         "kg_opgehaald", "kg_aangeboden"):
+                p[veld] = (p.get(veld) or 0) + r[veld]
+            if r["category"]:
+                cc = p.setdefault("categorie_counts", [])
+                bestaand = next((c for c in cc if c["category"] == r["category"]), None)
+                if bestaand:
+                    bestaand["count"] += r["aanbieding_count"]
+                else:
+                    cc.append({"category": r["category"], "count": r["aanbieding_count"]})
+
+        cur.execute("""
+            SELECT COALESCE(NULLIF(u.organisatie, ''), NULLIF(i.gemeente, ''), 'Aanbieder') AS naam,
+                   COUNT(*)                                          AS aanbieding_count,
+                   COUNT(*) FILTER (WHERE a.status = 'ophalen')      AS match_count,
+                   COUNT(*) FILTER (WHERE a.status = 'niet_nodig')   AS niet_nodig_count,
+                   COALESCE(SUM(i.gewicht_kg) FILTER (WHERE a.status = 'ophalen'), 0) AS kg_opgehaald,
+                   COALESCE(SUM(i.gewicht_kg), 0)                    AS kg_aangeboden
+            FROM aanbiedingen a
+            JOIN items i ON i.id = a.item_id
+            LEFT JOIN users u ON u.id = i.uploaded_by
+            WHERE a.bedrijf_id = %s AND u.bedrijf_id IS NULL
+            GROUP BY 1
+        """, (bedrijf_id,))
+        aanbieders = [dict(r) | {"sector": "Aanbieders", "gemeente": "", "email": ""}
+                      for r in cur.fetchall()]
+
+        # Overige deelnemers in het eigen werkgebied: zichtbaar als stille
+        # netwerkpartij (naam + interesses zijn al openbaar via /api/deelnemers)
+        cur.execute("""
+            SELECT b.id, b.naam, b.gemeente, b.email, b.sector
+            FROM bedrijven b
+            WHERE b.gemeente = %s AND b.id <> %s
+        """, (eigen["gemeente"], bedrijf_id))
+        for r in cur.fetchall():
+            if r["id"] not in partners:
+                partners[r["id"]] = dict(r) | {
+                    "aanbieding_count": 0, "match_count": 0, "niet_nodig_count": 0,
+                    "kg_opgehaald": 0, "kg_aangeboden": 0}
+        if partners:
+            cur.execute("""SELECT bedrijf_id, category FROM bedrijf_categorieen
+                           WHERE bedrijf_id = ANY(%s)""", (list(partners.keys()),))
+            for r in cur.fetchall():
+                p = partners.get(r["bedrijf_id"])
+                if p is not None:
+                    p.setdefault("categorieen", []).append(r["category"])
+
+    knopen = list(partners.values()) + aanbieders
+    for b in knopen:
+        b.setdefault("categorie_counts", [])
+        cc = sorted(b["categorie_counts"], key=lambda c: -c["count"])
+        b["dominant_category"] = cc[0]["category"] if cc else None
+        b["milieustraten"] = []
+        b["kg_opgehaald"] = float(b["kg_opgehaald"] or 0)
+        b["kg_aangeboden"] = float(b["kg_aangeboden"] or 0)
+        b.pop("id", None)
+        _bedrijf_domein(b)   # e-mail → domein, adres zelf blijft binnen
+
+    return {
+        "eigen": True,       # frontend: hub = het eigen bedrijf, beheer-doorkliks uit
+        "hub": {
+            "naam": eigen["naam"],
+            "deelnemers": len(knopen),
+            "verbindingen": sum(1 for b in knopen if b["aanbieding_count"] > 0),
+            "aanbiedingen_totaal": sum(b["aanbieding_count"] for b in knopen),
+            "matches_totaal": sum(b["match_count"] for b in knopen),
+            "kg_opgehaald_totaal": sum(b["kg_opgehaald"] for b in knopen),
+            "items_totaal": sum(b["aanbieding_count"] for b in knopen),
+        },
+        "bedrijven": knopen,
+    }
+
+
 @app.get("/api/netwerk")
 async def get_netwerk(gemeente: Optional[str] = None, periode: int = 0,
                       van: Optional[str] = None, tot: Optional[str] = None,
                       milieustraat: Optional[str] = None, user=Depends(get_current_user)):
-    # Zichtbaar voor gemeente-/milieustraat-accounts; NIET voor bedrijven
-    # (matchgegevens van andere bedrijven zijn niet hun zaak)
+    # Bedrijfsaccounts krijgen hun éigen netwerk: het bedrijf als hub met de
+    # partijen waar het mee uitwisselt. Matchgegevens van andere bedrijven
+    # onderling blijven afgeschermd (dat was de reden van de oude 403).
     if user.get("bedrijf_id") or user["role"] == "bedrijf":
-        raise HTTPException(status_code=403, detail="Niet beschikbaar voor bedrijfsaccounts")
+        if not user.get("bedrijf_id"):
+            raise HTTPException(status_code=403, detail="Geen bedrijf gekoppeld")
+        sleutel = f"netwerk-bedrijf:{user['bedrijf_id']}"
+        cached = cache_module.get(sleutel)
+        if cached is not None:
+            return cached
+        data = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: _bouw_bedrijf_netwerk(user["bedrijf_id"]))
+        cache_module.set(sleutel, data, ttl=60)
+        return data
     g = _gemeente_filter(user, gemeente)
     # Organisatie-scope (bv. 'waardlanden') uitklappen naar de losse gemeenten
     gemeenten = _gemeenten_expand(g) or ([g] if g else None)
