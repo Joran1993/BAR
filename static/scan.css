@@ -1412,3 +1412,214 @@ body {
   text-align: center; font-size: 0.82rem; color: var(--muted);
   margin-top: 8px; min-height: 1.1em; transition: opacity 0.2s ease;
 }
+
+
+/* ── Scanmoment ────────────────────────────────────────────────────────────────
+   Het signatuurmoment: de AI die zichtbaar "kijkt" en een resultaat dat met
+   theater landt. Kleuren via var(--orange) zodat elke huisstijl meekleurt. */
+:root {
+  --veer:   cubic-bezier(.34, 1.56, .64, 1);   /* overshoot: landt met leven */
+  --uitrol: cubic-bezier(.22, 1, .36, 1);       /* snel weg, zacht remmen */
+}
+
+/* Fase 1 — AI kijkt: fullscreen scan-toneel — de foto is het podium */
+.scan-toneel {
+  position: fixed; inset: 0; z-index: 1200;
+  background: rgba(23, 19, 13, .93);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; padding: 28px 22px calc(28px + env(safe-area-inset-bottom));
+  animation: toneelIn .3s ease-out both;
+}
+.scan-toneel.weg { animation: toneelWeg .3s ease-in both; }
+@keyframes toneelIn  { from { opacity: 0 } to { opacity: 1 } }
+@keyframes toneelWeg { from { opacity: 1 } to { opacity: 0 } }
+.scan-toneel-kader {
+  position: relative; overflow: hidden; border-radius: 20px;
+  animation: kaderIn .5s var(--veer) both;
+  width: min(78vw, 420px); aspect-ratio: 1;
+  box-shadow: 0 18px 60px rgba(0,0,0,.5);
+}
+@keyframes kaderIn {
+  from { opacity: 0; transform: scale(.88) translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Ambient gloed: de eigen foto als lichtbron achter het kader */
+.scan-toneel-gloed {
+  position: absolute; left: 50%; top: 42%; width: min(92vw, 500px); aspect-ratio: 1;
+  transform: translate(-50%, -50%) scale(1.15);
+  filter: blur(70px) saturate(1.5) brightness(.9);
+  opacity: .35; border-radius: 40px; pointer-events: none;
+  animation: gloedIn 1s ease-out both;
+}
+@keyframes gloedIn { from { opacity: 0 } to { opacity: .35 } }
+
+/* Zoeker-hoekjes: het AI-vizier */
+.scan-toneel-kader .hoek {
+  position: absolute; width: 26px; height: 26px; z-index: 3; pointer-events: none;
+  border: 0 solid var(--orange); opacity: .85;
+}
+.scan-toneel-kader .h1 { top: 10px; left: 10px;  border-top-width: 2px; border-left-width: 2px;  border-top-left-radius: 10px; }
+.scan-toneel-kader .h2 { top: 10px; right: 10px; border-top-width: 2px; border-right-width: 2px; border-top-right-radius: 10px; }
+.scan-toneel-kader .h3 { bottom: 10px; right: 10px; border-bottom-width: 2px; border-right-width: 2px; border-bottom-right-radius: 10px; }
+.scan-toneel-kader .h4 { bottom: 10px; left: 10px;  border-bottom-width: 2px; border-left-width: 2px;  border-bottom-left-radius: 10px; }
+/* vizier staat stil — instrumenten ademen niet */
+
+/* Meetraster: flinterdunne derden-lijnen, zoals de pro-modus van een camera */
+.scan-toneel-raster {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: .55;
+  background-image: linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px);
+  background-size: 33.4% 33.4%; background-position: -1px -1px;
+  transition: opacity .3s ease;
+}
+.scan-toneel.klaar .scan-toneel-raster { opacity: 0; }
+
+/* Analyse-rapport: de AI vult zijn bevindingen ter plekke in */
+.scan-rapport { width: min(78vw, 420px); display: grid; gap: 8px; }
+.rap-rij {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 14px;
+  border-bottom: 1px solid rgba(255,255,255,.09); padding-bottom: 8px;
+}
+/* Rijen verschijnen één voor één terwijl de AI werkt: de lijst ís de voortgang */
+.rap-rij:not(.zichtbaar) { display: none; }
+.rap-rij.zichtbaar { animation: rapRijIn .4s var(--uitrol) both; }
+@keyframes rapRijIn { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+.rap-k {
+  font-size: .66rem; letter-spacing: .14em; text-transform: uppercase;
+  color: #9b9285; white-space: nowrap;
+}
+.rap-w {
+  font-weight: 700; font-size: .92rem; color: #fff; text-align: right;
+  min-height: 1.25em; min-width: 96px; position: relative;
+}
+.rap-rij:not(.gevuld) .rap-w::after {
+  content: ""; position: absolute; right: 0; top: 3px; bottom: 3px; width: 96px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, rgba(255,255,255,.05), rgba(255,255,255,.14), rgba(255,255,255,.05));
+  background-size: 200% 100%;
+  animation: rapShimmer 1.4s linear infinite;
+}
+@keyframes rapShimmer { from { background-position: 150% 0 } to { background-position: -50% 0 } }
+.rap-rij.gevuld .rap-w { animation: rapVul .35s var(--uitrol) both; }
+.rap-rij.gevuld .rap-k { color: var(--orange); }
+@keyframes rapVul { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+
+/* Slotakkoord: scanlijn stopt, vizier klikt vast, het rapport vult zich */
+.scan-toneel.klaar .scan-toneel-kader::after { display: none; }         /* scanlijn stopt */
+.scan-toneel.klaar .scan-toneel-kader::before { opacity: .75; }
+.scan-toneel.klaar .scan-toneel-kader .hoek { animation: hoekKlik .3s var(--veer) both; opacity: 1; }
+@keyframes hoekKlik { from { transform: scale(1.12); } to { transform: none; } }
+.scan-toneel.klaar .scan-toneel-kader img { filter: none; }
+
+.scan-toneel-kader img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  transition: opacity .35s ease;
+}
+.scan-toneel-kader img.wissel { opacity: 0; }
+.scan-toneel-kader::before {          /* ademende rand in merkkleur */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1.5px var(--orange);
+  opacity: .28; z-index: 2;
+}
+@keyframes adem { 0%, 100% { opacity: .2 } 50% { opacity: .95 } }
+.scan-toneel-kader::after {           /* scanlijn: scherpe kern + gloed */
+  content: ""; position: absolute; left: 0; right: 0; height: 42%; top: -44%;
+  background: linear-gradient(180deg, transparent, var(--orange) 82%, transparent 88%);
+  opacity: .45;
+  border-bottom: 2px solid var(--orange);
+  box-shadow: 0 2px 12px 0 var(--orange);
+  pointer-events: none;
+  animation: scanlijn 1.5s var(--uitrol) infinite;
+}
+@keyframes scanlijn { from { top: -44%; } to { top: 106%; } }
+.scan-toneel-teller {
+  color: #b9b0a2; font-size: .68rem; letter-spacing: .2em; text-transform: uppercase;
+  margin-top: -4px;
+}
+.scan-toneel .analyse-caption {
+  color: #a99f90; font-size: .82rem; font-weight: 500; text-align: center; min-height: 1.3em;
+}
+.scan-toneel .analyse-caption.wissel { animation: capIn .38s var(--uitrol); }
+@keyframes capIn { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+.scan-toneel .analyse-progress {
+  width: min(78vw, 420px); height: 3px; border-radius: 99px;
+  background: rgba(255,255,255,.14); overflow: hidden;
+}
+.scan-toneel .analyse-progress-bar {
+  height: 100%; border-radius: 99px; width: 0; background: var(--orange);
+}
+
+/* (raster-scanlijn blijft voor brede schermen waar het raster zichtbaar is) */
+/* Fase 1 — AI kijkt: ademende rand + heldere scanlijn met gloed */
+.preview-thumbs.analyseert .preview-thumb { position: relative; overflow: hidden; }
+.preview-thumbs.analyseert .preview-thumb img { filter: saturate(.92) brightness(.97); }
+.preview-thumbs.analyseert .preview-thumb::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 2.5px var(--orange);
+  animation: adem 1.15s ease-in-out infinite; z-index: 2;
+}
+@keyframes adem { 0%, 100% { opacity: .2 } 50% { opacity: .95 } }
+.preview-thumbs.analyseert .preview-thumb::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 42%; top: -44%;
+  background: linear-gradient(180deg, transparent, var(--orange) 82%, transparent 88%);
+  opacity: .55;
+  border-bottom: 2.5px solid var(--orange);
+  box-shadow: 0 2px 14px 1px var(--orange);
+  pointer-events: none;
+  animation: scanlijn 1.15s var(--uitrol) infinite;
+}
+@keyframes scanlijn { from { top: -44%; } to { top: 106%; } }
+.preview-thumbs.analyseert .preview-thumb:nth-child(2)::after { animation-delay: .3s }
+.preview-thumbs.analyseert .preview-thumb:nth-child(3)::after { animation-delay: .6s }
+.preview-thumbs.analyseert .preview-thumb:nth-child(4)::after { animation-delay: .9s }
+
+/* Fase 2 — herkend: kaart veert binnen, glans strijkt eroverheen */
+#result-card.onthul, #bedrijven-card.onthul {
+  position: relative; overflow: hidden;
+  animation: onthul .55s var(--veer) both;
+}
+@keyframes onthul {
+  from { opacity: 0; transform: translateY(26px) scale(.95); }
+  to   { opacity: 1; transform: none; }
+}
+.result-card.onthul::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 55%; left: -60%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,.6), transparent);
+  animation: glans .65s ease-out .3s both; pointer-events: none;
+}
+@keyframes glans { to { left: 115%; } }
+.result-card.onthul > * { animation: onthulKind .4s var(--uitrol) both; }
+.result-card.onthul > *:nth-child(1) { animation-delay: .05s }
+.result-card.onthul > *:nth-child(2) { animation-delay: .1s }
+.result-card.onthul > *:nth-child(3) { animation-delay: .15s }
+.result-card.onthul > *:nth-child(n+4) { animation-delay: .2s }
+@keyframes onthulKind {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* De aanbiedpartijen schuiven met een veertje binnen, rij voor rij */
+.result-card.onthul #bedrijven-lijst label {
+  animation: rijIn .45s var(--veer) both;
+  animation-delay: calc(.15s + var(--i, 0) * 60ms);
+}
+@keyframes rijIn {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Rust voor wie dat ingesteld heeft */
+@media (prefers-reduced-motion: reduce) {
+  .scan-toneel-gloed { animation: none; }
+  .scan-toneel-kader { animation: none; }
+  .scan-toneel-kader .hoek, .rap-rij:not(.gevuld) .rap-w::after,
+  .rap-rij.zichtbaar, .rap-rij.gevuld .rap-w { animation: none; }
+  .scan-toneel-kader::before, .scan-toneel-kader::after,
+  .preview-thumbs.analyseert .preview-thumb::before,
+  .preview-thumbs.analyseert .preview-thumb::after { animation: none; display: none; }
+  .preview-thumbs.analyseert .preview-thumb img { filter: none; }
+  .result-card.onthul, .result-card.onthul::after, .result-card.onthul > *,
+  .result-card.onthul #bedrijven-lijst label { animation: none; }
+}

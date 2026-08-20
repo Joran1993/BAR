@@ -244,10 +244,29 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5 10.1 7.6 12 3z"/><path d="M19 15l.7 1.8L21.5 17.5 19.7 18.2 19 20l-.7-1.8L16.5 17.5 18.3 16.8 19 15z"/></svg>
       <span id="analyse-txt">Analyseren en aanbieden</span>
     </button>
-    <div id="analyse-progress" class="analyse-progress hidden" aria-hidden="true">
-      <div id="analyse-progress-bar" class="analyse-progress-bar"></div>
+    <!-- Scan-toneel: fullscreen tijdens de AI-analyse — de foto ís het podium.
+         De voortgangsbalk en uitlegstapjes leven hierbinnen, zodat het proces
+         zichtbaar is waar de gebruiker kijkt (op mobiel stond het raster
+         boven de vouw en zag niemand de scanlijn). -->
+    <div id="scan-toneel" class="scan-toneel hidden" aria-live="polite">
+      <img id="scan-toneel-gloed" class="scan-toneel-gloed" alt="" aria-hidden="true">
+      <div class="scan-toneel-kader">
+        <img id="scan-toneel-img" alt="Foto wordt geanalyseerd">
+        <div class="scan-toneel-raster" aria-hidden="true"></div>
+        <i class="hoek h1"></i><i class="hoek h2"></i><i class="hoek h3"></i><i class="hoek h4"></i>
+      </div>
+      <div id="scan-toneel-teller" class="scan-toneel-teller">Analyse</div>
+      <div id="scan-rapport" class="scan-rapport" aria-hidden="true">
+        <div class="rap-rij" data-v="label"><span class="rap-k">Object</span><span class="rap-w"></span></div>
+        <div class="rap-rij" data-v="categorie"><span class="rap-k">Categorie</span><span class="rap-w"></span></div>
+        <div class="rap-rij" data-v="conditie"><span class="rap-k">Conditie</span><span class="rap-w"></span></div>
+        <div class="rap-rij" data-v="gezocht" data-stil><span class="rap-k">Gezocht door</span><span class="rap-w"></span></div>
+      </div>
+      <div id="analyse-caption" class="analyse-caption hidden"></div>
+      <div id="analyse-progress" class="analyse-progress hidden" aria-hidden="true">
+        <div id="analyse-progress-bar" class="analyse-progress-bar"></div>
+      </div>
     </div>
-    <div id="analyse-caption" class="analyse-caption hidden"></div>
     <div id="result-card" class="result-card hidden">
       <div id="result-acceptatie" class="result-acceptatie hidden"></div>
       <div class="field" style="margin-bottom:10px;">
@@ -462,6 +481,26 @@
               <button type="button" class="digest-opt actief" id="digest-direct" onclick="zetDigest(false)">Direct</button>
               <button type="button" class="digest-opt" id="digest-dag" onclick="zetDigest(true)">1× per dag</button>
             </div>
+          </div>
+        </div>
+
+        <!-- Zoekwensen: alleen zichtbaar voor afnemende partijen -->
+        <div class="acc-groep-titel" id="zoekwens-titel" style="display:none;">Zoekwensen</div>
+        <div class="acc-kaart" id="zoekwens-kaart" style="display:none;">
+          <div style="padding:12px 14px 14px;">
+            <p style="margin:0 0 10px;font-size:0.82rem;color:var(--muted);line-height:1.45;">
+              Wat zoeken jullie altijd? Bij een match staan jullie bovenaan in de aanbiedlijst
+              en krijgen jullie direct een melding.</p>
+            <div id="zoekwens-chips" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+              <input id="zoekwens-woord" type="text" maxlength="40" placeholder="Eigen trefwoord, bijv. steigerhout"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();_voegZoekwensWoord();}"
+                     style="flex:1;font-family:inherit;font-size:0.85rem;padding:9px 12px;border:1.5px solid var(--border);border-radius:12px;">
+              <button type="button" onclick="_voegZoekwensWoord()" aria-label="Trefwoord toevoegen"
+                      style="font-family:inherit;font-weight:700;font-size:1.1rem;width:40px;border:none;border-radius:12px;background:var(--orange);color:#fff;cursor:pointer;">+</button>
+            </div>
+            <div id="zoekwens-woorden" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;"></div>
+            <p id="zoekwens-status" aria-live="polite" style="margin:9px 0 0;font-size:0.75rem;color:var(--muted);min-height:1em;"></p>
           </div>
         </div>
 

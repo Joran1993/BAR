@@ -1689,3 +1689,43 @@ def tel_fouten_sinds(uren: int = 24) -> int:
         )
         r = cur.fetchone()
         return r["n"] if r else 0
+
+
+# ── Zoekwensen: wat een afnemer actief zoekt ─────────────────────────────────
+
+def get_zoekwensen(bedrijf_id: int) -> dict:
+    """Zoekwensen van een bedrijf: vaste categorieën én vrije trefwoorden."""
+    with get_cursor() as cur:
+        cur.execute("SELECT category, soort FROM zoekwensen WHERE bedrijf_id = %s ORDER BY category",
+                    (bedrijf_id,))
+        rijen = cur.fetchall()
+    return {"categorieen": [r["category"] for r in rijen if r["soort"] == "categorie"],
+            "trefwoorden": [r["category"] for r in rijen if r["soort"] == "trefwoord"]}
+
+
+def set_zoekwensen(bedrijf_id: int, categorieen: list, trefwoorden: list) -> None:
+    with get_cursor() as cur:
+        cur.execute("DELETE FROM zoekwensen WHERE bedrijf_id = %s", (bedrijf_id,))
+        for cat in categorieen:
+            cur.execute("""INSERT INTO zoekwensen (bedrijf_id, category, soort)
+                           VALUES (%s, %s, 'categorie') ON CONFLICT DO NOTHING""", (bedrijf_id, cat))
+        for w in trefwoorden:
+            cur.execute("""INSERT INTO zoekwensen (bedrijf_id, category, soort)
+                           VALUES (%s, %s, 'trefwoord') ON CONFLICT DO NOTHING""", (bedrijf_id, w))
+
+
+def zoekwens_treffers(category: str, tekst: str) -> dict:
+    """Welke bedrijven raakt dit item? → {bedrijf_id: {"term": ..., "soort": ...}}.
+    Categorie-wensen matchen exact; trefwoorden als deeltekst in label/omschrijving.
+    Trefwoord wint bij dubbele treffers (specifieker signaal)."""
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT bedrijf_id, category, soort FROM zoekwensen
+            WHERE (soort = 'categorie' AND category = %s)
+               OR (soort = 'trefwoord' AND %s ILIKE '%%' || category || '%%')
+        """, (category or "", tekst or ""))
+        uit = {}
+        for r in cur.fetchall():
+            if r["bedrijf_id"] not in uit or r["soort"] == "trefwoord":
+                uit[r["bedrijf_id"]] = {"term": r["category"], "soort": r["soort"]}
+        return uit

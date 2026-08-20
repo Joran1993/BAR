@@ -415,24 +415,29 @@ function _renderBedrijvenLijst(itemId, external) {
   }
 
   // Altijd de volledige lijst netwerkpartijen; categorie-matches staan voorgevinkt
-  const isVoorgevinkt = (b) => _ALLES_VOORAF_AAN || b.categorie_match;
+  const isVoorgevinkt = (b) => _ALLES_VOORAF_AAN || b.categorie_match || b.zoekwens_match;
 
   bedrijvenLijst.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <span style="font-size:0.8rem;color:var(--muted);">Kies één of meer partijen</span>
+      <span style="font-size:0.8rem;color:var(--muted);">${(() => {
+        const z = _scanBedrijven.filter(b => b.zoekwens_match).length;
+        return z ? `<b style="color:var(--orange);">${z} partij${z > 1 ? "en" : ""} zoekt dit nu</b> — staat bovenaan` : "Kies één of meer partijen";
+      })()}</span>
       <span style="font-size:0.8rem;">
         <button type="button" onclick="_scanToggleAlle(true)" style="background:none;border:none;cursor:pointer;font-family:inherit;color:var(--orange);font-weight:600;font-size:0.8rem;padding:4px;">Alles</button>
         ·
         <button type="button" onclick="_scanToggleAlle(false)" style="background:none;border:none;cursor:pointer;font-family:inherit;color:var(--muted);font-size:0.8rem;padding:4px;">Geen</button>
       </span>
     </div>
-    ${_scanBedrijven.map((b) => `
-    <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+    ${_scanBedrijven.map((b, _ri) => `
+    <label style="--i:${_ri};display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;">
       <input type="checkbox" class="scan-bedrijf-check" value="${b.id}" ${isVoorgevinkt(b) ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;accent-color:var(--orange);">
       ${_bedrijfLogoImg(b)}
       <span style="flex:1;">
         <span style="font-weight:600;font-size:0.88rem;">${_esc(b.naam)}</span>
-        ${b.categorie_match ? `<span style="font-size:0.7rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;margin-left:6px;">Match</span>` : ""}
+        ${b.zoekwens_match
+          ? `<span style="font-size:0.7rem;font-weight:700;background:var(--orange);color:#fff;padding:2px 8px;border-radius:100px;margin-left:6px;">${b.zoekwens_soort === "trefwoord" ? `Zoekt: ${_esc(b.zoekwens_term)}` : "Zoekt dit nu"}</span>`
+          : b.categorie_match ? `<span style="font-size:0.7rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;margin-left:6px;">Match</span>` : ""}
         ${(b.contactpersoon || b.telefoon) ? `<span style="display:block;font-size:0.8rem;color:var(--muted);margin-top:2px;">${b.contactpersoon ? _esc(b.contactpersoon) : ""}${b.telefoon ? ` · ${_esc(b.telefoon)}` : ""}</span>` : ""}
       </span>
     </label>`).join("")}
@@ -443,6 +448,91 @@ function _renderBedrijvenLijst(itemId, external) {
   bedrijvenCard.classList.remove("hidden");
 }
 
+
+// ── Zoekwensen: wat zoekt deze afnemer altijd ──────────────────────────────────
+let _zoekwensen = new Set(), _zoekwensWoorden = [], _zoekwensBeschikbaar = [], _zoekwensBewaarTimer = null;
+
+async function _laadZoekwensen() {
+  const titel = document.getElementById("zoekwens-titel");
+  const kaart = document.getElementById("zoekwens-kaart");
+  if (!titel || !kaart) return;
+  const res = await apiFetch("/api/zoekwensen");
+  if (!res || !res.ok) return;
+  const d = await res.json();
+  _zoekwensen = new Set(d.categorieen || []);
+  _zoekwensWoorden = d.trefwoorden || [];
+  _zoekwensBeschikbaar = d.beschikbaar || [];
+  titel.style.display = ""; kaart.style.display = "";
+  _renderZoekwensChips();
+  _renderZoekwensWoorden();
+}
+
+function _renderZoekwensWoorden() {
+  const houder = document.getElementById("zoekwens-woorden");
+  if (!houder) return;
+  houder.innerHTML = _zoekwensWoorden.map((w, i) => `
+    <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.8rem;font-weight:600;
+                 padding:6px 8px 6px 13px;border-radius:100px;background:var(--orange);color:#fff;">
+      ${_esc(w)}
+      <button type="button" onclick="_wegZoekwensWoord(${i})" aria-label="Verwijder ${_esc(w)}"
+        style="background:rgba(255,255,255,.25);border:none;color:#fff;width:18px;height:18px;border-radius:50%;
+               cursor:pointer;font-size:12px;line-height:1;padding:0;">&times;</button>
+    </span>`).join("");
+}
+
+function _voegZoekwensWoord() {
+  const veld = document.getElementById("zoekwens-woord");
+  const w = (veld.value || "").trim().slice(0, 40);
+  if (w.length < 2) return;
+  if (!_zoekwensWoorden.some(x => x.toLowerCase() === w.toLowerCase()) && _zoekwensWoorden.length < 10) {
+    _zoekwensWoorden.push(w);
+    _renderZoekwensWoorden();
+    _bewaarZoekwensen();
+  }
+  veld.value = ""; veld.focus();
+}
+
+function _wegZoekwensWoord(i) {
+  _zoekwensWoorden.splice(i, 1);
+  _renderZoekwensWoorden();
+  _bewaarZoekwensen();
+}
+
+function _renderZoekwensChips() {
+  const houder = document.getElementById("zoekwens-chips");
+  houder.innerHTML = _zoekwensBeschikbaar.map(c => {
+    const aan = _zoekwensen.has(c);
+    return `<button type="button" onclick="_toggleZoekwens(this)" data-cat="${_esc(c)}"
+      style="font-family:inherit;font-size:0.8rem;font-weight:600;padding:7px 13px;border-radius:100px;cursor:pointer;
+             border:1.5px solid ${aan ? "var(--orange)" : "var(--border)"};
+             background:${aan ? "var(--orange)" : "#fff"};color:${aan ? "#fff" : "var(--text, #333)"};">
+      ${aan ? "✓ " : ""}${_esc(c)}</button>`;
+  }).join("");
+}
+
+function _toggleZoekwens(knop) {
+  const cat = knop.dataset.cat;
+  if (_zoekwensen.has(cat)) _zoekwensen.delete(cat); else _zoekwensen.add(cat);
+  _renderZoekwensChips();
+  _bewaarZoekwensen();
+}
+
+function _bewaarZoekwensen() {
+  // kort bundelen: wie 3 chips tikt, doet 1 opslag
+  clearTimeout(_zoekwensBewaarTimer);
+  _zoekwensBewaarTimer = setTimeout(async () => {
+    const status = document.getElementById("zoekwens-status");
+    const res = await apiFetch("/api/zoekwensen", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categorieen: [..._zoekwensen], trefwoorden: _zoekwensWoorden }),
+    });
+    if (status) {
+      status.textContent = res && res.ok ? "Opgeslagen ✓" : "Opslaan mislukt — probeer opnieuw";
+      setTimeout(() => { status.textContent = ""; }, 2200);
+    }
+  }, 600);
+}
 
 // ── Camera ─────────────────────────────────────────────────────────────────────
 const cameraInput = document.getElementById("camera-input");
@@ -693,6 +783,87 @@ const _ANALYSE_STAPPEN = [
   "Foto verwerken…", "Product herkennen…", "Categorie bepalen…",
   "Staat inschatten…", "Bijna klaar…",
 ];
+// ── Scan-toneel: fullscreen podium tijdens de analyse ───────────────────────────
+let _toneelUrls = [], _toneelTimer = null, _scanGeslaagd = false, _toneelRapport = null, _toneelRijTimers = [];
+function _toneelStart() {
+  const toneel = document.getElementById("scan-toneel");
+  const img = document.getElementById("scan-toneel-img");
+  const teller = document.getElementById("scan-toneel-teller");
+  if (!toneel || !img || !pendingFiles.length) return;
+  _toneelUrls.forEach(u => URL.revokeObjectURL(u));
+  _toneelUrls = pendingFiles.map(f => URL.createObjectURL(f));
+  img.src = _toneelUrls[0];
+  const gloed = document.getElementById("scan-toneel-gloed");
+  if (gloed) gloed.src = _toneelUrls[0];
+  toneel.classList.remove("hidden", "weg", "klaar");
+  _toneelRapport = null;
+  _toneelRijTimers.forEach(clearTimeout); _toneelRijTimers = [];
+  const rijen = document.querySelectorAll("#scan-rapport .rap-rij");
+  rijen.forEach(r => {
+    r.classList.remove("gevuld", "zichtbaar");
+    r.querySelector(".rap-w").textContent = "";
+  });
+  // De lijst groeit mee met het werk: elke ~1,7s komt het volgende veld erbij
+  [...rijen].filter(r => !r.hasAttribute("data-stil")).forEach((r, i) => {
+    _toneelRijTimers.push(setTimeout(() => r.classList.add("zichtbaar"), 250 + i * 1700));
+  });
+  clearInterval(_toneelTimer);
+  if (_toneelUrls.length > 1) {
+    let n = 0;
+    teller.textContent = `Analyse — foto 1 van ${_toneelUrls.length}`;
+    _toneelTimer = setInterval(() => {
+      n = (n + 1) % _toneelUrls.length;
+      img.classList.add("wissel");                    // zachte crossfade
+      setTimeout(() => {
+        img.src = _toneelUrls[n];
+        const gloed = document.getElementById("scan-toneel-gloed");
+        if (gloed) gloed.src = _toneelUrls[n];
+        teller.textContent = `Analyse — foto ${n + 1} van ${_toneelUrls.length}`;
+        img.classList.remove("wissel");
+      }, 360);
+    }, 2100);
+  } else {
+    teller.textContent = "Analyse";
+  }
+}
+function _toneelStop() {
+  const toneel = document.getElementById("scan-toneel");
+  if (!toneel || toneel.classList.contains("hidden")) return;
+  clearInterval(_toneelTimer); _toneelTimer = null;
+  _toneelRijTimers.forEach(clearTimeout); _toneelRijTimers = [];
+  const sluit = (wacht) => setTimeout(() => {
+    toneel.classList.add("weg");
+    setTimeout(() => {
+      toneel.classList.add("hidden");
+      toneel.classList.remove("weg", "klaar");
+      _toneelUrls.forEach(u => URL.revokeObjectURL(u));
+      _toneelUrls = [];
+    }, 300);
+  }, wacht);
+  if (_scanGeslaagd && _toneelRapport) {
+    // Slotakkoord: scanlijn stopt, vizier klikt vast, het rapport vult zich
+    toneel.classList.add("klaar");
+    const teller = document.getElementById("scan-toneel-teller");
+    if (teller) teller.textContent = "Herkend";
+    (window.uxHaptic || (() => {}))("succes");
+    const rijen = document.querySelectorAll("#scan-rapport .rap-rij");
+    let volg = 0;
+    rijen.forEach((r) => {
+      const waarde = _toneelRapport[r.dataset.v];
+      if (r.hasAttribute("data-stil") && waarde == null) return;   // niets gezocht: rij blijft weg
+      const wacht = 140 + (volg++) * 150;
+      setTimeout(() => {
+        r.classList.add("zichtbaar");            // snelle AI: rij mag direct mee
+        r.querySelector(".rap-w").textContent = waarde ?? "—";
+        r.classList.add("gevuld");
+      }, wacht);
+    });
+    sluit(140 + rijen.length * 150 + 620);
+  } else {
+    sluit(0);
+  }
+}
+
 function _startAnalyseProgress() {
   const wrap = document.getElementById("analyse-progress");
   const bar = document.getElementById("analyse-progress-bar");
@@ -700,6 +871,12 @@ function _startAnalyseProgress() {
   if (!wrap || !bar) return;
   _analyseTimers.forEach(clearTimeout); _analyseTimers = [];
   clearInterval(_capTimer);
+  // Scanmoment fase 1: fullscreen toneel — de foto groot in beeld met scanlijn.
+  // (Het raster op de pagina kreeg ook een scanlijn, maar stond op mobiel
+  // boven de vouw: niemand zag hem. Het toneel speelt wáár je kijkt.)
+  _scanGeslaagd = false;
+  document.getElementById("preview-thumbs")?.classList.add("analyseert");
+  _toneelStart();
   wrap.classList.remove("hidden");
   bar.style.transition = "none";
   bar.style.width = "0%";
@@ -719,8 +896,13 @@ function _startAnalyseProgress() {
     cap.classList.remove("hidden");
     cap.textContent = _ANALYSE_STAPPEN[0];
     _capTimer = setInterval(() => {
+      const vorige = i;
       i = Math.min(i + 1, _ANALYSE_STAPPEN.length - 1);
+      if (i === vorige) return;                      // laatste stap: niet blijven flitsen
+      cap.classList.remove("wissel");
+      void cap.offsetWidth;
       cap.textContent = _ANALYSE_STAPPEN[i];
+      cap.classList.add("wissel");
     }, 950);
   }
 }
@@ -731,6 +913,8 @@ function _stopAnalyseProgress() {
   if (!wrap || !bar) return;
   _analyseTimers.forEach(clearTimeout); _analyseTimers = [];
   clearInterval(_capTimer);
+  document.getElementById("preview-thumbs")?.classList.remove("analyseert");
+  _toneelStop();
   bar.style.transition = "width 0.25s ease";
   bar.style.width = "100%";
   if (cap) cap.textContent = "Klaar!";
@@ -782,6 +966,16 @@ analyseBtn.addEventListener("click", async () => {
       throw new Error(err.detail || res.statusText);
     }
     const item = await res.json();
+    _scanGeslaagd = true;
+    const _zoekers = (item.bedrijven || []).filter(b => b.zoekwens_match).map(b => b.naam);
+    _toneelRapport = {
+      label: item.ai_label || "—",
+      categorie: item.category || "—",
+      conditie: item.conditie || "Gebruikt",
+      gezocht: _zoekers.length === 0 ? null
+             : _zoekers.length === 1 ? _zoekers[0]
+             : `${_zoekers[0]} +${_zoekers.length - 1}`,
+    };
     document.getElementById("result-label").value = item.ai_label || "";
     document.getElementById("result-bewerk-opslaan").classList.add("hidden");
     document.getElementById("result-weight").textContent = "";
@@ -802,6 +996,12 @@ analyseBtn.addEventListener("click", async () => {
     acceptatieBadge.className = "result-acceptatie hidden";
 
     resultCard.classList.remove("hidden");
+    // Scanmoment fase 2: kaart ontvouwt met veer; klasse gaat er na afloop af
+    // zodat latere her-renders (vinkjes aan/uit) niet opnieuw animeren.
+    // Naar boven scrollen zodat de onthulling in beeld gebeurt.
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    resultCard.classList.add("onthul");
+    setTimeout(() => resultCard.classList.remove("onthul"), 950);
     (window.uxHaptic || (() => {}))("licht");
 
     // Toon gekoppelde bedrijven met aanbieden-knop (scope = account/organisatie)
@@ -809,6 +1009,9 @@ analyseBtn.addEventListener("click", async () => {
     _huidigCategory = item.category || "";
     if (item.bedrijven && item.bedrijven.length) {
       _renderBedrijvenLijst(item.id, item.bedrijven);
+      const bc = document.getElementById("bedrijven-card");
+      bc.classList.add("onthul");
+      setTimeout(() => bc.classList.remove("onthul"), 1600);
     } else {
       document.getElementById("bedrijven-card").classList.add("hidden");
     }
@@ -2063,6 +2266,7 @@ async function openUserPanel() {
   _vulAccountKop(orgInit, rolLabels[_role] || _role);
   document.getElementById("user-panel").classList.remove("hidden");
   initPush();
+  if (_role === "bedrijf") _laadZoekwensen();
   const res = await apiFetch("/api/auth/me");
   if (res && res.ok) {
     const me = await res.json();

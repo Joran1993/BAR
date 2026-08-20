@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends, Request
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -1769,13 +1769,23 @@ def bedrijven_voor_scan(
                 GROUP BY a.bedrijf_id
             """, (category,))
             historie = {r["bedrijf_id"]: r["n"] for r in cur.fetchall()}
+    item_tekst = ""
+    if item_id:
+        _it = db.get_item(item_id) or {}
+        item_tekst = f"{_it.get('ai_label') or ''} {_it.get('ai_detail') or ''}"
+    treffers = db.zoekwens_treffers(category, item_tekst) if (category or item_tekst) else {}
     for b in alle:
         b["categorie_match"] = b["id"] in match_ids
+        b["zoekwens_match"]  = b["id"] in treffers
+        b["zoekwens_term"]   = treffers.get(b["id"], {}).get("term")
+        b["zoekwens_soort"]  = treffers.get(b["id"], {}).get("soort")
         b["historie_count"]  = historie.get(b["id"], 0)
         b["al_aangeboden"]   = b["id"] in already_offered
         _bedrijf_domein(b)   # e-mail → domein (voor logo), e-mail zelf niet naar client
-    # Volgorde: eerder-opgehaald eerst (vaakst bovenaan), dan interesse-match, dan naam
-    alle.sort(key=lambda b: (b["al_aangeboden"], -b["historie_count"], not b["categorie_match"], b["naam"]))
+    # Volgorde: actieve zoekwens helemaal bovenaan (sterkste vraagsignaal), dan
+    # eerder-opgehaald/vaakst, dan interesse-match, dan naam
+    alle.sort(key=lambda b: (b["al_aangeboden"], not b["zoekwens_match"],
+                             -b["historie_count"], not b["categorie_match"], b["naam"]))
     return alle
 
 
@@ -1856,13 +1866,20 @@ def create_aanbieding(
         try:
             item = db.get_item(item_id)
             label = (item or {}).get("ai_label") or "nieuw materiaal"
+            cat = (item or {}).get("category") or ""
+            tekst = f"{(item or {}).get('ai_label') or ''} {(item or {}).get('ai_detail') or ''}"
+            tref = db.zoekwens_treffers(cat, tekst).get(bedrijf_id)
+            zoekwens = bool(tref)
             subscriptions = db.get_push_subscriptions_for_bedrijf(bedrijf_id)
-            print(f"[push] Aanbieding voor bedrijf {bedrijf_id}: {len(subscriptions)} subscription(s)")
+            print(f"[push] Aanbieding voor bedrijf {bedrijf_id}: {len(subscriptions)} subscription(s)"
+                  + (" [zoekwens]" if zoekwens else ""))
             for sub in subscriptions:
                 ok = push_module.send_push(
                     sub["subscription"],
-                    title="Nieuw aanbod — CIRQO",
-                    body=f"Er is {label} aangeboden.",
+                    title="Zoekwens binnen! — CIRQO" if zoekwens else "Nieuw aanbod — CIRQO",
+                    body=(f"{label} is aangeboden — jullie zoeken "
+                          f"{'‘' + tref['term'] + '’' if tref['soort'] == 'trefwoord' else tref['term'].lower()}."
+                          if zoekwens else f"Er is {label} aangeboden."),
                     url="/",
                 )
                 print(f"[push] Verzonden naar sub {sub['id']}: {'OK' if ok else 'MISLUKT'}")
@@ -1912,13 +1929,20 @@ async def create_aanbiedingen_bulk(
     async def _stuur_bulk_push():
         item = db.get_item(item_id)
         label = (item or {}).get("ai_label") or "nieuw materiaal"
+        cat = (item or {}).get("category") or ""
+        tekst = f"{(item or {}).get('ai_label') or ''} {(item or {}).get('ai_detail') or ''}"
+        zoekers = db.zoekwens_treffers(cat, tekst)
         for bedrijf_id in bedrijf_ids:
+            tref = zoekers.get(int(bedrijf_id))
+            zoekwens = bool(tref)
             subscriptions = db.get_push_subscriptions_for_bedrijf(int(bedrijf_id))
             for sub in subscriptions:
                 ok = push_module.send_push(
                     sub["subscription"],
-                    title="Nieuw aanbod — CIRQO",
-                    body=f"Er is {label} aangeboden.",
+                    title="Zoekwens binnen! — CIRQO" if zoekwens else "Nieuw aanbod — CIRQO",
+                    body=(f"{label} is aangeboden — jullie zoeken "
+                          f"{'‘' + tref['term'] + '’' if tref['soort'] == 'trefwoord' else tref['term'].lower()}."
+                          if zoekwens else f"Er is {label} aangeboden."),
                     url="/",
                 )
                 if not ok:
@@ -2321,10 +2345,14 @@ async def upload(
                 match_ids = {b["id"] for b in db.get_bedrijven_for_item(None, final_category)}
         else:
             match_ids = set()
+        treffers = db.zoekwens_treffers(final_category, f"{label or ''} {detail or ''}")
         for b in alle_bedrijven:
             b["categorie_match"] = b["id"] in match_ids
+            b["zoekwens_match"]  = b["id"] in treffers
+            b["zoekwens_term"]   = treffers.get(b["id"], {}).get("term")
+            b["zoekwens_soort"]  = treffers.get(b["id"], {}).get("soort")
             _bedrijf_domein(b)   # e-mail → domein (voor logo), e-mail zelf niet naar client
-        alle_bedrijven.sort(key=lambda b: (not b["categorie_match"], b["naam"]))
+        alle_bedrijven.sort(key=lambda b: (not b["zoekwens_match"], not b["categorie_match"], b["naam"]))
         item["bedrijven"] = alle_bedrijven
         storage_module.beveilig_items([item])
         print(f"[main] Item {item_id}: {label} ({gewicht_kg} kg) [{gemeente}]")
@@ -2353,8 +2381,17 @@ def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] = None
         cached = cache_module.get(bedrijf_cache_key)
         if cached is not None:
             return cached
-        # Items aangeboden ÁÁN dit bedrijf
+        # Items aangeboden ÁÁN dit bedrijf — met het eigen zoekwens-label erop
         ontvangen = storage_module.beveilig_items(db.get_items_voor_bedrijf(bedrijf_id))
+        wensen = db.get_zoekwensen(bedrijf_id)
+        if wensen["categorieen"] or wensen["trefwoorden"]:
+            for it in ontvangen:
+                tekst = f"{it.get('ai_label') or ''} {it.get('ai_detail') or ''}".lower()
+                term = next((w for w in wensen["trefwoorden"] if w.lower() in tekst), None)
+                if not term and (it.get("category") or "") in wensen["categorieen"]:
+                    term = it["category"]
+                if term:
+                    it["zoekwens_term"] = term
         # Plus strikt de éígen scans van dit account — nooit gemeente-breed:
         # een afnemer hoort niet te zien wat anderen scannen of aangeboden krijgen
         user_id = user["id"]
@@ -2879,6 +2916,35 @@ async def get_netwerk(gemeente: Optional[str] = None, periode: int = 0,
         return cached
     return await _bouw_netwerk_data(g, gemeenten, dagen=periode or None, van=van, tot=tot,
                                     milieustraat=milieustraat)
+
+
+@app.get("/api/zoekwensen")
+def get_zoekwensen_api(user=Depends(get_current_user)):
+    """Wat dit bedrijf actief zoekt — alleen voor bedrijfsaccounts."""
+    if not user.get("bedrijf_id"):
+        raise HTTPException(status_code=403, detail="Alleen voor bedrijfsaccounts")
+    import ai as _ai
+    wensen = db.get_zoekwensen(user["bedrijf_id"])
+    wensen["beschikbaar"] = [c for c in _ai.CATEGORIES if c not in ("Gemengde partij", "Overig")]
+    return wensen
+
+
+@app.put("/api/zoekwensen")
+def set_zoekwensen_api(payload: dict = Body(...), user=Depends(get_current_user)):
+    if not user.get("bedrijf_id"):
+        raise HTTPException(status_code=403, detail="Alleen voor bedrijfsaccounts")
+    import ai as _ai
+    cats = [c for c in (payload.get("categorieen") or []) if c in _ai.CATEGORIES][:12]
+    woorden, gezien = [], set()
+    for w in (payload.get("trefwoorden") or []):
+        w = str(w).strip()[:40]
+        if len(w) >= 2 and w.lower() not in gezien:
+            gezien.add(w.lower()); woorden.append(w)
+        if len(woorden) >= 10:
+            break
+    db.set_zoekwensen(user["bedrijf_id"], cats, woorden)
+    _invalideer_bedrijf_items(user["bedrijf_id"])   # zoekwens-labels in de eigen lijst verversen
+    return {"categorieen": cats, "trefwoorden": woorden}
 
 
 @app.get("/api/deelnemers")
