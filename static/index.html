@@ -127,35 +127,137 @@
   </style>
 
   <style>
-    /* ── Opening-animatie: woordmerk zweeft in, accentlijn tekent zich (1x per sessie) ── */
-    #intro { position: fixed; inset: 0; z-index: 9999; background: #f7f5f0;
-             display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
-             pointer-events: none; animation: introWeg 240ms cubic-bezier(0.25,0.46,0.45,0.94) 750ms both; }
-    .intro-logo { width: 190px; height: auto; will-change: transform;
-                  animation: introLogo 420ms cubic-bezier(0.23,1,0.32,1) both; }
-    .intro-lijn { width: 190px; height: 3px; border-radius: 2px; background: #86bc97;
-                  transform: scaleX(0); transform-origin: center; will-change: transform;
-                  animation: introLijn 460ms cubic-bezier(0.215,0.61,0.355,1) 240ms both; }
-    @keyframes introLogo { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes introLijn { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-    @keyframes introWeg  { from { opacity: 1; } to { opacity: 0; } }
-    @media (prefers-reduced-motion: reduce) { #intro { display: none; } }
+    /* ── Startscherm: merk komt op, de lus draait tot de app klaar is (1x per sessie) ──
+       Let op de visibility: het opstartscript hierboven verbergt <html> tot de app
+       geladen is. Een kind mag zichzelf weer zichtbaar zetten — zo dekt dit scherm
+       juist die wachttijd af in plaats van er samen met de rest onder te verdwijnen. */
+    /* boven .ux-toast (9999): een foutmelding van de app hoort niet dwars
+       door het opstartscherm heen te komen */
+    #intro { position: fixed; inset: 0; z-index: 10000; background: #f7f5f0;
+             visibility: visible; pointer-events: none;
+             display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px;
+             opacity: 1; transform: scale(1);
+             transition: opacity 300ms cubic-bezier(.22,1,.36,1), transform 300ms cubic-bezier(.22,1,.36,1); }
+    #intro.weg { opacity: 0; transform: scale(1.02); }
+
+    /* Zachte ademende gloed in de merkkleur, geeft het vlak diepte.
+       Bewust zónder filter:blur — een blur maakt hier een aparte laag, en de
+       draaiende lus erbovenop tekent zich dan af als een vierkant. Een
+       verloop is vanzelf al zacht en kost geen rekenkracht op oude toestellen. */
+    .intro-gloed { position: absolute; width: min(86vw, 460px); aspect-ratio: 1; border-radius: 50%;
+                   background: radial-gradient(circle closest-side, var(--orange, #86bc97), transparent);
+                   opacity: .15; pointer-events: none;
+                   animation: introAdem 3.6s ease-in-out infinite; }
+    @keyframes introAdem { 0%, 100% { transform: scale(.92); opacity: .11; }
+                           50%      { transform: scale(1.06); opacity: .19; } }
+
+    .intro-merk { position: relative; display: block; will-change: transform;
+                  animation: introMerkIn 540ms cubic-bezier(.34,1.56,.64,1) 60ms both; }
+    .intro-logo { display: block; width: 196px; max-width: 62vw; height: auto; }
+    /* glans die één keer over het merk trekt — gemaskeerd op het logo zelf,
+       zodat de veeg niet als een blokje naast het beeldmerk verschijnt */
+    .intro-merk::after {
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(104deg, transparent 40%, rgba(255,255,255,.78) 50%, transparent 60%);
+      -webkit-mask: url('/static/cirqo-logo.webp') center / contain no-repeat;
+              mask: url('/static/cirqo-logo.webp') center / contain no-repeat;
+      transform: translateX(-115%);
+      animation: introGlans 1150ms cubic-bezier(.22,1,.36,1) 430ms both;
+    }
+    @keyframes introMerkIn { from { opacity: 0; transform: translateY(16px) scale(.94); }
+                             to   { opacity: 1; transform: none; } }
+    @keyframes introGlans  { to { transform: translateX(115%); } }
+
+    /* de lus: pijl uit het beeldmerk draait de cirkel rond zolang er geladen wordt */
+    .intro-lus  { display: block; opacity: 0; animation: introLusIn 360ms cubic-bezier(.22,1,.36,1) 400ms both; }
+    .lus-baan   { fill: none; stroke: #1A1914; stroke-opacity: .10; stroke-width: 3; }
+    /* de donkere merkkleur voor de boog: het lichte groen valt op crème te veel weg */
+    .lus-arc    { fill: none; stroke: var(--orange2, #6aaa82); stroke-width: 3; stroke-linecap: round;
+                  stroke-dasharray: 30 77; }
+    .lus-pijl   { fill: var(--orange2, #6aaa82); }
+    .lus-draai  { transform-origin: 22px 22px; animation: introLusDraai 1.15s linear infinite; }
+    .lus-rimpel { fill: none; stroke: var(--orange2, #6aaa82); stroke-width: 3; opacity: 0;
+                  transform-origin: 22px 22px; }
+    @keyframes introLusIn    { to { opacity: 1; } }
+    @keyframes introLusDraai { to { transform: rotate(360deg); } }
+
+    /* klaar: de lus lost op in één uitdijende ring, het merk zet even door */
+    #intro.klaar .lus-arc,
+    #intro.klaar .lus-pijl { animation: introLusUit 200ms ease-out forwards; }
+    #intro.klaar .lus-baan { animation: introLusUit 300ms ease-out forwards; }
+    #intro.klaar .lus-rimpel { animation: introRimpel 560ms cubic-bezier(.22,1,.36,1) forwards; }
+    #intro.klaar .intro-merk { animation: introMerkPop 420ms cubic-bezier(.34,1.56,.64,1) both; }
+    #intro.klaar .intro-gloed { animation: introLusUit 420ms ease-out forwards; }
+    @keyframes introLusUit  { to { opacity: 0; } }
+    @keyframes introRimpel  { 0%   { opacity: .75; transform: scale(1); }
+                              55%  { opacity: .38; }
+                              100% { opacity: 0;   transform: scale(2.2); } }
+    @keyframes introMerkPop { 0% { transform: none; } 42% { transform: scale(1.05); } 100% { transform: scale(1.02); } }
+
+    /* Minder beweging: merk staat stil, alleen de laadring pulseert zacht door —
+       het scherm zelf moet blijven, het dekt immers de laadtijd af. */
+    @media (prefers-reduced-motion: reduce) {
+      /* gloed apart: die moet zijn eigen lage dekking houden, niet op 1 gezet worden */
+      .intro-gloed { animation: none; opacity: .13; transform: none; }
+      .intro-merk, .intro-lus,
+      #intro.klaar .intro-merk { animation: none !important; opacity: 1; transform: none; }
+      .intro-merk::after { display: none; }
+      .lus-draai { animation: none; }
+      .lus-arc, .lus-pijl { animation: introPuls 1.6s ease-in-out infinite; }
+      #intro.klaar .lus-rimpel { animation: none; }
+      @keyframes introPuls { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+    }
   </style>
 </head>
 <body>
   <div id="intro" aria-hidden="true">
-    <img class="intro-logo" src="/static/cirqo-logo.webp" alt="">
-    <div class="intro-lijn"></div>
+    <div class="intro-gloed"></div>
+    <span class="intro-merk"><img class="intro-logo" src="/static/cirqo-logo.webp" alt=""></span>
+    <svg class="intro-lus" width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <circle class="lus-baan" cx="22" cy="22" r="17"/>
+      <circle class="lus-rimpel" cx="22" cy="22" r="17"/>
+      <g class="lus-draai">
+        <circle class="lus-arc" cx="22" cy="22" r="17" transform="rotate(-191 22 22)"/>
+        <path class="lus-pijl" d="M19 1.4 L26.4 5 L19 8.6 Z"/>
+      </g>
+    </svg>
   </div>
   <script>
   (function () {
     var el = document.getElementById('intro');
+    if (!el) return;
     try {
       if (window !== window.top || sessionStorage.getItem('introGezien')) { el.remove(); return; }
-      sessionStorage.setItem('introGezien', '1');
     } catch (e) { el.remove(); return; }
-    el.addEventListener('animationend', function (e) { if (e.target === el) el.remove(); });
-    setTimeout(function () { if (el.isConnected) el.remove(); }, 1600); // vangnet
+
+    var begin = Date.now();
+    var MIN = 1000;   // minimaal zichtbaar: anders flitst de animatie voorbij
+    // Zonder token loopt eerst het stille sessieherstel; die pagina gaat daarna
+    // herladen of doorsturen. Dan mag het startscherm langer blijven staan —
+    // het dekt precies die sprong af.
+    var herstelt = false;
+    try { herstelt = !localStorage.getItem('token'); } catch (e) {}
+    var MAX = herstelt ? 9000 : 3200;
+    var af = false;
+
+    function sluit(toonApp) {
+      if (af) return;
+      af = true;
+      try { sessionStorage.setItem('introGezien', '1'); } catch (e) {}
+      // vangnet-route: de app meldde zich niet, laat dan in elk geval het scherm zien
+      if (toonApp) document.documentElement.style.visibility = '';
+      el.classList.add('klaar');
+      setTimeout(function () { el.classList.add('weg'); }, 260);
+      setTimeout(function () { if (el.isConnected) el.remove(); }, 640);
+    }
+
+    // scan.js roept dit aan zodra de app staat
+    window.__introKlaar = function () {
+      if (af) return;
+      var rest = MIN - (Date.now() - begin);
+      setTimeout(function () { sluit(false); }, rest > 0 ? rest : 0);
+    };
+    setTimeout(function () { sluit(true); }, MAX);
   })();
   </script>
 

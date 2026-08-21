@@ -13,6 +13,9 @@ const _BP = window._BP || "";
 const token = localStorage.getItem("token");
 if (!token) location.href = "/login?redirect=/";
 document.documentElement.style.visibility = '';
+// Startscherm mag weg zodra de app staat — na één frame, zodat het scherm
+// eronder al getekend is en er niets blanco doorheen flitst.
+if (window.__introKlaar) requestAnimationFrame(window.__introKlaar);
 
 // apiFetch, logout, _esc en escJs komen uit cirqo-core.js (gedeelde kern).
 
