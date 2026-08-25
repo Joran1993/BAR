@@ -1003,6 +1003,20 @@ body {
 }
 #modal-btn-ophalen { box-shadow: 0 3px 14px rgba(134,188,151,0.38); }
 
+/* Opnieuw aanbieden: brede groene pil met pijl achter de tekst, randen gelijk
+   aan de Opslaan/Verwijderen-rij eronder (zelfde padding als .modal-actions .btn).
+   Lay-out hier en niet inline — openModal wist de inline display bij de reset. */
+#modal-opnieuw-btn {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 22px;
+  margin-bottom: 12px;
+}
+#modal-opnieuw-btn svg { display: block; flex-shrink: 0; }
+
 /* Aanbieder-rij: avatar + naam + status in één professionele regel */
 .aanbieder-rij { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .aanbieder-avatar {

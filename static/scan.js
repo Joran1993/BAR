@@ -13,9 +13,6 @@ const _BP = window._BP || "";
 const token = localStorage.getItem("token");
 if (!token) location.href = "/login?redirect=/";
 document.documentElement.style.visibility = '';
-// Startscherm mag weg zodra de app staat — na één frame, zodat het scherm
-// eronder al getekend is en er niets blanco doorheen flitst.
-if (window.__introKlaar) requestAnimationFrame(window.__introKlaar);
 
 // apiFetch, logout, _esc en escJs komen uit cirqo-core.js (gedeelde kern).
 
@@ -351,10 +348,14 @@ function _scanBedrijfOmlaag(i) {
   _renderBedrijvenLijst(_huidigItemId);
 }
 
-async function aanbiedenAanSelectie(itemId) {
-  const ids = [...document.querySelectorAll(".scan-bedrijf-check:checked")].map(c => parseInt(c.value, 10));
-  if (!ids.length) { (window.uxToast || alert)("Selecteer minstens één bedrijf", "info"); return; }
-  const btn = document.getElementById("btn-aanbied-selectie");
+// Stuurt het item naar de aangevinkte partijen binnen één lijst-container.
+// Geeft de gekozen bedrijven terug, of null als er niets verstuurd is.
+async function _verstuurAanbod(itemId, wortelId) {
+  const wortel = document.getElementById(wortelId);
+  if (!wortel) return null;
+  const ids = [...wortel.querySelectorAll(".scan-bedrijf-check:checked")].map(c => parseInt(c.value, 10));
+  if (!ids.length) { (window.uxToast || alert)("Selecteer minstens één bedrijf", "info"); return null; }
+  const btn = wortel.querySelector(".btn-aanbied-selectie");
   if (btn) { btn.disabled = true; btn.textContent = "Bezig…"; }
   const res = await apiFetch("/api/aanbiedingen/bulk", {
     method: "POST",
@@ -363,20 +364,73 @@ async function aanbiedenAanSelectie(itemId) {
   });
   if (res && res.ok) {
     const data = await res.json();
-    const gekozen = _scanBedrijven.filter(b => ids.includes(b.id));
-    const label = gekozen.length === 1 ? gekozen[0].naam : `${gekozen.length} bedrijven`;
-    _markeerAangeboden(itemId, label, data?.ids?.[0]);
-    syncItems();
-    _toonSucces("Aangeboden!", `Het item is aangeboden aan: ${gekozen.map(b => b.naam).join(", ")}.`);
-  } else {
-    const err = res ? await res.json().catch(() => null) : null;
-    (window.uxToast || alert)((err && err.detail) || "Aanbieden is niet gelukt — probeer opnieuw", "error");
-    if (btn) { btn.disabled = false; btn.textContent = "Opnieuw proberen"; }
+    const lijst = wortel._bedrijven || _scanBedrijven || [];
+    return { gekozen: lijst.filter(b => ids.includes(b.id)), ids: (data && data.ids) || [] };
   }
+  const err = res ? await res.json().catch(() => null) : null;
+  (window.uxToast || alert)((err && err.detail) || "Aanbieden is niet gelukt — probeer opnieuw", "error");
+  if (btn) { btn.disabled = false; btn.textContent = "Opnieuw proberen"; }
+  return null;
 }
 
-function _scanToggleAlle(aan) {
-  document.querySelectorAll(".scan-bedrijf-check").forEach(c => { c.checked = aan; });
+async function aanbiedenAanSelectie(itemId) {
+  const r = await _verstuurAanbod(itemId, "bedrijven-lijst");
+  if (!r) return;
+  const label = r.gekozen.length === 1 ? r.gekozen[0].naam : `${r.gekozen.length} bedrijven`;
+  _markeerAangeboden(itemId, label, r.ids[0]);
+  syncItems();
+  _toonSucces("Aangeboden!", `Het item is aangeboden aan: ${r.gekozen.map(b => b.naam).join(", ")}.`);
+}
+
+function _scanToggleAlle(aan, wortelId) {
+  const wortel = (wortelId && document.getElementById(wortelId)) || document;
+  wortel.querySelectorAll(".scan-bedrijf-check").forEach(c => { c.checked = aan; });
+}
+
+// ── Opnieuw aanbieden vanuit de itemdetailpagina ───────────────────────────────
+// Zegt een partij 'niet nodig', dan hoeft het item niet opnieuw gescand te
+// worden: dezelfde netwerklijst als na het scannen opent hier, met de partijen
+// die het al gehad hebben onderaan en uitgevinkt.
+async function opnieuwAanbieden(itemId) {
+  const item = allItems.find(i => i.id === itemId);
+  if (!item) return;
+  const knop = document.getElementById("modal-opnieuw-btn");
+  const bak  = document.getElementById("modal-opnieuw-lijst");
+  const knopTekst = knop && knop.querySelector("span");
+  if (knopTekst) knopTekst.textContent = "Netwerk laden…";
+  if (knop) knop.disabled = true;
+  const gemeente = item.gemeente || _gemeente || "";
+  const res = await apiFetch(
+    `/api/bedrijven-voor-scan?gemeente=${encodeURIComponent(gemeente)}` +
+    `&category=${encodeURIComponent(item.category || "")}&item_id=${itemId}`);
+  if (!res || !res.ok) {
+    (window.uxToast || alert)("Het netwerk laden is niet gelukt — probeer het opnieuw", "error");
+    if (knop) knop.disabled = false;
+    if (knopTekst) knopTekst.textContent = "Aanbieden aan een andere partij";
+    return;
+  }
+  const bedrijven = await res.json();
+  if (knop) knop.style.display = "none";
+  bak.style.display = "block";
+  // Iedereen heeft het al gehad? Dan is een lijst met alleen grijze regels
+  // misleidend — zeg gewoon dat het netwerk op is.
+  if (bedrijven.length && bedrijven.every(b => b.al_aangeboden)) {
+    bak.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:8px 0;">` +
+      `Alle partijen in dit netwerk hebben dit item al gehad.</p>`;
+    return;
+  }
+  _renderBedrijvenLijst(itemId, bedrijven, bak);
+}
+
+async function opnieuwAanbiedenBevestig(itemId) {
+  const r = await _verstuurAanbod(itemId, "modal-opnieuw-lijst");
+  if (!r) return;
+  const label = r.gekozen.length === 1 ? r.gekozen[0].naam : `${r.gekozen.length} bedrijven`;
+  _markeerAangeboden(itemId, label, r.ids[0]);   // lijst meteen bij, net als na het scannen
+  syncItems();
+  (window.uxHaptic || (() => {}))("succes");
+  (window.uxToast || alert)(`Aangeboden aan ${r.gekozen.map(b => b.naam).join(", ")}`, "success");
+  openModal(itemId);   // detailpagina verversen: de nieuwe partij staat nu in de reacties
 }
 
 // Ecopark Groot-Ammers (gemeente Molenlanden): aanbod standaard aan álle partners
@@ -406,49 +460,61 @@ function _bedrijfLogoImg(b) {
     `style="${basis}object-fit:contain;background:#fff;border:1px solid var(--border);">`;
 }
 
-function _renderBedrijvenLijst(itemId, external) {
-  // external = array als het direct vanuit analyse-resultaat komt (voor achterwaartse compatibiliteit)
-  if (external) { _scanBedrijven = external; }
-  const bedrijvenLijst = document.getElementById("bedrijven-lijst");
+// doelEl = waar de lijst komt te staan. Zonder doelEl is dat de scankaart; de
+// itemdetailpagina geeft zijn eigen container mee om later nog een partij te
+// kunnen kiezen. De getoonde partijen hangen aan de container zelf, zodat die
+// twee lijsten elkaar niet overschrijven.
+function _renderBedrijvenLijst(itemId, external, doelEl) {
+  const inScan = !doelEl;
+  const bedrijvenLijst = doelEl || document.getElementById("bedrijven-lijst");
   const bedrijvenCard  = document.getElementById("bedrijven-card");
-  if (!_scanBedrijven.length) {
+  if (external) {
+    bedrijvenLijst._bedrijven = external;
+    if (inScan) _scanBedrijven = external;
+  }
+  const lijst = bedrijvenLijst._bedrijven || (inScan ? _scanBedrijven : []);
+  if (!lijst.length) {
     bedrijvenLijst.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:8px 0;">Geen bedrijven gevonden voor deze gemeente.</p>`;
-    bedrijvenCard.classList.remove("hidden");
+    if (inScan) bedrijvenCard.classList.remove("hidden");
     return;
   }
 
-  // Altijd de volledige lijst netwerkpartijen; categorie-matches staan voorgevinkt
-  const isVoorgevinkt = (b) => _ALLES_VOORAF_AAN || b.categorie_match || b.zoekwens_match;
+  // Altijd de volledige lijst netwerkpartijen; categorie-matches staan voorgevinkt.
+  // Wie het al gehad heeft nooit: anders bied je het zo zo weer aan de partij aan
+  // die net 'niet nodig' zei.
+  const isVoorgevinkt = (b) => !b.al_aangeboden && (_ALLES_VOORAF_AAN || b.categorie_match || b.zoekwens_match);
 
   bedrijvenLijst.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
       <span style="font-size:0.8rem;color:var(--muted);">${(() => {
-        const z = _scanBedrijven.filter(b => b.zoekwens_match).length;
+        const z = lijst.filter(b => b.zoekwens_match && !b.al_aangeboden).length;
         return z ? `<b style="color:var(--orange);">${z} partij${z > 1 ? "en" : ""} zoekt dit nu</b> — staat bovenaan` : "Kies één of meer partijen";
       })()}</span>
       <span style="font-size:0.8rem;">
-        <button type="button" onclick="_scanToggleAlle(true)" style="background:none;border:none;cursor:pointer;font-family:inherit;color:var(--orange);font-weight:600;font-size:0.8rem;padding:4px;">Alles</button>
+        <button type="button" onclick="_scanToggleAlle(true, '${bedrijvenLijst.id}')" style="background:none;border:none;cursor:pointer;font-family:inherit;color:var(--orange);font-weight:600;font-size:0.8rem;padding:4px;">Alles</button>
         ·
-        <button type="button" onclick="_scanToggleAlle(false)" style="background:none;border:none;cursor:pointer;font-family:inherit;color:var(--muted);font-size:0.8rem;padding:4px;">Geen</button>
+        <button type="button" onclick="_scanToggleAlle(false, '${bedrijvenLijst.id}')" style="background:none;border:none;cursor:pointer;font-family:inherit;color:var(--muted);font-size:0.8rem;padding:4px;">Geen</button>
       </span>
     </div>
-    ${_scanBedrijven.map((b, _ri) => `
-    <label style="--i:${_ri};display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+    ${lijst.map((b, _ri) => `
+    <label style="--i:${_ri};display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;${b.al_aangeboden ? "opacity:.55;" : ""}">
       <input type="checkbox" class="scan-bedrijf-check" value="${b.id}" ${isVoorgevinkt(b) ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;accent-color:var(--orange);">
       ${_bedrijfLogoImg(b)}
       <span style="flex:1;">
         <span style="font-weight:600;font-size:0.88rem;">${_esc(b.naam)}</span>
-        ${b.zoekwens_match
+        ${b.al_aangeboden
+          ? `<span style="font-size:0.7rem;font-weight:700;background:var(--surface);color:var(--muted);border:1px solid var(--border);padding:2px 7px;border-radius:100px;margin-left:6px;">Al aangeboden</span>`
+          : b.zoekwens_match
           ? `<span style="font-size:0.7rem;font-weight:700;background:var(--orange);color:#fff;padding:2px 8px;border-radius:100px;margin-left:6px;">${b.zoekwens_soort === "trefwoord" ? `Zoekt: ${_esc(b.zoekwens_term)}` : "Zoekt dit nu"}</span>`
           : b.categorie_match ? `<span style="font-size:0.7rem;font-weight:700;background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:100px;margin-left:6px;">Match</span>` : ""}
         ${(b.contactpersoon || b.telefoon) ? `<span style="display:block;font-size:0.8rem;color:var(--muted);margin-top:2px;">${b.contactpersoon ? _esc(b.contactpersoon) : ""}${b.telefoon ? ` · ${_esc(b.telefoon)}` : ""}</span>` : ""}
       </span>
     </label>`).join("")}
-    <button id="btn-aanbied-selectie" class="btn btn-primary cta-elevated" style="width:100%;margin-top:16px;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;" onclick="aanbiedenAanSelectie(${itemId})">
+    <button class="btn btn-primary cta-elevated btn-aanbied-selectie" style="width:100%;margin-top:16px;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;" onclick="${inScan ? `aanbiedenAanSelectie(${itemId})` : `opnieuwAanbiedenBevestig(${itemId})`}">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
       Aanbieden
     </button>`;
-  bedrijvenCard.classList.remove("hidden");
+  if (inScan) bedrijvenCard.classList.remove("hidden");
 }
 
 
@@ -1631,6 +1697,18 @@ async function openModal(id, scrollToChat = false) {
   const aList    = document.getElementById("modal-aanbiedingen-list");
   aSection.style.display = "none";
   aList.innerHTML = "";
+  // Opnieuw-aanbieden-blok terug naar de beginstand (knop zichtbaar, lijst dicht)
+  const oSection = document.getElementById("modal-opnieuw");
+  const oKnop    = document.getElementById("modal-opnieuw-btn");
+  const oLijst   = document.getElementById("modal-opnieuw-lijst");
+  oSection.style.display = "none";
+  oLijst.style.display = "none";
+  oLijst.innerHTML = "";
+  oLijst._bedrijven = null;
+  oKnop.style.display = "";
+  oKnop.disabled = false;
+  oKnop.querySelector("span").textContent = "Aanbieden aan een andere partij";
+  oKnop.onclick = () => opnieuwAanbieden(id);
   const res = isOntvanger ? null : await apiFetch(`/api/items/${id}/aanbiedingen`);
   if (res && res.ok) {
     const aanbiedingen = await res.json();
@@ -1653,6 +1731,11 @@ async function openModal(id, scrollToChat = false) {
           </button>
         </div>`).join("");
       aSection.style.display = "block";
+      // Niemand haalt het op en minstens één partij heeft 'niet nodig' gezegd?
+      // Dan loopt het item dood — bied de weg naar een andere partij aan.
+      const afgewezen = aanbiedingen.some(a => a.status === "niet_nodig");
+      const opgehaald = aanbiedingen.some(a => a.status === "ophalen");
+      if (afgewezen && !opgehaald) oSection.style.display = "block";
     }
   }
 }
