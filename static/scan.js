@@ -134,12 +134,18 @@ document.querySelectorAll(".tabbar-btn").forEach(btn => {
 (function () {
   const t = new URLSearchParams(location.search).get("tab");
   if (t === "list" || (!t && _role === "bedrijf")) {
-    document.querySelector('[data-tab="list"]')?.click();
+    // Eén tik uitstellen: de klik roept renderItems() aan, en die leest state
+    // die verderop in dit bestand wordt gedeclareerd (_itemsGeladen, allItems).
+    // Synchroon klikken gaf daardoor "Cannot access before initialization" en
+    // dan bleef de lijst bij het openen leeg tot de eerste sync. Een microtask
+    // draait direct ná dit bestand, dus nog vóór het scherm tekent.
+    queueMicrotask(() => document.querySelector('[data-tab="list"]')?.click());
   }
 })();
 
 // ── Sync ───────────────────────────────────────────────────────────────────────
 let _lastItemsJson = "";
+let _itemsEtag     = null;   // laatste ETag van /api/items — spaart ongewijzigde polls uit
 let _syncInFlight  = false;
 const _ITEMS_CACHE_KEY = `cirqo_items_v1_${_userId}`;
 
@@ -196,8 +202,15 @@ async function syncItems() {
     const url = _isAdmin
       ? "/api/items?limit=200&offset=0"
       : "/api/items?limit=50&offset=0";
-    const res = await apiFetch(url);
-    if (!res || !res.ok) return;
+    // ETag meesturen: is er niets veranderd, dan antwoordt de server met een
+    // leeg 304 in plaats van de hele lijst. Bij een beheerder scheelt dat ~85 KB
+    // per poll (elke 12 seconden), zonder verschil in wat de gebruiker ziet.
+    const res = await apiFetch(url, _itemsEtag ? { headers: { "If-None-Match": _itemsEtag } } : {});
+    if (!res) return;
+    if (res.status === 304) { _itemsGeladen = true; return; }
+    if (!res.ok) return;
+    const etag = res.headers.get("ETag");
+    if (etag) _itemsEtag = etag;
     const nieuw = await res.json();
     const eersteKeer = !_itemsGeladen;
     _itemsGeladen = true;

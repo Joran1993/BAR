@@ -2031,8 +2031,10 @@ def mijn_aanbiedingen(
 
 
 def _is_demo_aanbieding(item) -> bool:
-    """Hoort dit item bij de demo-omgeving? Dan geen echte pushmeldingen."""
-    return ((item or {}).get("gemeente") or "") == "Demo"
+    """Hoort dit item bij een demo-omgeving? Dan geen echte pushmeldingen.
+    Elke gemeente met 'demo' in de naam telt mee (bv. 'Barendrecht demo'),
+    zodat een demo op locatie nooit een melding bij iemand laat afgaan."""
+    return "demo" in ((item or {}).get("gemeente") or "").lower()
 
 
 @app.patch("/api/mijn-aanbiedingen/{aanbieding_id}")
@@ -2368,8 +2370,24 @@ async def upload(
 
 # ── Items ─────────────────────────────────────────────────────────────────────
 
+def _items_antwoord(payload, request: Request) -> Response:
+    """Itemslijst met ETag. De app pollt elke 12 seconden; als er niets is
+    veranderd stuurt de browser de ETag mee en volstaat een leeg 304-antwoord.
+    Scheelt bij een beheerder ~85 KB per poll (het overgrote deel van ons
+    uitgaand verkeer) zonder dat er functioneel iets verandert."""
+    import hashlib as _h, json as _j
+    from fastapi.encoders import jsonable_encoder
+    body = _j.dumps(jsonable_encoder(payload), separators=(",", ":")).encode("utf-8")
+    etag = '"' + _h.md5(body).hexdigest() + '"'
+    meegestuurd = [t.strip() for t in (request.headers.get("if-none-match") or "").split(",") if t.strip()]
+    if etag in meegestuurd:
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-store"})
+    return Response(content=body, media_type="application/json",
+                    headers={"ETag": etag, "Cache-Control": "no-store"})
+
+
 @app.get("/api/items")
-def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] = None, user=Depends(get_current_user)):
+def list_items(request: Request, limit: int = 200, offset: int = 0, gemeente: Optional[str] = None, user=Depends(get_current_user)):
     bedrijf_id = user.get("bedrijf_id")
     if bedrijf_id:
         # Per (bedrijf, gebruiker): 'ontvangen' is gedeeld binnen het bedrijf,
@@ -2380,7 +2398,7 @@ def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] = None
         bedrijf_cache_key = f"items:bedrijf4:{bedrijf_id}:{user['id']}"
         cached = cache_module.get(bedrijf_cache_key)
         if cached is not None:
-            return cached
+            return _items_antwoord(cached, request)
         # Items aangeboden ÁÁN dit bedrijf — met het eigen zoekwens-label erop
         ontvangen = storage_module.beveilig_items(db.get_items_voor_bedrijf(bedrijf_id))
         wensen = db.get_zoekwensen(bedrijf_id)
@@ -2402,7 +2420,7 @@ def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] = None
         # Lange TTL is veilig: élk mutatiepunt invalideert gericht
         # (_invalideer_bedrijf_items / _invalideer_item_caches)
         cache_module.set(bedrijf_cache_key, result, ttl=3600)
-        return result
+        return _items_antwoord(result, request)
     gemeente = _gemeente_filter(user, gemeente)
     gemeenten = _gemeenten_expand(gemeente)
     user_id = user["id"]
@@ -2412,12 +2430,12 @@ def list_items(limit: int = 200, offset: int = 0, gemeente: Optional[str] = None
     cache_key = f"items:{gemeenten or gemeente}:{offset}:{user_id}"
     cached = cache_module.get(cache_key)
     if cached is not None:
-        return cached
+        return _items_antwoord(cached, request)
     items = db.get_items(limit, offset, None if gemeenten else gemeente, user_id=user_id, gemeenten=gemeenten, own_user_id=own_user_id, all_aanbiedingen=is_admin)
     storage_module.beveilig_items(items)
     # Lange TTL is veilig: mutaties invalideren gericht (o.a. items:*:0:{user_id})
     cache_module.set(cache_key, items, ttl=3600)
-    return items
+    return _items_antwoord(items, request)
 
 
 @app.get("/api/items/{item_id}")
