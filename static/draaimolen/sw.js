@@ -1,12 +1,12 @@
 /* Draaimolen 26 — service worker: offline op het terrein (het bos heeft geen
    bereik) en de pushmeldingen voor je eigen sets. */
 
-const CACHE = "draaimolen-26-v1";
+const CACHE = "draaimolen-26-v2";
 
 const SCHIL = [
   "/draaimolen/",
-  "/static/draaimolen/app.css?v=1",
-  "/static/draaimolen/app.js?v=1",
+  "/static/draaimolen/app.css?v=2",
+  "/static/draaimolen/app.js?v=2",
   "/static/draaimolen/timetable.json",
   "/static/draaimolen/icon-192.png",
   "/static/draaimolen/icon-512.png",

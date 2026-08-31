@@ -3,9 +3,9 @@
  "locatie": "MOB-complex, Tilburg",
  "tijdzone": "Europe/Amsterdam",
  "utc_offset": "+02:00",
- "status": "lineup",
+ "status": "definitief",
  "bijgewerkt": "2026-08-31",
- "bron": "Aangekondigde line-up (juli 2026). Officiele set-tijden nog niet ingelezen.",
+ "bron": "Officiële timetable van Draaimolen (PDF, 27-08-2026)",
  "dagen": [
   {
    "id": "vr",
@@ -20,607 +20,702 @@
    "datum": "2026-09-05"
   }
  ],
- "stages": [],
+ "stages": [
+  "Strobe",
+  "Moon",
+  "Aura",
+  "Forest Rave",
+  "The Pit",
+  "Tunnel"
+ ],
  "sets": [
   {
-   "artiest": "ābnamā B2B Faited",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Adam Marshall & Ricardo Tobar present LABRADOR (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Adiel B2B Garçon",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Altinbas (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "AMORAL B2B Jasmín",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "André Galluzzi B2B Lea Occhi",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Angel D'lite B2B Kim Ann Foxman",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Annebel B2B Carré",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "BASHKKA B2B Jerome Sydenham",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Batu",
+   "artiest": "LOLA EDO",
    "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Strobe",
+   "dag": "vr",
+   "start": "12:00",
+   "eind": "14:30"
   },
   {
-   "artiest": "Ben Vince (live)",
+   "artiest": "MI-EL B2B SOFT BREAK",
+   "soort": "b2b",
+   "stage": "Strobe",
+   "dag": "vr",
+   "start": "14:30",
+   "eind": "16:30"
+  },
+  {
+   "artiest": "LEONCE B2B OCEANIC",
+   "soort": "b2b",
+   "stage": "Strobe",
+   "dag": "vr",
+   "start": "16:30",
+   "eind": "18:30"
+  },
+  {
+   "artiest": "NAMASENDA (LIVE)",
    "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Strobe",
+   "dag": "vr",
+   "start": "18:30",
+   "eind": "19:15"
   },
   {
-   "artiest": "Bennet (DE) B2B Beste Hira",
+   "artiest": "ANGEL D'LITE B2B KIM ANN FOXMAN",
    "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Strobe",
+   "dag": "vr",
+   "start": "19:15",
+   "eind": "21:30"
   },
   {
-   "artiest": "Bitter Babe B2B CARISTA",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Carl H B2B Naone",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Carmen Villain B2B Hitam",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "COLA REN & K-LONE (live)",
+   "artiest": "SHYGIRL (LIVE)",
    "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Strobe",
+   "dag": "vr",
+   "start": "21:30",
+   "eind": "22:30"
   },
   {
-   "artiest": "Colombian Drone Mafia & Debit (hybrid)",
+   "artiest": "THE SECRET GUEST",
+   "soort": "dj",
+   "stage": "Strobe",
+   "dag": "vr",
+   "start": "22:30",
+   "eind": "00:30"
+  },
+  {
+   "artiest": "THE NECKS (LIVE)",
+   "soort": "live",
+   "stage": "Moon",
+   "dag": "vr",
+   "start": "13:00",
+   "eind": "14:15"
+  },
+  {
+   "artiest": "THE NECKS (LIVE) SET 2",
+   "soort": "live",
+   "stage": "Moon",
+   "dag": "vr",
+   "start": "14:45",
+   "eind": "16:00"
+  },
+  {
+   "artiest": "COLA REN & K-LONE (LIVE)",
+   "soort": "live",
+   "stage": "Moon",
+   "dag": "vr",
+   "start": "16:00",
+   "eind": "17:00"
+  },
+  {
+   "artiest": "COSMO B2B MARIE K",
+   "soort": "b2b",
+   "stage": "Moon",
+   "dag": "vr",
+   "start": "17:00",
+   "eind": "19:00"
+  },
+  {
+   "artiest": "KEVIN SAUNDERSON B2B SURUSINGHE",
+   "soort": "b2b",
+   "stage": "Moon",
+   "dag": "vr",
+   "start": "19:00",
+   "eind": "21:00"
+  },
+  {
+   "artiest": "DATAPUNK (HYBRID) PRESENTED BY ANTHONY ROTHER",
    "soort": "hybrid",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Moon",
+   "dag": "vr",
+   "start": "21:00",
+   "eind": "22:30"
   },
   {
-   "artiest": "Colored Craig",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Commodo X Hans Arsen (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Cosmo (KR) B2B Marie K",
+   "artiest": "CARL H B2B NAONE",
    "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Moon",
+   "dag": "vr",
+   "start": "22:30",
+   "eind": "00:30"
   },
   {
-   "artiest": "Darwin B2B Mama Snake",
+   "artiest": "ANNEBEL B2B CARRÉ",
    "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Aura",
+   "dag": "vr",
+   "start": "12:00",
+   "eind": "15:00"
   },
   {
-   "artiest": "DATAPUNK (hybrid) presented by Anthony Rother",
+   "artiest": "OJOO (HYBRID)",
    "soort": "hybrid",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Aura",
+   "dag": "vr",
+   "start": "15:00",
+   "eind": "16:00"
   },
   {
-   "artiest": "Deetron (live)",
+   "artiest": "DIALS (LIVE)",
    "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Aura",
+   "dag": "vr",
+   "start": "16:00",
+   "eind": "16:45"
   },
   {
-   "artiest": "Delano Legito B2B Shinedoe",
+   "artiest": "SHANNEN SP",
+   "soort": "dj",
+   "stage": "Aura",
+   "dag": "vr",
+   "start": "16:45",
+   "eind": "19:00"
+  },
+  {
+   "artiest": "James K (LIVE)",
+   "soort": "live",
+   "stage": "Aura",
+   "dag": "vr",
+   "start": "19:00",
+   "eind": "20:00"
+  },
+  {
+   "artiest": "DJ FIRMEZA X DJ LYCOX X DJ NARCISO",
+   "soort": "dj",
+   "stage": "Aura",
+   "dag": "vr",
+   "start": "20:00",
+   "eind": "22:00"
+  },
+  {
+   "artiest": "COMMODO X HANS ARSEN (LIVE)",
+   "soort": "live",
+   "stage": "Aura",
+   "dag": "vr",
+   "start": "22:00",
+   "eind": "23:00"
+  },
+  {
+   "artiest": "RE:NI B2B SIMO CELL",
    "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Aura",
+   "dag": "vr",
+   "start": "23:00",
+   "eind": "00:30"
   },
   {
-   "artiest": "Devon Rexi meets John T. Gast (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "DIALS (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Dimitri Kneppers",
+   "artiest": "HARRISON HEAT",
    "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Forest Rave",
+   "dag": "vr",
+   "start": "12:00",
+   "eind": "14:30"
   },
   {
-   "artiest": "DJ Firmeza B2B DJ Lycox B2B DJ Narciso",
+   "artiest": "MICHELLE MANETTI",
+   "soort": "dj",
+   "stage": "Forest Rave",
+   "dag": "vr",
+   "start": "14:30",
+   "eind": "16:00"
+  },
+  {
+   "artiest": "COLORED CRAIG",
+   "soort": "dj",
+   "stage": "Forest Rave",
+   "dag": "vr",
+   "start": "16:00",
+   "eind": "17:30"
+  },
+  {
+   "artiest": "DIMITRI",
+   "soort": "dj",
+   "stage": "Forest Rave",
+   "dag": "vr",
+   "start": "17:30",
+   "eind": "19:00"
+  },
+  {
+   "artiest": "DJ NOBU",
+   "soort": "dj",
+   "stage": "Forest Rave",
+   "dag": "vr",
+   "start": "19:00",
+   "eind": "21:00"
+  },
+  {
+   "artiest": "ERIS DREW B2B OBJEKT",
    "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Forest Rave",
+   "dag": "vr",
+   "start": "21:00",
+   "eind": "23:00"
   },
   {
-   "artiest": "DJ Haram & Sha Ray (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "DJ Playero",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "DjRUM",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Donato Dozzy B2B Job Jobse",
+   "artiest": "INTROSPEKT B2B JEREMY SYLVESTER",
    "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Forest Rave",
+   "dag": "vr",
+   "start": "23:00",
+   "eind": "00:30"
   },
   {
-   "artiest": "EMA B2B Verity",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Eris Drew B2B Objekt",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Eversines (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Fadi Mohem B2B Richard Akingbehin",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Fred P (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "French II (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Full Circle",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Garage Girls",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Goth-Trad",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Harrison Heat",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Hyperverbena (hybrid)",
+   "artiest": "COLOMBIAN DRONE MAFIA & DEBIT (HYBRID)",
    "soort": "hybrid",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "The Pit",
+   "dag": "vr",
+   "start": "12:00",
+   "eind": "14:00"
   },
   {
-   "artiest": "Introspekt B2B Jeremy Sylvester",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Isabel Soto B2B Jin Synth",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "james K (live)",
+   "artiest": "NADAH EL SHAZLY FT. 3PHAZ (LIVE)",
    "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "The Pit",
+   "dag": "vr",
+   "start": "14:00",
+   "eind": "15:00"
   },
   {
-   "artiest": "Kangding Ray x Lumus present Snelweg (live)",
+   "artiest": "KELMAN DURAN (LIVE)",
    "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "The Pit",
+   "dag": "vr",
+   "start": "15:00",
+   "eind": "16:00"
   },
   {
-   "artiest": "Kelman Duran (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Kevin Saunderson B2B Surusinghe",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Leonce B2B Oceanic",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Lola Edo",
+   "artiest": "WHEEL OF FORTUNE (CCL X MARYLOU X NONO X GIGSTA X RROXYMORE)",
    "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "The Pit",
+   "dag": "vr",
+   "start": "16:00",
+   "eind": "19:00"
   },
   {
-   "artiest": "Los Thuthanaka (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Mari Sakurai",
+   "artiest": "WEIRD BAILE",
    "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "The Pit",
+   "dag": "vr",
+   "start": "19:00",
+   "eind": "20:30"
   },
   {
-   "artiest": "Metrist (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "MI-EL B2B Soft Break",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Michelle Manetti",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "MMM (Errorsmith & Fiedel)",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Namasenda (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Nene H (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Octo Octa B2B Virginia",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "OJOO (hybrid)",
+   "artiest": "HYPERVERBENA (HYBRID)",
    "soort": "hybrid",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "The Pit",
+   "dag": "vr",
+   "start": "20:30",
+   "eind": "21:30"
   },
   {
-   "artiest": "OK EG (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Polygonia, Simon Popp (live)",
-   "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "RÆZA",
+   "artiest": "DJRUM X RIKO DAN",
    "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "The Pit",
+   "dag": "vr",
+   "start": "21:30",
+   "eind": "23:00"
   },
   {
-   "artiest": "Re:ni B2B Simo Cell",
+   "artiest": "LOW JACK B2B R3IGN DROPS",
    "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "The Pit",
+   "dag": "vr",
+   "start": "23:00",
+   "eind": "00:30"
   },
   {
-   "artiest": "Rod B2B Rolando",
-   "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Rumi de Baires",
+   "artiest": "VARUNA AGOSTI",
    "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Tunnel",
+   "dag": "vr",
+   "start": "12:00",
+   "eind": "15:00"
   },
   {
-   "artiest": "Sandrien",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Shannen SP",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
-  },
-  {
-   "artiest": "Shygirl (live)",
+   "artiest": "EVERSINES (LIVE)",
    "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Tunnel",
+   "dag": "vr",
+   "start": "15:00",
+   "eind": "16:00"
   },
   {
-   "artiest": "Talismann B2B Wallis",
+   "artiest": "ISABEL SOTO B2B JIN SYNTH",
    "soort": "b2b",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Tunnel",
+   "dag": "vr",
+   "start": "16:00",
+   "eind": "18:00"
   },
   {
-   "artiest": "The Necks (live)",
+   "artiest": "DOLTZ. (LIVE)",
    "soort": "live",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Tunnel",
+   "dag": "vr",
+   "start": "18:00",
+   "eind": "19:00"
   },
   {
-   "artiest": "Varuna Agosti",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "artiest": "DARWIN B2B MAMA SNAKE",
+   "soort": "b2b",
+   "stage": "Tunnel",
+   "dag": "vr",
+   "start": "19:00",
+   "eind": "21:00"
   },
   {
-   "artiest": "Weird Baile",
-   "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "artiest": "THE SECRET (LIVE) ACT",
+   "soort": "live",
+   "stage": "Tunnel",
+   "dag": "vr",
+   "start": "21:00",
+   "eind": "22:30"
   },
   {
-   "artiest": "Wheel of Fortune (CCL x Marylou x Nono Gigsta x Rroxymore)",
+   "artiest": "TALISMANN B2B WALLIS",
+   "soort": "b2b",
+   "stage": "Tunnel",
+   "dag": "vr",
+   "start": "22:30",
+   "eind": "00:30"
+  },
+  {
+   "artiest": "BENNET B2B BESTE HIRA",
+   "soort": "b2b",
+   "stage": "Strobe",
+   "dag": "za",
+   "start": "12:00",
+   "eind": "16:30"
+  },
+  {
+   "artiest": "DEETRON (LIVE)",
+   "soort": "live",
+   "stage": "Strobe",
+   "dag": "za",
+   "start": "16:30",
+   "eind": "17:30"
+  },
+  {
+   "artiest": "DONATO DOZZY B2B JOB JOBSE",
+   "soort": "b2b",
+   "stage": "Strobe",
+   "dag": "za",
+   "start": "17:30",
+   "eind": "20:00"
+  },
+  {
+   "artiest": "NENE H (LIVE)",
+   "soort": "live",
+   "stage": "Strobe",
+   "dag": "za",
+   "start": "20:00",
+   "eind": "21:00"
+  },
+  {
+   "artiest": "DJ G2G B2B SPFDJ",
+   "soort": "b2b",
+   "stage": "Strobe",
+   "dag": "za",
+   "start": "21:00",
+   "eind": "22:30"
+  },
+  {
+   "artiest": "Lena Willikens b2b ¥ØU$UK€ ¥UK1MAT$U",
+   "soort": "b2b",
+   "stage": "Strobe",
+   "dag": "za",
+   "start": "22:30",
+   "eind": "00:30"
+  },
+  {
+   "artiest": "CARMEN VILLAIN B2B HITAM",
+   "soort": "b2b",
+   "stage": "Moon",
+   "dag": "za",
+   "start": "12:00",
+   "eind": "15:30"
+  },
+  {
+   "artiest": "BEN VINCE (LIVE)",
+   "soort": "live",
+   "stage": "Moon",
+   "dag": "za",
+   "start": "15:30",
+   "eind": "16:30"
+  },
+  {
+   "artiest": "FULL CIRCLE",
    "soort": "dj",
-   "stage": null,
-   "dag": null,
-   "start": null,
-   "eind": null
+   "stage": "Moon",
+   "dag": "za",
+   "start": "16:30",
+   "eind": "19:00"
+  },
+  {
+   "artiest": "ADAM MARSHALL & RICARDO TOBAR PRESENT LABRADOR",
+   "soort": "dj",
+   "stage": "Moon",
+   "dag": "za",
+   "start": "19:00",
+   "eind": "20:00"
+  },
+  {
+   "artiest": "ANDRÉ GALLUZZI B2B LEA OCCHI",
+   "soort": "b2b",
+   "stage": "Moon",
+   "dag": "za",
+   "start": "20:00",
+   "eind": "22:00"
+  },
+  {
+   "artiest": "OK EG (LIVE)",
+   "soort": "live",
+   "stage": "Moon",
+   "dag": "za",
+   "start": "22:00",
+   "eind": "23:00"
+  },
+  {
+   "artiest": "ADIEL B2B GARÇON",
+   "soort": "b2b",
+   "stage": "Moon",
+   "dag": "za",
+   "start": "23:00",
+   "eind": "00:30"
+  },
+  {
+   "artiest": "BATU",
+   "soort": "dj",
+   "stage": "Aura",
+   "dag": "za",
+   "start": "12:00",
+   "eind": "16:30"
+  },
+  {
+   "artiest": "DEVON REXI MEETS JOHN T. GAST (LIVE)",
+   "soort": "live",
+   "stage": "Aura",
+   "dag": "za",
+   "start": "16:30",
+   "eind": "17:30"
+  },
+  {
+   "artiest": "EMA B2B VERITY",
+   "soort": "b2b",
+   "stage": "Aura",
+   "dag": "za",
+   "start": "17:30",
+   "eind": "19:30"
+  },
+  {
+   "artiest": "METRIST (LIVE)",
+   "soort": "live",
+   "stage": "Aura",
+   "dag": "za",
+   "start": "19:30",
+   "eind": "20:30"
+  },
+  {
+   "artiest": "GOTH-TRAD",
+   "soort": "dj",
+   "stage": "Aura",
+   "dag": "za",
+   "start": "20:30",
+   "eind": "22:00"
+  },
+  {
+   "artiest": "POLYGONIA, SIMON POPP (LIVE)",
+   "soort": "live",
+   "stage": "Aura",
+   "dag": "za",
+   "start": "22:00",
+   "eind": "23:00"
+  },
+  {
+   "artiest": "FADI MOHEM B2B RICHARD AKINGBEHIN",
+   "soort": "b2b",
+   "stage": "Aura",
+   "dag": "za",
+   "start": "23:00",
+   "eind": "00:30"
+  },
+  {
+   "artiest": "RUMI DE BAIRES",
+   "soort": "dj",
+   "stage": "Forest Rave",
+   "dag": "za",
+   "start": "12:00",
+   "eind": "14:00"
+  },
+  {
+   "artiest": "GARAGE GIRLS",
+   "soort": "dj",
+   "stage": "Forest Rave",
+   "dag": "za",
+   "start": "14:00",
+   "eind": "16:00"
+  },
+  {
+   "artiest": "ĀBNAMĀ B2B FAITED",
+   "soort": "b2b",
+   "stage": "Forest Rave",
+   "dag": "za",
+   "start": "16:00",
+   "eind": "18:00"
+  },
+  {
+   "artiest": "BASHKKA B2B JEROME SYDENHAM",
+   "soort": "b2b",
+   "stage": "Forest Rave",
+   "dag": "za",
+   "start": "18:00",
+   "eind": "20:00"
+  },
+  {
+   "artiest": "FRED P (LIVE)",
+   "soort": "live",
+   "stage": "Forest Rave",
+   "dag": "za",
+   "start": "20:00",
+   "eind": "21:00"
+  },
+  {
+   "artiest": "OCTO OCTA B2B VIRGINIA",
+   "soort": "b2b",
+   "stage": "Forest Rave",
+   "dag": "za",
+   "start": "21:00",
+   "eind": "22:45"
+  },
+  {
+   "artiest": "SANDRIEN",
+   "soort": "dj",
+   "stage": "Forest Rave",
+   "dag": "za",
+   "start": "22:45",
+   "eind": "00:30"
+  },
+  {
+   "artiest": "DJ LOMALINDA B2B PHILLIP JONDO",
+   "soort": "b2b",
+   "stage": "The Pit",
+   "dag": "za",
+   "start": "12:00",
+   "eind": "14:30"
+  },
+  {
+   "artiest": "MMM (ERRORSMITH & FIEDEL)",
+   "soort": "dj",
+   "stage": "The Pit",
+   "dag": "za",
+   "start": "14:30",
+   "eind": "16:30"
+  },
+  {
+   "artiest": "DJ HARAM & SHA RAY (LIVE)",
+   "soort": "live",
+   "stage": "The Pit",
+   "dag": "za",
+   "start": "16:30",
+   "eind": "17:30"
+  },
+  {
+   "artiest": "DJ RAMON SUCESSO",
+   "soort": "dj",
+   "stage": "The Pit",
+   "dag": "za",
+   "start": "17:30",
+   "eind": "18:30"
+  },
+  {
+   "artiest": "FRENCH II (LIVE)",
+   "soort": "live",
+   "stage": "The Pit",
+   "dag": "za",
+   "start": "18:30",
+   "eind": "19:30"
+  },
+  {
+   "artiest": "DNGDNGDNG & PHRAN: SONIDO UNDERGROUND (HYBRID)",
+   "soort": "hybrid",
+   "stage": "The Pit",
+   "dag": "za",
+   "start": "19:30",
+   "eind": "21:00"
+  },
+  {
+   "artiest": "BITTER BABE B2B CARISTA",
+   "soort": "b2b",
+   "stage": "The Pit",
+   "dag": "za",
+   "start": "21:00",
+   "eind": "22:45"
+  },
+  {
+   "artiest": "DJ PLAYERO",
+   "soort": "dj",
+   "stage": "The Pit",
+   "dag": "za",
+   "start": "22:45",
+   "eind": "00:30"
+  },
+  {
+   "artiest": "RAEZA",
+   "soort": "dj",
+   "stage": "Tunnel",
+   "dag": "za",
+   "start": "12:00",
+   "eind": "14:30"
+  },
+  {
+   "artiest": "MARI SAKURAI",
+   "soort": "dj",
+   "stage": "Tunnel",
+   "dag": "za",
+   "start": "14:30",
+   "eind": "16:30"
+  },
+  {
+   "artiest": "DELANO LEGITO B2B SHINEDOE",
+   "soort": "b2b",
+   "stage": "Tunnel",
+   "dag": "za",
+   "start": "16:30",
+   "eind": "18:30"
+  },
+  {
+   "artiest": "ROD B2B ROLANDO",
+   "soort": "b2b",
+   "stage": "Tunnel",
+   "dag": "za",
+   "start": "18:30",
+   "eind": "20:30"
+  },
+  {
+   "artiest": "ALTINBAS (LIVE)",
+   "soort": "live",
+   "stage": "Tunnel",
+   "dag": "za",
+   "start": "20:30",
+   "eind": "21:30"
+  },
+  {
+   "artiest": "KANGDING RAY X LUMUS PRESENT SNELWEG (LIVE)",
+   "soort": "live",
+   "stage": "Tunnel",
+   "dag": "za",
+   "start": "21:30",
+   "eind": "22:30"
+  },
+  {
+   "artiest": "AMORAL B2B JASMÍN",
+   "soort": "b2b",
+   "stage": "Tunnel",
+   "dag": "za",
+   "start": "22:30",
+   "eind": "00:30"
   }
  ]
 }

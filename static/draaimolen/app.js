@@ -135,6 +135,14 @@ function stagesVanDag(dagId) {
     const st = s.stage || "Onbekend";
     if (!namen.includes(st)) namen.push(st);
   }
+  // Vaste volgorde uit de timetable aanhouden; die staat in de affichevolgorde
+  const vast = S.data.stages || [];
+  if (vast.length) {
+    namen.sort((a, b) => {
+      const ia = vast.indexOf(a), ib = vast.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+  }
   return namen;
 }
 
