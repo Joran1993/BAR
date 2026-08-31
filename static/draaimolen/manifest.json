@@ -1,0 +1,18 @@
+{
+  "name": "Draaimolen 26 — timetable",
+  "short_name": "Draaimolen",
+  "description": "Je eigen line-up voor Draaimolen 2026, met een melding voordat een set begint.",
+  "id": "/draaimolen/",
+  "start_url": "/draaimolen/",
+  "scope": "/draaimolen/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f120e",
+  "theme_color": "#0f120e",
+  "lang": "nl",
+  "icons": [
+    { "src": "/static/draaimolen/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/draaimolen/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/draaimolen/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

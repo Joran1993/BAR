@@ -23,6 +23,7 @@ import storage as storage_module
 import cache as cache_module
 import push as push_module
 import firestore as fs
+import draaimolen as draaimolen_module
 
 # Foutbewaking: wordt actief zodra SENTRY_DSN als env-var is gezet; zonder DSN
 # is dit een no-op en kost het niets
@@ -304,6 +305,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_digest_loop())
     asyncio.create_task(_herinnering_loop())
     asyncio.create_task(_demo_verversen_loop())
+    asyncio.create_task(draaimolen_module.herinneringen_loop())
     yield
 
 
@@ -834,6 +836,9 @@ _CORS_ORIGINS = [o.strip() for o in os.environ.get(
 ).split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=_CORS_ORIGINS,
                    allow_methods=["*"], allow_headers=["*"])
+
+# Draaimolen-timetable: losstaande webapp op /draaimolen/ met eigen tabellen
+app.include_router(draaimolen_module.router)
 
 
 @app.exception_handler(Exception)

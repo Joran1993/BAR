@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Draaimolen 26 — timetable</title>
+<meta name="description" content="Persoonlijke timetable voor Draaimolen 2026: tik je artiesten aan en krijg een melding voordat ze beginnen.">
+<meta name="theme-color" content="#0f120e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Draaimolen">
+<link rel="manifest" href="/draaimolen/manifest.json">
+<link rel="apple-touch-icon" href="/static/draaimolen/icon-192.png">
+<link rel="icon" href="/static/draaimolen/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/static/draaimolen/app.css?v=1">
+</head>
+<body>
+
+<header class="kop">
+  <div class="kop-rij">
+    <h1 class="wordmark">Draaimolen<span class="jaar">26</span></h1>
+    <div class="klok" id="klok">--:--</div>
+  </div>
+  <nav class="dagen" id="dagen" aria-label="Festivaldag"></nav>
+</header>
+
+<main id="hoofd">
+
+  <!-- Timetable -->
+  <section class="scherm" id="scherm-timetable">
+    <div class="stagebalk" id="stagebalk" aria-label="Stages"></div>
+    <div id="lijst" class="lijst"></div>
+  </section>
+
+  <!-- Mijn line-up -->
+  <section class="scherm verborgen" id="scherm-mijn">
+    <div class="volgende" id="volgende"></div>
+    <div id="mijn-lijst" class="lijst"></div>
+    <div class="acties">
+      <button class="knop-vlak" id="knop-ics">Zet in agenda (.ics)</button>
+      <button class="knop-vlak" id="knop-wis">Selectie wissen</button>
+    </div>
+  </section>
+
+  <!-- Meldingen -->
+  <section class="scherm verborgen" id="scherm-meldingen">
+    <h2 class="titel">Meldingen</h2>
+    <p class="uitleg" id="push-status">Zet meldingen aan en je krijgt een seintje voordat een artiest die je hebt aangetikt begint.</p>
+
+    <button class="knop" id="knop-push">Meldingen aanzetten</button>
+
+    <div class="veld">
+      <span class="veldlabel">Hoe lang van tevoren</span>
+      <div class="chips" id="lead-chips"></div>
+    </div>
+
+    <div class="acties">
+      <button class="knop-vlak" id="knop-test">Stuur een testmelding</button>
+    </div>
+
+    <details class="notitie">
+      <summary>Werkt het niet op je iPhone?</summary>
+      <p>iOS stuurt alleen meldingen naar een app die op je beginscherm staat. Open deze pagina in Safari,
+        tik op Deel &rarr; <em>Zet op beginscherm</em>, open hem daar en zet de meldingen opnieuw aan.</p>
+    </details>
+
+    <hr class="regel">
+
+    <h2 class="titel">Timetable</h2>
+    <p class="uitleg" id="bron-status"></p>
+    <div class="acties">
+      <button class="knop-vlak" id="knop-import">Timetable inlezen</button>
+      <button class="knop-vlak" id="knop-ververs">Opnieuw ophalen</button>
+    </div>
+  </section>
+
+  <!-- Inlezen -->
+  <section class="scherm verborgen" id="scherm-import">
+    <h2 class="titel">Timetable inlezen</h2>
+    <p class="uitleg">Selecteer de timetable op draaimolen.nu, kopieer hem en plak hem hieronder.
+      Dag- en stagenamen op eigen regels, sets als <span class="mono">12:00 – 14:30 Artiest</span>.
+      Een JSON-bestand met dezelfde opbouw mag ook.</p>
+    <textarea id="plak" rows="10" spellcheck="false"
+      placeholder="VRIJDAG&#10;STROBE&#10;16:00 - 17:30  Batu&#10;17:30 - 19:00  DjRUM&#10;..."></textarea>
+    <div class="acties">
+      <button class="knop" id="knop-lees">Bekijk resultaat</button>
+      <button class="knop-vlak" id="knop-terug">Terug</button>
+    </div>
+    <div id="import-uitslag"></div>
+  </section>
+
+</main>
+
+<nav class="balk" id="balk" aria-label="Hoofdmenu">
+  <button data-scherm="timetable" class="balk-knop actief">Timetable</button>
+  <button data-scherm="mijn" class="balk-knop">Mijn line-up<span class="teller" id="teller"></span></button>
+  <button data-scherm="meldingen" class="balk-knop">Meldingen</button>
+</nav>
+
+<script src="/static/draaimolen/app.js?v=1"></script>
+</body>
+</html>
