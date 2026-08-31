@@ -302,6 +302,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_firestore_sync_loop())
     asyncio.create_task(_prewarm_cache_loop())
     asyncio.create_task(_digest_loop())
+    asyncio.create_task(_herinnering_loop())
     asyncio.create_task(_demo_verversen_loop())
     yield
 
@@ -2368,6 +2369,157 @@ async def upload(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Particulieren: aanbieden via de QR in de winkel ──────────────────────────
+# Publiek bereikbaar, dus streng begrensd: dit is de enige route die zonder
+# account een AI-analyse aanroept.
+
+_PART_POGINGEN: dict = {}
+PART_SCANS_PER_UUR = 6          # per IP per afnemer
+PART_MAX_FOTO = 8 * 1024 * 1024
+
+
+def _part_ip(request: Request) -> str:
+    return ((request.headers.get("x-forwarded-for") or
+             (request.client.host if request.client else "") or "")).split(",")[0].strip()[:64]
+
+
+def _part_limiet(sleutel: str, max_per_uur: int) -> bool:
+    """True als er nog ruimte is. Houdt alleen het laatste uur bij."""
+    import time as _t
+    nu = _t.time()
+    pogingen = [t for t in _PART_POGINGEN.get(sleutel, []) if nu - t < 3600]
+    if len(pogingen) >= max_per_uur:
+        _PART_POGINGEN[sleutel] = pogingen
+        return False
+    pogingen.append(nu)
+    _PART_POGINGEN[sleutel] = pogingen
+    if len(_PART_POGINGEN) > 5000:                     # geheugen niet laten groeien
+        for k in [k for k, v in _PART_POGINGEN.items() if not any(nu - t < 3600 for t in v)]:
+            _PART_POGINGEN.pop(k, None)
+    return True
+
+
+def _part_bedrijf(token: str) -> dict:
+    b = db.get_bedrijf_by_token(token)
+    if not b:
+        raise HTTPException(status_code=404, detail="Onbekende link")
+    return b
+
+
+@app.get("/aanbieden/{token}")
+def aanbieden_pagina(token: str, request: Request):
+    """Landingspagina achter de QR in de winkel."""
+    _part_bedrijf(token)
+    return _render_html("static/aanbieden.html", _detect_brand(request))
+
+
+@app.get("/api/aanbieden/{token}")
+def aanbieden_info(token: str):
+    b = _part_bedrijf(token)
+    with db.get_cursor() as cur:
+        cur.execute("SELECT category FROM bedrijf_categorieen WHERE bedrijf_id = %s ORDER BY category",
+                    (b["id"],))
+        cats = [r["category"] for r in cur.fetchall()]
+    return {"naam": b["naam"], "gemeente": b.get("gemeente") or "", "categorieen": cats}
+
+
+@app.post("/api/aanbieden/{token}/scan")
+async def aanbieden_scan(token: str, request: Request, foto: UploadFile = File(...)):
+    """Foto → herkenning. Maakt nog géén account en nog géén item: eerst laten
+    zien wat het is, pas daarna om een naam vragen. Dat scheelt de helft van de
+    afhakers."""
+    import secrets as _s
+    b = _part_bedrijf(token)
+    if not _part_limiet(f"scan:{_part_ip(request)}:{token}", PART_SCANS_PER_UUR):
+        raise HTTPException(status_code=429, detail="Even wachten — probeer het over een uur opnieuw")
+    raw = await foto.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Geen foto ontvangen")
+    if len(raw) > PART_MAX_FOTO:
+        raise HTTPException(status_code=413, detail="Foto is te groot")
+
+    from PIL import Image, ImageOps
+    import io as _io
+
+    def _klein(data):
+        img = ImageOps.exif_transpose(Image.open(_io.BytesIO(data))).convert("RGB")
+        if img.width > 512:
+            img = img.resize((512, int(img.height * 512 / img.width)), Image.LANCZOS)
+        buf = _io.BytesIO()
+        img.save(buf, format="JPEG", quality=72)
+        return buf.getvalue()
+
+    loop = asyncio.get_event_loop()
+    try:
+        klein = await loop.run_in_executor(None, _klein, raw)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Deze foto kunnen we niet lezen")
+
+    gemeente = b.get("gemeente") or None
+    lijst = [e["product"] for e in (db.get_inzamellijst(gemeente) if gemeente else [])] or \
+            [e["product"] for e in db.get_inzamellijst_alle()]
+    analyse = loop.run_in_executor(None, ai_module.analyse_photo,
+                                   base64.b64encode(klein).decode("utf-8"), lijst)
+    uploaden = loop.run_in_executor(None, storage_module.upload_photo, klein)
+    (label, detail, gewicht, categorie, _geaccepteerd, conditie), photo_url = await asyncio.gather(analyse, uploaden)
+
+    scan_token = _s.token_urlsafe(18)
+    db.bewaar_particulier_scan(scan_token, b["id"], photo_url, label, detail, categorie, conditie, gewicht)
+    gezocht = categorie in {r for r in (db.get_zoekwensen(b["id"]) or {}).get("categorieen", [])}
+    return {"scan": scan_token, "label": label or "Onbekend product", "detail": detail or "",
+            "categorie": categorie or "", "conditie": conditie or "",
+            "foto": storage_module.onderteken([photo_url]).get(photo_url, photo_url),
+            "gezocht": gezocht, "afnemer": b["naam"]}
+
+
+@app.post("/api/aanbieden/{token}/versturen")
+def aanbieden_versturen(token: str, request: Request, response: Response, payload: dict = Body(...)):
+    """Pas hier ontstaat het account: uit de naam en het contactgegeven dat de
+    aanbieder tóch moet achterlaten. Geen wachtwoord om te onthouden."""
+    b = _part_bedrijf(token)
+    if not _part_limiet(f"stuur:{_part_ip(request)}", 12):
+        raise HTTPException(status_code=429, detail="Even wachten — probeer het over een uur opnieuw")
+    naam = (payload.get("naam") or "").strip()[:120]
+    contact = (payload.get("contact") or "").strip()[:160]
+    adres = (payload.get("adres") or "").strip()[:200]
+    opmerking = (payload.get("opmerking") or "").strip()[:500]
+    if len(naam) < 2:
+        raise HTTPException(status_code=400, detail="Vul je naam in")
+    if "@" not in contact and len(re.sub(r"[^0-9]", "", contact)) < 8:
+        raise HTTPException(status_code=400, detail="Vul een e-mailadres of telefoonnummer in")
+
+    scan = db.claim_particulier_scan((payload.get("scan") or "").strip(), b["id"])
+    if not scan:
+        raise HTTPException(status_code=409, detail="Deze foto is al verstuurd of verlopen")
+
+    gemeente = b.get("gemeente") or ""
+    user_id = db.vind_of_maak_particulier(naam, contact, gemeente)
+    notitie = " · ".join(x for x in (opmerking, f"Ophaaladres: {adres}" if adres else "") if x)
+    item_id = db.insert_item(scan["photo_url"], scan["ai_label"], scan["ai_detail"],
+                             scan["gewicht_kg"], gemeente, True, uploaded_by=user_id,
+                             conditie=scan["conditie"])
+    if notitie or scan["category"]:
+        db.update_item(item_id, notitie or None, scan["category"])
+    aanbieding_id = db.create_aanbieding(item_id, b["id"], user_id=user_id)
+    _invalideer_bedrijf_items(b["id"])
+    cache_module.delete_pattern(f"items:*:0:{user_id}")
+
+    item = db.get_item(item_id)
+    label = (item or {}).get("ai_label") or "materiaal"
+
+    def _meld():
+        for sub in db.get_push_subscriptions_for_bedrijf(b["id"]):
+            push_module.send_push(sub["subscription"], title="Aanbod van een inwoner — CIRQO",
+                                  body=f"{naam} biedt {label} aan.", url="/")
+    if not _is_demo_aanbieding(item):
+        import threading
+        threading.Thread(target=_meld, daemon=True).start()
+
+    # Sessie op dit toestel: bij een volgend bezoek staat de aanbieder er meteen in
+    _zet_herstel_cookie(response, user_id, request=request, via="particulier", achtergrond=True)
+    return {"ok": True, "aanbieding_id": aanbieding_id, "afnemer": b["naam"]}
+
+
 # ── Items ─────────────────────────────────────────────────────────────────────
 
 def _items_antwoord(payload, request: Request) -> Response:
@@ -2427,11 +2579,14 @@ def list_items(request: Request, limit: int = 200, offset: int = 0, gemeente: Op
     is_admin = user["role"] in ("admin", "superadmin")
     # Scanner always sees their own items regardless of GPS gemeente
     own_user_id = user_id if user["role"] == "user" else None
+    # Een particulier hoort alleen zijn eigen spullen te zien, niet die van de
+    # buren of van de milieustraat: dat is de gemeentebrede scannersweergave.
+    alleen_eigen = bool(own_user_id) and db.is_particulier(user_id)
     cache_key = f"items:{gemeenten or gemeente}:{offset}:{user_id}"
     cached = cache_module.get(cache_key)
     if cached is not None:
         return _items_antwoord(cached, request)
-    items = db.get_items(limit, offset, None if gemeenten else gemeente, user_id=user_id, gemeenten=gemeenten, own_user_id=own_user_id, all_aanbiedingen=is_admin)
+    items = db.get_items(limit, offset, None if gemeenten else gemeente, user_id=user_id, gemeenten=gemeenten, own_user_id=own_user_id, all_aanbiedingen=is_admin, alleen_eigen=alleen_eigen)
     storage_module.beveilig_items(items)
     # Lange TTL is veilig: mutaties invalideren gericht (o.a. items:*:0:{user_id})
     cache_module.set(cache_key, items, ttl=3600)
@@ -2685,6 +2840,59 @@ async def _digest_loop():
             try: db.registreer_fout("digest-loop", str(e))
             except Exception: pass
         await asyncio.sleep(600)
+
+
+HERINNERING_UREN = 48        # zo lang mag aanbod op antwoord wachten
+HERINNERING_VAN, HERINNERING_TOT = 9, 18   # alleen overdag sturen, NL-tijd
+
+
+def _verstuur_herinneringen() -> int:
+    """Eén subtiele melding per bedrijf dat aanbod heeft laten liggen.
+
+    Bewust gebundeld: een kringloop met dertig openstaande aanbiedingen krijgt
+    één bericht, geen dertig. Wie geen meldingen aan heeft staan krijgt niets
+    (dan is pushen zinloos), en demo-omgevingen doen niet mee.
+    """
+    verstuurd = 0
+    for groep in db.aanbiedingen_zonder_reactie(HERINNERING_UREN):
+        geclaimd = db.claim_herinneringen(groep["aanbieding_ids"])
+        if not geclaimd:
+            continue                     # andere worker was ons voor
+        aantal = groep["aantal"]
+        label = (groep.get("oudste_label") or "materiaal")[:44]
+        # Een datum is duidelijker dan "al 2 dagen": bij 2,9 dagen klopt dat laatste niet
+        # en gaat de ontvanger erover nadenken in plaats van erop te klikken.
+        maanden = ("januari", "februari", "maart", "april", "mei", "juni", "juli",
+                   "augustus", "september", "oktober", "november", "december")
+        o = groep["oudste"]
+        sinds = f"{o.day} {maanden[o.month - 1]}"
+        body = (f"{label} wacht sinds {sinds} op antwoord."
+                if aantal == 1 else
+                f"{aantal} aanbiedingen wachten op antwoord, de oudste sinds {sinds}.")
+        for sub in db.get_push_subscriptions_for_bedrijf(groep["bedrijf_id"]):
+            if push_module.send_push(sub["subscription"], title="Nog geen antwoord — CIRQO",
+                                     body=body, url="/"):
+                verstuurd += 1
+            else:
+                db.delete_push_subscription(sub["subscription"])
+        print(f"[herinnering] {groep['bedrijf_naam']}: {geclaimd} aanbieding(en) gemarkeerd")
+    return verstuurd
+
+
+async def _herinnering_loop():
+    """Kijkt elk uur of er aanbod te lang blijft liggen. Alleen tussen 9 en 18
+    uur: een herinnering om middernacht is geen herinnering maar een ergernis."""
+    from zoneinfo import ZoneInfo
+    await asyncio.sleep(120)
+    while True:
+        try:
+            uur = datetime.now(ZoneInfo("Europe/Amsterdam")).hour
+            if HERINNERING_VAN <= uur < HERINNERING_TOT:
+                await asyncio.get_event_loop().run_in_executor(None, _verstuur_herinneringen)
+        except Exception as e:
+            try: db.registreer_fout("herinnering-loop", str(e))
+            except Exception: pass
+        await asyncio.sleep(3600)
 
 
 async def _prewarm_cache_loop():

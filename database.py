@@ -342,6 +342,23 @@ def init_db():
         # Dagelijkse samenvatting i.p.v. losse pushmeldingen (S3.8)
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS melding_digest BOOLEAN DEFAULT FALSE")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS digest_verstuurd_op TIMESTAMPTZ")
+        cur.execute("ALTER TABLE aanbiedingen ADD COLUMN IF NOT EXISTS herinnering_op TIMESTAMPTZ")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS particulier BOOLEAN DEFAULT FALSE")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS particulier_scans (
+                token       TEXT PRIMARY KEY,
+                bedrijf_id  INTEGER NOT NULL REFERENCES bedrijven(id) ON DELETE CASCADE,
+                photo_url   TEXT NOT NULL,
+                ai_label    TEXT,
+                ai_detail   TEXT,
+                category    TEXT,
+                conditie    TEXT,
+                gewicht_kg  REAL,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+                verwerkt    BOOLEAN NOT NULL DEFAULT FALSE
+            )
+        """)
+        cur.execute("ALTER TABLE particulier_scans ENABLE ROW LEVEL SECURITY")
         # Zorg dat er een UNIQUE constraint op subscription staat (migratie van oude constraint)
         cur.execute("""
             DO $$ BEGIN
@@ -1729,3 +1746,104 @@ def zoekwens_treffers(category: str, tekst: str) -> dict:
             if r["bedrijf_id"] not in uit or r["soort"] == "trefwoord":
                 uit[r["bedrijf_id"]] = {"term": r["category"], "soort": r["soort"]}
         return uit
+
+
+# ── Herinnering bij aanbod dat blijft liggen ──────────────────────────────────
+
+def aanbiedingen_zonder_reactie(uren: int = 48) -> list:
+    """Per bedrijf het aanbod dat na `uren` nog op antwoord wacht en waarvoor
+    nog geen herinnering is verstuurd. Alleen bedrijven die daadwerkelijk
+    meldingen aan hebben staan, en nooit uit een demo-omgeving."""
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT a.bedrijf_id,
+                   b.naam                         AS bedrijf_naam,
+                   COUNT(*)                       AS aantal,
+                   MIN(a.created_at)              AS oudste,
+                   ARRAY_AGG(a.id ORDER BY a.created_at)              AS aanbieding_ids,
+                   (ARRAY_AGG(i.ai_label ORDER BY a.created_at))[1]   AS oudste_label
+              FROM aanbiedingen a
+              JOIN bedrijven b ON b.id = a.bedrijf_id
+              JOIN items     i ON i.id = a.item_id
+             WHERE a.status = 'open'
+               AND a.herinnering_op IS NULL
+               AND a.created_at < now() - make_interval(hours => %s)
+               AND COALESCE(i.verwijderd, FALSE) = FALSE
+               AND POSITION('demo' IN LOWER(COALESCE(i.gemeente, ''))) = 0
+               AND EXISTS (SELECT 1 FROM push_subscriptions ps
+                            JOIN users u ON u.id = ps.user_id
+                           WHERE u.bedrijf_id = b.id)
+               AND NOT EXISTS (SELECT 1 FROM aanbiedingen h
+                                WHERE h.bedrijf_id = b.id
+                                  AND h.herinnering_op > now() - make_interval(hours => %s))
+             GROUP BY a.bedrijf_id, b.naam
+             ORDER BY aantal DESC""", (uren, uren))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def claim_herinneringen(aanbieding_ids: list) -> int:
+    """Atomaire claim: markeer deze aanbiedingen als herinnerd en geef terug
+    hoeveel er daadwerkelijk door óns zijn geclaimd. Draait de lus dubbel (twee
+    workers), dan wint er maar één en stuurt de ander niets."""
+    if not aanbieding_ids:
+        return 0
+    with get_cursor() as cur:
+        cur.execute("""
+            UPDATE aanbiedingen SET herinnering_op = now()
+             WHERE id = ANY(%s) AND status = 'open' AND herinnering_op IS NULL
+         RETURNING id""", (list(aanbieding_ids),))
+        return len(cur.fetchall())
+
+
+# ── Particulieren: aanbieden vanuit de winkel ─────────────────────────────────
+
+def bewaar_particulier_scan(token: str, bedrijf_id: int, photo_url: str, label, detail,
+                            category, conditie, gewicht) -> None:
+    """Een herkende foto die nog niet verstuurd is. Pas als de aanbieder zijn
+    naam invult wordt er een account en een item van gemaakt — zo kost een
+    afgebroken poging niets en staat er geen eigenaarloos item in de lijst."""
+    with get_cursor() as cur:
+        cur.execute("""INSERT INTO particulier_scans
+                       (token, bedrijf_id, photo_url, ai_label, ai_detail, category, conditie, gewicht_kg)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (token, bedrijf_id, photo_url, label, detail, category, conditie, gewicht))
+
+
+def claim_particulier_scan(token: str, bedrijf_id: int) -> Optional[dict]:
+    """Atomair ophalen én afvinken: twee keer op versturen tikken levert nooit
+    twee aanbiedingen op."""
+    with get_cursor() as cur:
+        cur.execute("""UPDATE particulier_scans SET verwerkt = TRUE
+                        WHERE token = %s AND bedrijf_id = %s AND NOT verwerkt
+                          AND created_at > now() - interval '2 hours'
+                    RETURNING *""", (token, bedrijf_id))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def vind_of_maak_particulier(naam: str, contact: str, gemeente: str) -> int:
+    """Eén account per contactgegeven. Geen wachtwoord dat iemand moet bedenken:
+    de sessie blijft op het toestel staan via de herstel-cookie."""
+    import secrets as _s
+    from auth import hash_password
+    sleutel = (contact or "").strip().lower()
+    with get_cursor() as cur:
+        cur.execute("SELECT id FROM users WHERE LOWER(username) = %s", (sleutel,))
+        r = cur.fetchone()
+        if r:
+            cur.execute("UPDATE users SET organisatie = %s WHERE id = %s", (naam[:120], r["id"]))
+            return r["id"]
+        cur.execute("""INSERT INTO users (username, password, role, gemeente, organisatie,
+                                          particulier, created_at, email)
+                       VALUES (%s,%s,'user',%s,%s,TRUE,%s,%s) RETURNING id""",
+                    (sleutel, hash_password(_s.token_urlsafe(24)), gemeente, naam[:120],
+                     datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                     sleutel if "@" in sleutel else None))
+        return cur.fetchone()["id"]
+
+
+def is_particulier(user_id: int) -> bool:
+    with get_cursor() as cur:
+        cur.execute("SELECT COALESCE(particulier, FALSE) p FROM users WHERE id = %s", (user_id,))
+        r = cur.fetchone()
+        return bool(r and r["p"])
