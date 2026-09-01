@@ -6,6 +6,9 @@
 
   // Nooit in een iframe (bijv. dashboard als tabblad): de app eromheen regelt dit al
   if (window !== window.top) return;
+  // Pagina's die de gids alleen op verzoek tonen zetten window.IG_GEEN_AUTO = true.
+  // De gids laadt dan wel (window.toonInstallInstructie werkt), maar duwt zichzelf
+  // nergens naar voren — op een landingspagina is zo'n popup ronduit in de weg.
   // Nooit in de eigen native schil (App/Play Store-app): daar ís het al een app —
   // elke installatie-uitleg is er irrelevant.
   if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) return;
@@ -407,11 +410,13 @@
       if (pushNodig()) {
         fabModus = 'push';
         fab.innerHTML = IC.bel;
+        if (window.IG_GEEN_AUTO) return;
         fab.style.display = 'flex';
         if (isStandalone() && !snoozed()) open('push');
       }
       return;
     }
+    if (window.IG_GEEN_AUTO) return;
     // Nog niet geïnstalleerd → bolletje altijd tonen; popup vanzelf op mobiel
     fab.style.display = 'flex';
     if (isMobiel(p) && !snoozed()) open('install');

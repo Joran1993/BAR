@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="CIRQO">
   <meta name="theme-color" content="#86bc97">
-  <link rel="manifest" href="/static/manifest.json">
+  <link rel="manifest" href="/manifest.json" id="manifest-link">
   <link rel="icon" href="/static/icon-cirqo-192.png">
   <link rel="apple-touch-icon" href="/static/icon-cirqo-192.png">
   <title>CIRQO</title>
@@ -41,6 +41,9 @@
         localStorage.clear();
         history.replaceState(null, '', location.pathname);
       }
+      // App vanaf het beginscherm gestart met een sleuteltje? Dan die eerst
+      // inwisselen: op iOS heeft die app zijn eigen opslag, dus zonder dit
+      // stond de gebruiker daar opnieuw op het inlogscherm.
       if (!localStorage.getItem('token')) {
         // Geen token? Eerst stil sessieherstel via de httpOnly herstel-cookie
         // proberen — pas als dat niet lukt naar het loginscherm.

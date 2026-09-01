@@ -2741,6 +2741,23 @@ function _pasUpdateToe() {
   document.body.appendChild(t);
   setTimeout(() => location.reload(), 1200);
 }
+
+// Snelkoppeling op het beginscherm laten starten mét sessie. Zonder dit staat
+// een iPhone-gebruiker na "Zet op beginscherm" opnieuw op het inlogscherm: die
+// app krijgt van iOS een eigen opslag, los van Safari. Het sleuteltje in de
+// start-URL is eenmalig; daarna heeft de app zijn eigen sessie.
+(async function _manifestMetSessie() {
+  try {
+    const link = document.getElementById("manifest-link");
+    if (!link || !localStorage.getItem("token")) return;
+    if (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone) return;
+    const res = await apiFetch("/api/auth/overdracht", { method: "POST", _stil: true });
+    if (!res || !res.ok) return;
+    const { sleutel } = await res.json();
+    if (sleutel) link.href = "/manifest.json?ov=" + encodeURIComponent(sleutel);
+  } catch (e) { /* installeren blijft gewoon werken, alleen zonder sessie */ }
+})();
+
 setInterval(_checkAppVersie, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { _checkAppVersie(); _pasUpdateToe(); } });
 

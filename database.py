@@ -359,6 +359,16 @@ def init_db():
             )
         """)
         cur.execute("ALTER TABLE particulier_scans ENABLE ROW LEVEL SECURITY")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS overdracht_tokens (
+                id          SERIAL PRIMARY KEY,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                token_hash  TEXT NOT NULL UNIQUE,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+                gebruikt_op TIMESTAMPTZ
+            )
+        """)
+        cur.execute("ALTER TABLE overdracht_tokens ENABLE ROW LEVEL SECURITY")
         # Zorg dat er een UNIQUE constraint op subscription staat (migratie van oude constraint)
         cur.execute("""
             DO $$ BEGIN
@@ -1847,3 +1857,31 @@ def is_particulier(user_id: int) -> bool:
         cur.execute("SELECT COALESCE(particulier, FALSE) p FROM users WHERE id = %s", (user_id,))
         r = cur.fetchone()
         return bool(r and r["p"])
+
+
+# ── Sessie meegeven aan de app op het beginscherm ─────────────────────────────
+# iOS geeft een app op het beginscherm een eigen opslag: localStorage en cookies
+# uit Safari gaan niet mee, dus stond je daar opnieuw op het inlogscherm. De
+# snelkoppeling krijgt daarom een sleuteltje mee dat één keer ingewisseld mag
+# worden — daarna heeft de app zijn eigen sessie en is het sleuteltje waardeloos.
+
+def maak_overdracht_token(user_id: int, token_hash: str) -> None:
+    with get_cursor() as cur:
+        cur.execute("DELETE FROM overdracht_tokens WHERE user_id = %s AND gebruikt_op IS NULL", (user_id,))
+        cur.execute("INSERT INTO overdracht_tokens (user_id, token_hash) VALUES (%s, %s)",
+                    (user_id, token_hash))
+
+
+def gebruik_overdracht_token(token_hash: str, dagen_geldig: int = 45) -> Optional[dict]:
+    """Wisselt het sleuteltje eenmalig in voor de gebruiker. Tweede poging faalt."""
+    with get_cursor() as cur:
+        cur.execute("""UPDATE overdracht_tokens SET gebruikt_op = now()
+                        WHERE token_hash = %s AND gebruikt_op IS NULL
+                          AND created_at > now() - make_interval(days => %s)
+                    RETURNING user_id""", (token_hash, dagen_geldig))
+        r = cur.fetchone()
+        if not r:
+            return None
+        cur.execute("SELECT * FROM users WHERE id = %s", (r["user_id"],))
+        u = cur.fetchone()
+        return dict(u) if u else None

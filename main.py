@@ -22,6 +22,7 @@ import auth as auth_module
 import storage as storage_module
 import cache as cache_module
 import push as push_module
+import mail as mail_module
 import firestore as fs
 
 # Foutbewaking: wordt actief zodra SENTRY_DSN als env-var is gezet; zonder DSN
@@ -1045,6 +1046,53 @@ def _login_payload(user: dict, auth_type: str = "local") -> dict:
         "organisatie": user.get("organisatie") or "",
         "auth_type": auth_type,
     }
+
+
+# ── App op het beginscherm: sessie meegeven ──────────────────────────────────
+# Op iOS heeft een app op het beginscherm zijn eigen opslag; de sessie uit Safari
+# gaat niet mee. De snelkoppeling wijst daarom naar /?ov=<sleutel>, die één keer
+# ingewisseld mag worden. Daarna heeft de app zijn eigen sessie én herstel-cookie.
+
+def _ov_hash(geheim: str) -> str:
+    import hashlib
+    return hashlib.sha256(geheim.encode()).hexdigest()
+
+
+@app.post("/api/auth/overdracht")
+def overdracht_maken(user=Depends(get_current_user)):
+    """Geeft een sleuteltje voor de snelkoppeling van dít account."""
+    import secrets
+    geheim = secrets.token_urlsafe(32)
+    db.maak_overdracht_token(user["id"], _ov_hash(geheim))
+    return {"sleutel": geheim}
+
+
+@app.post("/api/auth/overdracht/gebruik")
+async def overdracht_gebruiken(request: Request, response: Response):
+    data = await request.json()
+    geheim = (data or {}).get("sleutel") or ""
+    if not geheim:
+        raise HTTPException(status_code=400, detail="Geen sleutel")
+    gebruiker = db.gebruik_overdracht_token(_ov_hash(geheim))
+    if not gebruiker:
+        raise HTTPException(status_code=401, detail="Sleutel is verlopen of al gebruikt")
+    sessie = _login_payload(gebruiker, auth_type="beginscherm")
+    _zet_herstel_cookie(response, gebruiker["id"], request=request, via="beginscherm",
+                        achtergrond=True)
+    return sessie
+
+
+@app.get("/manifest.json")
+def manifest(ov: Optional[str] = None):
+    """Het manifest bepaalt waar de snelkoppeling naartoe gaat. Met een sleutel
+    erin start de app op het beginscherm meteen ingelogd."""
+    import json as _j
+    with open("static/manifest.json", "r", encoding="utf-8") as f:
+        m = _j.load(f)
+    if ov and re.fullmatch(r"[A-Za-z0-9_-]{20,64}", ov):
+        m["start_url"] = f"/?ov={ov}"
+    return Response(content=_j.dumps(m), media_type="application/manifest+json",
+                    headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/auth/herstel")
@@ -2511,13 +2559,39 @@ def aanbieden_versturen(token: str, request: Request, response: Response, payloa
         for sub in db.get_push_subscriptions_for_bedrijf(b["id"]):
             push_module.send_push(sub["subscription"], title="Aanbod van een inwoner — CIRQO",
                                   body=f"{naam} biedt {label} aan.", url="/")
+        # Bevestiging aan de aanbieder: pas hiermee is het account iets waard —
+        # je hebt zwart op wit wat je hebt aangeboden en waar je het terugvindt.
+        if "@" in contact and mail_module.geconfigureerd():
+            basis = os.environ.get("APP_URL", "https://app.cirqo.nl").rstrip("/")
+            tekst = (f"Hallo {naam},\n\nJe hebt {label} aangeboden aan {b['naam']}. Zij bekijken het "
+                     f"en laten weten of ze het kunnen gebruiken.\n\nJe aanbod bekijken: {basis}\n"
+                     f"Je bent met dit e-mailadres ingelogd; een wachtwoord heb je niet nodig.\n\n"
+                     f"Hartelijke groet,\nCIRQO")
+            html = (f"<p>Hallo {naam},</p><p>Je hebt <b>{label}</b> aangeboden aan <b>{b['naam']}</b>. "
+                    f"Zij bekijken het en laten weten of ze het kunnen gebruiken.</p>"
+                    f"<p><a href=\"{basis}\">Je aanbod bekijken</a></p>"
+                    f"<p style=\"color:#666;font-size:14px\">Je bent met dit e-mailadres ingelogd; "
+                    f"een wachtwoord heb je niet nodig.</p><p>Hartelijke groet,<br>CIRQO</p>")
+            mail_module.send_mail(contact, f"Je aanbod staat klaar bij {b['naam']}", tekst, html)
+
     if not _is_demo_aanbieding(item):
         import threading
         threading.Thread(target=_meld, daemon=True).start()
 
-    # Sessie op dit toestel: bij een volgend bezoek staat de aanbieder er meteen in
+    # Sessie op dit toestel: bij een volgend bezoek staat de aanbieder er meteen
+    # in, en de bevestigingspagina kan meteen meldingen aanzetten en zijn eigen
+    # spullen tonen — dát maakt het een account in plaats van een formulier.
     _zet_herstel_cookie(response, user_id, request=request, via="particulier", achtergrond=True)
-    return {"ok": True, "aanbieding_id": aanbieding_id, "afnemer": b["naam"]}
+    gebruiker = db.get_user_by_id(user_id) or {"id": user_id, "username": contact,
+                                               "role": "user", "gemeente": gemeente}
+    with db.get_cursor() as cur:
+        cur.execute("""SELECT COUNT(*) n, COALESCE(SUM(gewicht_kg), 0) kg
+                         FROM items WHERE uploaded_by = %s AND NOT COALESCE(verwijderd, FALSE)""",
+                    (user_id,))
+        r = cur.fetchone()
+    return {"ok": True, "aanbieding_id": aanbieding_id, "afnemer": b["naam"],
+            "sessie": _login_payload(gebruiker, auth_type="particulier"),
+            "aantal": int(r["n"] or 0), "kilo": round(float(r["kg"] or 0))}
 
 
 # ── Items ─────────────────────────────────────────────────────────────────────
@@ -3311,7 +3385,37 @@ def _detect_brand(request: Request) -> str:
 
 
 @app.get("/", response_class=HTMLResponse)
-def scan_app(request: Request):
+def index(request: Request, ov: Optional[str] = None):
+    """Startpagina. Komt de bezoeker binnen vanaf de snelkoppeling op zijn
+    beginscherm (?ov=…), dan wisselen we die sleutel hier serverzijdig in en
+    geven we de sessie mee in de pagina zelf. Dat moet hier gebeuren: doen we
+    het in de browser, dan is de app al bezig, krijgt hij een 401 en logt hij
+    zichzelf weer uit voordat de sessie binnen is."""
+    import json as _json
+    if ov:
+        gebruiker = None
+        try:
+            gebruiker = db.gebruik_overdracht_token(_ov_hash(ov))
+        except Exception as e:
+            print(f"[beginscherm] inwisselen mislukt: {e}")
+        if gebruiker:
+            sessie = _login_payload(gebruiker, auth_type="beginscherm")
+            velden = {"token": sessie["token"], "user_id": str(sessie["user_id"] or ""),
+                      "username": sessie["username"] or "", "role": sessie["role"] or "user",
+                      "gemeente": sessie["gemeente"] or "", "organisatie": sessie["organisatie"] or "",
+                      "auth_type": "beginscherm"}
+            if sessie.get("bedrijf_id"):
+                velden["bedrijf_id"] = str(sessie["bedrijf_id"])
+            zetters = "".join(f"localStorage.setItem({_json.dumps(k)},{_json.dumps(v)});"
+                              for k, v in velden.items())
+            inject = ("<script>(function(){try{" + zetters +
+                      "history.replaceState(null,'','/');}catch(e){}})();</script>")
+            pagina = _render_html("static/index.html", _detect_brand(request))
+            resp = HTMLResponse(pagina.body.decode("utf-8").replace("<head>", "<head>" + inject, 1))
+            _zet_herstel_cookie(resp, gebruiker["id"], request=request, via="beginscherm",
+                                achtergrond=True)
+            return resp
+        # Sleutel op of verlopen: gewoon de app, die regelt zelf de rest
     return _render_html("static/index.html", _detect_brand(request))
 
 

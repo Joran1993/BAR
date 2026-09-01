@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#f6f5f1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="icon" href="/static/favicon.ico">
+  <link rel="manifest" href="/manifest.json" id="manifest-link">
+  <link rel="apple-touch-icon" href="/static/icon-cirqo-192.png">
+  <title>Iets moois over? — CIRQO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/static/base.css">
+  <link rel="stylesheet" href="/brand.css">
+  <style>
+    :root{ --papier:#f6f5f1; --kaart:#fff; --tekst:#1b2420; --grijs:#5d6a63; --rand:#e2e6e1; }
+    @media (prefers-color-scheme:dark){:root{ --papier:#141a17; --kaart:#1c2420; --tekst:#eaf0ec; --grijs:#a5b2ab; --rand:#2c3630; }}
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:var(--papier);color:var(--tekst)}
+    body{font-family:'Inter',system-ui,sans-serif;line-height:1.55;
+      padding:0 0 calc(env(safe-area-inset-bottom) + 32px)}
+    .wrap{max-width:520px;margin:0 auto;padding:0 20px}
+
+    .kop{display:flex;align-items:center;gap:11px;padding:22px 0 16px}
+    .kop img{height:34px;width:auto}
+    .kop .aan{font-size:.84rem;color:var(--grijs)}
+    .kop .aan b{display:block;color:var(--tekst);font-size:.98rem;font-weight:700}
+
+    h1{font-family:'Outfit',sans-serif;font-weight:800;font-size:clamp(1.8rem,7.5vw,2.3rem);
+      line-height:1.08;letter-spacing:-.02em;margin:0 0 10px;text-wrap:balance}
+    h1 em{font-style:normal;color:var(--orange)}
+    .zin{font-size:1.02rem;color:var(--grijs);margin:0 0 22px}
+
+    .doe{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
+      padding:19px 22px;border:0;border-radius:100px;background:var(--orange);color:#fff;
+      font-family:'Outfit',sans-serif;font-weight:800;font-size:1.08rem;cursor:pointer;
+      box-shadow:0 8px 22px rgba(0,0,0,.14)}
+    .doe:active{transform:translateY(1px)}
+    .doe[disabled]{opacity:.6}
+    .doe.stil{background:none;color:var(--tekst);border:1.5px solid var(--rand);box-shadow:none;
+      font-size:.98rem;padding:14px 20px;font-weight:700}
+    input[type=file]{display:none}
+
+    .waarom{list-style:none;margin:22px 0 0;padding:0;display:flex;flex-direction:column;gap:11px}
+    .waarom li{display:flex;gap:10px;align-items:flex-start;font-size:.95rem}
+    .waarom svg{flex-shrink:0;margin-top:3px;color:var(--orange)}
+    .zoeken{margin-top:22px;padding:14px 16px;background:var(--kaart);border:1px solid var(--rand);border-radius:14px}
+    .zoeken u{display:block;text-decoration:none;font-size:.7rem;font-weight:700;letter-spacing:.1em;
+      text-transform:uppercase;color:var(--grijs);margin-bottom:6px}
+    .zoeken p{margin:0;font-size:.92rem}
+
+    .kaart{background:var(--kaart);border:1px solid var(--rand);border-radius:18px;padding:16px;margin-top:6px}
+    .foto{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:13px;display:block;background:var(--papier)}
+    .bezig{display:flex;align-items:center;gap:11px;color:var(--grijs);font-size:.95rem;margin-top:16px}
+    .tol{width:19px;height:19px;border:2.5px solid var(--rand);border-top-color:var(--orange);
+      border-radius:50%;animation:draai .8s linear infinite;flex-shrink:0}
+    @keyframes draai{to{transform:rotate(360deg)}}
+    @media (prefers-reduced-motion:reduce){.tol{animation:none}}
+
+    .uit{display:flex;align-items:flex-start;gap:12px;margin-top:16px}
+    .uit .t{flex:1;min-width:0}
+    .uit .titel{font-family:'Outfit',sans-serif;font-weight:800;font-size:1.14rem;line-height:1.2}
+    .uit .onder{font-size:.88rem;color:var(--grijs);margin-top:2px}
+    .vlag{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+      background:var(--orange);color:#fff;padding:3px 10px;border-radius:99px;white-space:nowrap}
+
+    .veld{margin-top:13px}
+    .veld label{display:block;font-size:.73rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+      color:var(--grijs);margin-bottom:5px}
+    .veld input,.veld textarea{width:100%;padding:13px 15px;border:1.5px solid var(--rand);border-radius:12px;
+      font:inherit;font-size:1rem;background:var(--papier);color:inherit}
+    .veld textarea{min-height:74px;resize:vertical}
+    .veld input:focus,.veld textarea:focus{outline:none;border-color:var(--orange)}
+    .veld .hint{font-size:.78rem;color:var(--grijs);margin-top:4px}
+
+    .fout{color:var(--danger,#b5432f);font-size:.9rem;margin-top:10px;min-height:1.1em}
+    .klaar{text-align:center}
+    .vink{width:56px;height:56px;border-radius:50%;background:var(--orange);color:#fff;
+      display:flex;align-items:center;justify-content:center;margin:2px auto 14px}
+    .score{margin-top:16px;padding-top:14px;border-top:1px solid var(--rand);
+      display:flex;align-items:baseline;justify-content:center;gap:.5em}
+    .score b{font-family:'Outfit',sans-serif;font-weight:800;font-size:2.1rem;color:var(--orange);line-height:1}
+    .score span{font-size:.92rem;color:var(--grijs)}
+    .account{margin-top:18px;padding:14px 15px 4px;background:var(--papier);
+      border:1.5px solid var(--orange);border-radius:14px}
+    .account-uit{margin:0 0 4px;font-size:.9rem;color:var(--grijs)}
+    .voorwaarde{margin:10px 2px 0;font-size:.79rem;color:var(--grijs);line-height:1.45}
+    .klein-kop{margin:0 0 6px;font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--grijs)}
+    .gelukt{color:var(--orange);font-weight:600;font-size:.93rem;margin:10px 0 0}
+    .voet{margin-top:26px;padding-top:14px;border-top:1px solid var(--rand);font-size:.79rem;color:var(--grijs)}
+    [hidden]{display:none!important}
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kop">
+    <img src="/static/cirqo-logo.webp" alt="CIRQO">
+    <div class="aan">aanbieden bij<b id="afnemer">…</b></div>
+  </div>
+
+  <!-- 1 -->
+  <section id="s-start">
+    <h1>Iets dat nog goed is, maar <em>weg moet</em>?</h1>
+    <p class="zin">Maak één foto. Wij herkennen wat het is en leggen het voor aan
+      <span id="afnemer2">de kringloopwinkel</span>. Je hoort snel of ze het kunnen gebruiken.</p>
+
+    <label class="doe" for="foto">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Maak een foto
+    </label>
+    <input type="file" id="foto" accept="image/*" capture="environment">
+
+    <ul class="waarom">
+      <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span>Geen account nodig om te beginnen — eerst kijken, dan pas je naam.</span></li>
+      <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span>Niets invullen: de foto vertelt al wat het is.</span></li>
+      <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span>Past het niet? Dan hoor je dat ook, en hoef je er niet mee te sjouwen.</span></li>
+    </ul>
+
+    <div class="zoeken" id="zoeken" hidden>
+      <u>Hier zijn ze blij mee</u>
+      <p id="zoeken-tekst"></p>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section id="s-kijken" hidden>
+    <h1>Even kijken wat dit is</h1>
+    <div class="kaart">
+      <img class="foto" id="voorbeeld" alt="Jouw foto">
+      <div class="bezig" id="bezig"><span class="tol"></span><span id="bezig-tekst">Foto versturen…</span></div>
+
+      <div id="uitslag" hidden>
+        <div class="uit">
+          <div class="t">
+            <div class="titel" id="u-titel"></div>
+            <div class="onder" id="u-onder"></div>
+          </div>
+          <span class="vlag" id="u-vlag" hidden>Gezocht</span>
+        </div>
+
+        <div class="account">
+          <p class="klein-kop" style="margin-bottom:2px">Je CIRQO-account</p>
+          <p class="account-uit">Met deze twee regels maak je een account aan. Daarmee volg je wat er met je
+            spullen gebeurt en hoef je het de volgende keer niet meer in te vullen. Geen wachtwoord.</p>
+          <div class="veld"><label for="naam">Je naam</label><input id="naam" autocomplete="name" placeholder="Voor- en achternaam"></div>
+          <div class="veld"><label for="contact">E-mailadres</label>
+            <input id="contact" type="email" autocomplete="email" inputmode="email" placeholder="jij@voorbeeld.nl">
+            <p class="hint">Hierop krijg je de bevestiging. Liever een telefoonnummer? Dat mag ook.</p></div>
+        </div>
+
+        <div class="veld"><label for="adres">Waar staat het? <span style="text-transform:none;letter-spacing:0;font-weight:400">(mag leeg)</span></label><input id="adres" autocomplete="street-address" placeholder="Straat en huisnummer"></div>
+        <div class="veld"><label for="opm">Iets erbij te zeggen? <span style="text-transform:none;letter-spacing:0;font-weight:400">(mag leeg)</span></label><textarea id="opm" placeholder="Bijvoorbeeld: kan alleen doordeweeks opgehaald worden"></textarea></div>
+
+        <p class="fout" id="fout"></p>
+        <button class="doe" id="versturen" style="margin-top:6px">Account aanmaken en aanbieden</button>
+        <p class="voorwaarde">Je maakt hiermee een CIRQO-account aan. Je naam en contactgegevens gaan naar
+          <span id="v-afnemer">de kringloopwinkel</span>, zodat zij contact met je kunnen opnemen over deze spullen.
+          Verder gebruiken we ze nergens voor.</p>
+        <button class="doe stil" id="andere" style="margin-top:10px">Andere foto maken</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section id="s-klaar" hidden>
+    <div class="kaart klaar">
+      <div class="vink"><svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h1 style="font-size:1.5rem">Bedankt, het staat klaar</h1>
+      <p class="zin" style="margin-bottom:0"><span id="k-afnemer">De kringloopwinkel</span> kijkt ernaar en laat weten
+        of ze het kunnen gebruiken.</p>
+      <div class="score" id="score" hidden><b id="score-n">1</b><span id="score-t">product gered via CIRQO</span></div>
+    </div>
+
+    <!-- Het account: gevraagd op het moment dat iemand net iets goeds heeft gedaan.
+         Op de iPhone kan Safari geen meldingen sturen; daar is installeren de
+         eerste stap en niet een extraatje. -->
+    <div class="kaart" id="kaart-melding">
+      <p class="klein-kop">Je account staat klaar</p>
+      <p style="margin:0 0 14px;font-size:.95rem;color:var(--grijs)" id="melding-uitleg">
+        Je bent ingelogd als <b id="k-naam" style="color:var(--tekst)"></b>. Zet meldingen aan, dan hoor je
+        het meteen als <span id="k-afnemer2">ze</span> reageren — je hoeft niet terug te komen kijken.</p>
+      <button class="doe" id="installeren" hidden>Op mijn beginscherm zetten</button>
+      <button class="doe" id="meldingen">Hou me op de hoogte</button>
+      <p class="fout" id="meldfout"></p>
+      <p class="gelukt" id="meldgelukt" hidden>Gelukt — je krijgt bericht zodra er gereageerd wordt.</p>
+    </div>
+
+    <button class="doe" id="nogeen">Nog iets aanbieden</button>
+    <button class="doe stil" id="naarapp" style="margin-top:10px">Mijn spullen bekijken</button>
+  </section>
+
+  <p class="voet">Je gegevens gebruiken we alleen om contact met je op te nemen over deze spullen.
+    Aanbieden loopt via CIRQO.</p>
+</div>
+
+<script>
+(function () {
+  var TOKEN = location.pathname.split('/').filter(Boolean).pop();
+  var el = function (id) { return document.getElementById(id); };
+  var scan = null;
+
+  function toon(naam) {
+    ['s-start', 's-kijken', 's-klaar'].forEach(function (s) { el(s).hidden = s !== naam; });
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+
+  fetch('/api/aanbieden/' + encodeURIComponent(TOKEN))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d) return;
+      el('afnemer').textContent = d.naam;
+      el('afnemer2').textContent = d.naam;
+      el('k-afnemer').textContent = d.naam;
+      el('v-afnemer').textContent = d.naam;
+      document.title = 'Iets moois over? — ' + d.naam;
+      if (d.categorieen && d.categorieen.length) {
+        el('zoeken-tekst').textContent = d.categorieen.join(' · ');
+        el('zoeken').hidden = false;
+      }
+    }).catch(function () {});
+
+  el('foto').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    el('voorbeeld').src = URL.createObjectURL(f);
+    el('uitslag').hidden = true;
+    el('bezig').hidden = false;
+    el('bezig-tekst').textContent = 'Foto versturen…';
+    el('fout').textContent = '';
+    toon('s-kijken');
+    setTimeout(function () { el('bezig-tekst').textContent = 'Herkennen…'; }, 1100);
+
+    var fd = new FormData();
+    fd.append('foto', f);
+    fetch('/api/aanbieden/' + encodeURIComponent(TOKEN) + '/scan', { method: 'POST', body: fd })
+      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.detail || 'Er ging iets mis'); return d; }); })
+      .then(function (d) {
+        scan = d.scan;
+        el('u-titel').textContent = d.label;
+        el('u-onder').textContent = [d.categorie, d.conditie].filter(Boolean).join(' · ') || d.detail || '';
+        el('u-vlag').hidden = !d.gezocht;
+        el('bezig').hidden = true;
+        el('uitslag').hidden = false;
+      })
+      .catch(function (err) {
+        el('bezig').hidden = true;
+        el('uitslag').hidden = false;
+        el('u-titel').textContent = 'Foto ontvangen';
+        el('u-onder').textContent = 'We konden er niet automatisch een naam aan geven — vul hieronder je gegevens in, dan kijken ze er zelf naar.';
+        el('fout').textContent = err.message;
+      });
+  });
+
+  el('andere').addEventListener('click', function () { el('foto').value = ''; scan = null; toon('s-start'); });
+  el('nogeen').addEventListener('click', function () { el('foto').value = ''; scan = null; toon('s-start'); });
+  el('naarapp').addEventListener('click', function () { location.href = '/'; });
+
+  // ── Na het aanbieden: hier verdient het account zichzelf terug ────────────
+  function naKlaar(d) {
+    var s = d.sessie || {};
+    try {                                   // zelfde sleutels als de app zelf gebruikt
+      localStorage.setItem('token', s.token || '');
+      localStorage.setItem('user_id', String(s.user_id || ''));
+      localStorage.setItem('username', s.username || '');
+      localStorage.setItem('role', s.role || 'user');
+      localStorage.setItem('gemeente', s.gemeente || '');
+      localStorage.setItem('organisatie', s.organisatie || '');
+      localStorage.setItem('auth_type', 'particulier');
+    } catch (e) {}
+    el('k-naam').textContent = s.organisatie || s.username || 'jou';
+    // Snelkoppeling laten starten mét sessie: anders staat de aanbieder na
+    // installeren opnieuw op het inlogscherm (iOS geeft die app een eigen opslag).
+    fetch('/api/auth/overdracht', { method: 'POST', headers: { Authorization: 'Bearer ' + (s.token || '') } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (o) {
+        var link = document.getElementById('manifest-link');
+        if (o && o.sleutel && link) link.href = '/manifest.json?ov=' + encodeURIComponent(o.sleutel);
+      }).catch(function () {});
+    el('k-afnemer2').textContent = d.afnemer || 'ze';
+    if (d.aantal) {
+      el('score-n').textContent = d.aantal;
+      el('score-t').textContent = (d.aantal === 1 ? 'product' : 'producten') +
+        ' aangeboden' + (d.kilo ? ', samen ' + d.kilo + ' kilo' : '');
+      el('score').hidden = false;
+    }
+    kiesEersteStap(d.afnemer || 'de kringloopwinkel');
+  }
+
+  // Op een iPhone kán Safari geen meldingen sturen: dat kan alleen als de app
+  // op het beginscherm staat. Daar is installeren dus geen extraatje maar de
+  // enige manier om bericht te krijgen — en zeggen we dat er ook bij.
+  function kiesEersteStap(afnemer) {
+    var geinstalleerd = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    var iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    var pushKan = ('Notification' in window) && ('serviceWorker' in navigator) && ('PushManager' in window);
+
+    if (pushKan && (!iOS || geinstalleerd)) {
+      if (Notification.permission === 'granted') zetMeldingenAan(true);
+      return;                                     // knop "Hou me op de hoogte" staat al goed
+    }
+    // Hier kan het (nog) niet: eerst op het beginscherm
+    el('meldingen').hidden = true;
+    el('installeren').hidden = false;
+    el('melding-uitleg').innerHTML =
+      'Je bent ingelogd als <b style="color:var(--tekst)">' + (el('k-naam').textContent || 'jou') + '</b>. ' +
+      'Zet CIRQO op je beginscherm, dan krijg je een bericht zodra ' + afnemer + ' reageert. ' +
+      (iOS ? 'Op de iPhone kan dat alleen zo — via Safari kan Apple geen berichten sturen.'
+           : 'Zo hoef je niet terug te komen kijken.');
+  }
+
+  el('installeren').addEventListener('click', function () {
+    if (window.toonInstallInstructie) window.toonInstallInstructie();
+    else el('meldfout').textContent = 'Open het menu van je browser en kies "Zet op beginscherm".';
+  });
+
+  function u8(sleutel) {
+    var pad = '='.repeat((4 - sleutel.length % 4) % 4);
+    var ruw = atob((sleutel + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from([].map.call(ruw, function (c) { return c.charCodeAt(0); }));
+  }
+
+  async function zetMeldingenAan(stil) {
+    var knop = el('meldingen');
+    el('meldfout').textContent = '';
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Deze browser kan geen meldingen sturen.');
+      if (!stil) { knop.disabled = true; knop.textContent = 'Even toestemming vragen…'; }
+      var toestemming = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      if (toestemming !== 'granted') throw new Error('Je hebt meldingen geweigerd. Je kunt ze later in je browser alsnog aanzetten.');
+      var reg = await navigator.serviceWorker.register('/static/sw.js');
+      reg = await navigator.serviceWorker.ready;
+      var sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        var pk = (await (await fetch('/api/push/vapid-key')).json()).public_key;
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: u8(pk) });
+      }
+      var r = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (localStorage.getItem('token') || '') },
+        body: JSON.stringify({ subscription: sub.toJSON() })
+      });
+      if (!r.ok) throw new Error('Aanmelden voor meldingen lukte niet.');
+      el('kaart-melding').querySelector('.doe').hidden = true;
+      el('meldgelukt').hidden = false;
+    } catch (e) {
+      if (!stil) el('meldfout').textContent = e.message;
+    } finally {
+      knop.disabled = false; knop.textContent = 'Hou me op de hoogte';
+    }
+  }
+  el('meldingen').addEventListener('click', function () { zetMeldingenAan(false); });
+
+  el('versturen').addEventListener('click', function () {
+    var knop = el('versturen');
+    el('fout').textContent = '';
+    if (!scan) { el('fout').textContent = 'Maak eerst een foto.'; return; }
+    knop.disabled = true; knop.textContent = 'Account aanmaken…';
+    fetch('/api/aanbieden/' + encodeURIComponent(TOKEN) + '/versturen', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scan: scan, naam: el('naam').value, contact: el('contact').value,
+        adres: el('adres').value, opmerking: el('opm').value
+      })
+    })
+      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.detail || 'Versturen mislukt'); return d; }); })
+      .then(function (d) { naKlaar(d); toon('s-klaar'); })
+      .catch(function (err) { el('fout').textContent = err.message; })
+      .finally(function () { knop.disabled = false; knop.textContent = 'Account aanmaken en aanbieden'; });
+  });
+})();
+</script>
+<script>window.IG_GEEN_AUTO = true;</script>
+<script src="/static/install-gids.js"></script>
+</body>
+</html>
