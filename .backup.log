@@ -420,3 +420,11 @@ To github.com:Joran1993/BAR.git
    9d17adb..4cfaf9c  main -> main
 gepusht naar GitHub ✓
 ── 2026-09-01 18:00 ──
+[main 235d36c] Automatische dagelijkse back-up 2026-09-01
+ 9 files changed, 686 insertions(+), 5 deletions(-)
+ create mode 100644 mail.py
+ create mode 100644 static/aanbieden.html
+To github.com:Joran1993/BAR.git
+   4cfaf9c..235d36c  main -> main
+gepusht naar GitHub ✓
+── 2026-09-02 18:01 ──
